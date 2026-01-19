@@ -121,6 +121,23 @@ Example JSON log:
 }
 ```
 
+### Auditability and Accountability
+
+QMCP maintains durable audit records in SQLite for:
+
+| Record | Where | Why it matters |
+|--------|-------|----------------|
+| Tool invocation | `tool_invocations` | Full input/output, status, duration, and timestamps for every tool call |
+| Human request | `human_requests` | Request prompt, options, timeouts, and lifecycle status |
+| Human response | `human_responses` | Response payload, `responded_by`, and response metadata |
+
+Operational accountability is strengthened by:
+- `correlation_id` passed by clients and stored with tool invocations and human requests
+- `request_id` + `correlation_id` in logs and response headers for end-to-end traceability
+- `responded_by` and `response_metadata` on human responses to preserve decision provenance
+
+**Recommended practice:** always pass `X-Correlation-ID` from callers and store any human approver identity in `responded_by`.
+
 ### Metrics
 
 Prometheus-compatible metrics are available at `/metrics`:
@@ -255,3 +272,32 @@ This enables:
 - [ ] Logs shipped to aggregator
 - [ ] Alerts configured for errors
 - [ ] Database backups scheduled
+
+## Local Implementation Test Phase
+
+Use this phase to validate a fresh local install before deploying:
+
+1. **Install and verify config**
+   - `uv sync`
+   - `uv run qmcp info`
+2. **Start server**
+   - `uv run qmcp serve`
+3. **API smoke checks**
+   - `GET /health`
+   - `GET /v1/tools`
+   - `POST /v1/tools/echo`
+4. **Audit trail checks**
+   - `GET /v1/invocations` (verify new invocation is present)
+   - Create/response HITL request and verify status transitions
+5. **Observability checks**
+   - `GET /metrics` and `GET /metrics/json`
+   - Verify `X-Request-ID` and `X-Correlation-ID` headers on responses
+
+## QC Gauntlet
+
+Repeat this gate before releases:
+- [ ] All tests pass (`uv run qmcp test`)
+- [ ] Restart server and confirm prior invocations and HITL records remain
+- [ ] Logs show `request_id` and `correlation_id` for a multi-request flow
+- [ ] Metrics scrape is clean; request and tool counters increment
+- [ ] HITL response audit shows `responded_by` populated

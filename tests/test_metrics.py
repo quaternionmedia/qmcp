@@ -90,6 +90,24 @@ class TestHistogram:
         assert "test_histogram_sum" in output
         assert "test_histogram_count" in output
 
+    def test_prometheus_buckets_are_cumulative(self):
+        """Histogram bucket counts should not exceed total count."""
+        hist = Histogram()
+        hist.observe(0.01)
+
+        output = hist.to_prometheus("test_histogram")
+        bucket_counts = []
+        inf_count = None
+        for line in output.splitlines():
+            if line.startswith("test_histogram_bucket"):
+                value = int(float(line.split()[-1]))
+                bucket_counts.append(value)
+                if 'le="+Inf"' in line:
+                    inf_count = value
+
+        assert inf_count == hist.count
+        assert max(bucket_counts) == hist.count
+
 
 class TestMetricsRegistry:
     """Tests for the MetricsRegistry class."""

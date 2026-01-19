@@ -99,6 +99,7 @@ Every invocation returns an `invocation_id` for audit and tracing.
 ## Invocation History
 
 All tool invocations are logged to the database for audit.
+Pass `X-Correlation-ID` to tie invocations back to higher-level workflows.
 
 ### List Invocations
 

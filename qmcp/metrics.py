@@ -35,11 +35,12 @@ class Histogram:
         lines = []
         label_str = f"{{{labels}}}" if labels else ""
 
-        # Bucket lines
-        cumulative = 0
+        # Bucket lines (counts are already cumulative in observe())
         for bucket in self.buckets:
-            cumulative += self.counts[bucket]
-            lines.append(f'{name}_bucket{{le="{bucket}"{", " + labels if labels else ""}}} {cumulative}')
+            lines.append(
+                f'{name}_bucket{{le="{bucket}"{", " + labels if labels else ""}}} '
+                f"{self.counts[bucket]}"
+            )
         lines.append(f'{name}_bucket{{le="+Inf"{", " + labels if labels else ""}}} {self.count}')
 
         # Sum and count

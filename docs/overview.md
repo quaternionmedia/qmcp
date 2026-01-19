@@ -97,3 +97,12 @@ See [ROADMAP.md](ROADMAP.md) for details.
 - Prefer examples over abstractions
 - Prefer boring patterns over clever ones
 - Optimize for maintainability over novelty
+
+---
+
+## Auditability and Accountability
+
+QMCP is designed to provide a durable audit trail:
+- Every tool invocation is recorded with input, output, status, and timestamps.
+- Human requests and responses are persisted, including who responded.
+- Clients can supply a `X-Correlation-ID` to tie logs, requests, and database records together.
