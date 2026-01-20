@@ -7,12 +7,17 @@ This project implements a **Model Context Protocol (MCP) server** with:
 - **Metaflow integration** with ready-to-use example flows
 - **Human-in-the-loop (HITL)** as a first-class capability
 - **Persistence** with SQLite for audit and durability
+- **Agent framework** schemas and mixins for modeling agent types and topologies
 - Strong emphasis on **clarity, correctness, and testability**
 
 This is not an autonomous agent system.
 This is not an experimentation playground.
 
 It is a **boring, reliable MCP implementation** intended for real-world use.
+
+---
+
+Quickstart: see `../quickstart.md` for a copy-paste walkthrough.
 
 ---
 
@@ -45,6 +50,25 @@ It is a **boring, reliable MCP implementation** intended for real-world use.
 
 - **simple_plan.py** - Basic tool invocation from Metaflow
 - **approved_deploy.py** - HITL approval workflow with human gating
+
+### Agent Framework (Schema + Mixins)
+
+The agent framework provides:
+- SQLModel tables for agent types, topologies, and executions
+- Mixins for optional capabilities such as tool use, memory, reasoning, and HITL
+
+Runtime orchestration is intentionally not implemented on the server.
+See `docs/agentframework.md` for implementation status.
+
+### Local Dev Workflows
+
+- **local_agent_chain.py** - Local LLM plan -> review -> refine
+- **local_qc_gauntlet.py** - QC checklist and gate generation
+- **local_release_notes.py** - Release notes + doc update suggestions
+
+These flows chain local LLM agents with PydanticAI and persist artifacts with
+SQLModel. On Windows, run them in a Linux container (Docker or k3s) and set
+`MCP_URL` / `LLM_BASE_URL` to point at local services.
 
 ---
 
@@ -97,6 +121,22 @@ See [ROADMAP.md](ROADMAP.md) for details.
 - Prefer examples over abstractions
 - Prefer boring patterns over clever ones
 - Optimize for maintainability over novelty
+
+---
+
+## Adoption Checklist
+
+- Decide hosting model (local, container, VM) and who can reach it.
+- Set `QMCP_HOST`, `QMCP_PORT`, and `QMCP_DATABASE_URL` for the environment.
+- Standardize `X-Correlation-ID` formatting for audit trails.
+- Decide how humans submit HITL responses (UI or API).
+- Connect `/metrics` to monitoring.
+
+Copy-pasteable end-to-end tutorial:
+
+```bash
+uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
+```
 
 ---
 

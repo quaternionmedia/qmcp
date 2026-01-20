@@ -6,17 +6,20 @@ These models support:
 - Human-in-the-loop request/response tracking
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import uuid4
 
 from sqlmodel import JSON, Column, Field, SQLModel
 
+# Ensure agent framework tables are registered in SQLModel metadata.
+from qmcp.agentframework import models as _agent_models  # noqa: F401
+
 
 def utc_now() -> datetime:
     """Get current UTC time."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def generate_uuid() -> str:

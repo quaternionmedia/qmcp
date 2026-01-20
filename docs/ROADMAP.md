@@ -18,7 +18,8 @@ This document outlines the phased implementation plan for building a production-
 - ✅ Request tracing middleware (correlation IDs)
 - ✅ Prometheus-compatible metrics endpoint
 - ✅ 4 built-in tools
-- ✅ 74 passing tests
+- ✅ Agent framework schemas + mixins
+- ✅ 122 passing tests
 
 ---
 
@@ -188,10 +189,42 @@ This document outlines the phased implementation plan for building a production-
    - Metrics and observability tests
 
 ### Acceptance Criteria
-- [x] 74 passing tests
+- [x] 122 passing tests
 - [x] Structured logs in JSON (production mode)
 - [x] Request tracing with correlation IDs
 - [x] Prometheus-compatible metrics
+
+---
+
+## Phase 6: Agent Framework (Schema + Mixins) ✅ COMPLETE
+
+**Goal**: Provide agent schemas and capability mixins without server-side orchestration.
+
+### Deliverables
+
+1. **Agent Framework Models**
+   ```
+   qmcp/
+   └── agentframework/
+       ├── models.py     # AgentType, Topology, Execution, etc.
+       └── mixins.py     # Capability mixins + registry
+   ```
+
+2. **Topology and Runner Registries (Skeletons)**
+   ```
+   qmcp/
+   └── agentframework/
+       ├── topologies.py
+       └── runners.py
+   ```
+
+3. **Tests**
+   - `tests/test_agentframework_models.py`
+   - `tests/test_agentframework_mixins.py`
+
+### Acceptance Criteria
+- [x] Agent framework imports cleanly from `qmcp.agentframework`
+- [x] Agent framework tests pass
 
 ---
 
@@ -211,17 +244,18 @@ This document outlines the phased implementation plan for building a production-
 
 ## Current Sprint: ALL PHASES COMPLETE ✅
 
-All 5 phases are complete. QMCP is a production-ready MCP server:
+All 6 phases are complete. QMCP is a production-ready MCP server:
 
 **Phase Summary:**
 | Phase | Description | Tests |
 |-------|-------------|-------|
-| 1. Foundation | Core MCP server | 15 |
+| 1. Foundation | Core MCP server | 20 |
 | 2. Persistence | SQLite audit logging | 6 |
 | 3. HITL | Human-in-the-loop | 15 |
 | 4. Client | Python client + Metaflow | 16 |
-| 5. Hardening | Observability + metrics | 17 |
-| **Total** | | **74** |
+| 5. Hardening | Observability + metrics | 18 |
+| 6. Agent Framework | Schemas + mixins | 47 |
+| **Total** | | **122** |
 
 **Production Features:**
 - Structured JSON logging (structlog)
@@ -234,3 +268,4 @@ All 5 phases are complete. QMCP is a production-ready MCP server:
 - Webhook notifications for HITL
 - Redis/PostgreSQL backend options
 - Kubernetes deployment manifests
+- Implement agent topology execution and runner orchestration

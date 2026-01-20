@@ -6,7 +6,6 @@ Provides Prometheus-compatible metrics for:
 - HITL request counts and response times
 """
 
-import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from threading import Lock

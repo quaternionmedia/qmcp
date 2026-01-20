@@ -1,6 +1,5 @@
 """Tests for the MCP server endpoints."""
 
-import pytest
 
 
 # Client fixture is inherited from conftest.py

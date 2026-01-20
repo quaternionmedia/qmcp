@@ -11,6 +11,7 @@ A spec-aligned **Model Context Protocol (MCP) server** built with FastAPI.
 - ✅ **Persistence** - SQLite with SQLModel/aiosqlite
 - ✅ **Python Client** - `qmcp.client.MCPClient` for workflows
 - ✅ **Metaflow Examples** - Ready-to-use flow templates
+- ✅ **Agent Framework** - SQLModel schemas + mixins for agent types/topologies
 - ✅ **Structured Logging** - JSON logs with structlog
 - ✅ **Request Tracing** - Correlation IDs across requests
 - ✅ **Metrics** - Prometheus-compatible `/metrics` endpoint
@@ -29,12 +30,39 @@ uv run qmcp serve
 uv run qmcp serve --reload
 ```
 
+See `quickstart.md` for a copy-paste walkthrough.
+
+## Adoption and Onboarding
+
+Adoption checklist:
+- Decide how the server is hosted (local, container, or VM) and who can reach it.
+- Set `QMCP_HOST`, `QMCP_PORT`, and `QMCP_DATABASE_URL` for your environment.
+- Standardize `X-Correlation-ID` values for audit trails across clients.
+- Decide how humans submit HITL responses (UI or API).
+- Wire `/metrics` into your monitoring stack.
+
+Onboarding path:
+1. `uv sync --all-extras`
+2. Run the end-to-end tutorial below.
+3. `uv run qmcp serve` for local exploration.
+
+### End-to-End Tutorial (HITL approval workflow)
+
+This tutorial mirrors the end-to-end test
+`tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow`.
+
+Copy and paste:
+```bash
+uv sync --all-extras
+uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
+```
+
 ## Client Library
 
 ```python
 from qmcp.client import MCPClient
 
-with MCPClient(base_url="http://localhost:8000") as client:
+with MCPClient(base_url="http://localhost:3333") as client:
     # List tools
     tools = client.list_tools()
 
@@ -121,11 +149,13 @@ The system follows a three-plane architecture:
 
 ## Documentation
 
+- [Quickstart](quickstart.md) - Copy-paste setup and validation
 - [Overview](docs/overview.md) - What and why
 - [Architecture](docs/architecture.md) - How and constraints
 - [Tools](docs/tools.md) - Tool capabilities
 - [Client Library](docs/client.md) - Python client API
 - [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
+- [Agent Framework](docs/agentframework.md) - Agent schemas and mixins
 - [Deployment](docs/deployment.md) - Production deployment guide
 - [Contributing](docs/contributing.md) - Development guidelines
 - [Roadmap](docs/ROADMAP.md) - Development phases
@@ -136,6 +166,24 @@ See [examples/flows/](examples/flows/) for Metaflow integration examples:
 
 - **simple_plan.py** - Basic tool invocation
 - **approved_deploy.py** - HITL approval workflow
+- **local_agent_chain.py** - Local LLM plan -> review -> refine with SQLModel artifacts
+- **local_qc_gauntlet.py** - Local LLM QC checklist/task/gate builder
+- **local_release_notes.py** - Local LLM release notes and doc update suggestions
+
+For local LLM flows, install extras with `uv sync --extra flows`.
+Start `uv run qmcp serve` when `--use-mcp True` to enable MCP calls.
+On Windows, prefer running flows in a Linux container to avoid platform-specific
+Metaflow dependencies.
+
+Docker runner (recommended on Windows):
+```bash
+docker compose -f docker-compose.flows.yml build
+docker compose -f docker-compose.flows.yml run --rm flow-runner \
+  examples/flows/local_agent_chain.py run --use-mcp True --goal "..."
+```
+
+Set `MCP_URL` and `LLM_BASE_URL` (or pass `--mcp-url` / `--llm-base-url`) when
+running in Docker, e.g. `http://host.docker.internal:3333`.
 
 ## License
 

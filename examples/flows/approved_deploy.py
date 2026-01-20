@@ -18,9 +18,11 @@ Usage:
         -d '{"request_id": "<request-id>", "response": "approve", "responded_by": "operator@example.com"}'
 """
 
-from metaflow import FlowSpec, step, Parameter
+import os
 
-from qmcp.client import MCPClient, HumanRequestExpiredError
+from metaflow import FlowSpec, Parameter, step
+
+from qmcp.client import HumanRequestExpiredError, MCPClient
 
 
 class ApprovedDeployFlow(FlowSpec):
@@ -49,7 +51,7 @@ class ApprovedDeployFlow(FlowSpec):
     mcp_url = Parameter(
         "mcp-url",
         help="URL of the MCP server",
-        default="http://localhost:3333",
+        default=os.getenv("MCP_URL", "http://localhost:3333"),
     )
 
     approval_timeout = Parameter(
@@ -136,9 +138,9 @@ class ApprovedDeployFlow(FlowSpec):
 
             print(f"Approval request created: {request.id}")
             print(f"Waiting for human response (timeout: {self.approval_timeout}s)...")
-            print(f"\nTo approve, run:")
+            print("\nTo approve, run:")
             print(f'  curl -X POST {self.mcp_url}/v1/human/responses \\')
-            print(f'    -H "Content-Type: application/json" \\')
+            print('    -H "Content-Type: application/json" \\')
             print(f"    -d '{{\"request_id\": \"{request_id}\", \"response\": \"approve\", \"responded_by\": \"your@email.com\"}}'")
             print()
 
@@ -189,7 +191,7 @@ class ApprovedDeployFlow(FlowSpec):
 
             self.deployment_result = result.result
 
-        print(f"Deployment complete:")
+        print("Deployment complete:")
         print(f"  Mode: {self.deployment_result['mode']}")
         print(f"  Steps: {self.deployment_result['steps_executed']}")
         print(f"  Success: {self.deployment_result['success']}")

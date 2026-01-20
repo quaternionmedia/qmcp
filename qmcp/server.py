@@ -15,7 +15,7 @@ The server is intentionally "boring":
 
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Query, status
 from sqlmodel import select
@@ -175,7 +175,7 @@ def create_app() -> FastAPI:
             invocation.result = result
             invocation.status = InvocationStatus.SUCCESS
             invocation.duration_ms = elapsed_ms
-            invocation.completed_at = datetime.now(timezone.utc)
+            invocation.completed_at = datetime.now(UTC)
 
             # Persist to database
             async with get_session() as session:
@@ -202,7 +202,7 @@ def create_app() -> FastAPI:
             invocation.error = str(e)
             invocation.status = InvocationStatus.FAILED
             invocation.duration_ms = elapsed_ms
-            invocation.completed_at = datetime.now(timezone.utc)
+            invocation.completed_at = datetime.now(UTC)
 
             # Persist to database
             async with get_session() as session:
@@ -285,7 +285,7 @@ def create_app() -> FastAPI:
         The request will be persisted and can be polled for a response.
         Requests expire after timeout_seconds.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires_at = now + timedelta(seconds=request.timeout_seconds)
 
         human_request = HumanRequest(
@@ -371,13 +371,13 @@ def create_app() -> FastAPI:
                 )
 
             # Check if expired
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if (
                 request.status == HumanRequestStatus.PENDING
                 and request.expires_at
             ):
                 # SQLite stores naive datetimes, treat as UTC
-                expires_at = request.expires_at.replace(tzinfo=timezone.utc) if request.expires_at.tzinfo is None else request.expires_at
+                expires_at = request.expires_at.replace(tzinfo=UTC) if request.expires_at.tzinfo is None else request.expires_at
                 if expires_at < now:
                     request.status = HumanRequestStatus.EXPIRED
 
@@ -416,10 +416,10 @@ def create_app() -> FastAPI:
                 )
 
             # Check if expired
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if request.expires_at:
                 # SQLite stores naive datetimes, treat as UTC
-                expires_at = request.expires_at.replace(tzinfo=timezone.utc) if request.expires_at.tzinfo is None else request.expires_at
+                expires_at = request.expires_at.replace(tzinfo=UTC) if request.expires_at.tzinfo is None else request.expires_at
                 if expires_at < now:
                     request.status = HumanRequestStatus.EXPIRED
                     raise HTTPException(

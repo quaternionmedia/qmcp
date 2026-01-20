@@ -16,7 +16,6 @@ from qmcp.db.models import (
     ToolInvocation,
 )
 
-
 # Test session factory - set by fixture
 _test_session_factory = None
 

@@ -235,7 +235,7 @@ def mcp_client(client):
             ]
 
         def invoke_tool(self, tool_name, input_params, correlation_id=None):
-            from qmcp.client.mcp_client import ToolResult, ToolNotFoundError
+            from qmcp.client.mcp_client import ToolNotFoundError, ToolResult
             payload = {"input": input_params}
             if correlation_id:
                 payload["correlation_id"] = correlation_id
@@ -310,7 +310,11 @@ def mcp_client(client):
             return request, human_response
 
         def submit_human_response(self, request_id, response, responded_by=None, metadata=None):
-            from qmcp.client.mcp_client import HumanResponse, MCPClientError, HumanRequestExpiredError
+            from qmcp.client.mcp_client import (
+                HumanRequestExpiredError,
+                HumanResponse,
+                MCPClientError,
+            )
             payload = {"request_id": request_id, "response": response}
             if responded_by:
                 payload["responded_by"] = responded_by

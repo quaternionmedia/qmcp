@@ -1,6 +1,5 @@
 """Tests for the tool registry."""
 
-import pytest
 
 from qmcp.tools.registry import Tool, ToolRegistry
 

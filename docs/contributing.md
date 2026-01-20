@@ -10,6 +10,27 @@ This document defines how changes should be made safely.
 
 ---
 
+## Onboarding for Contributors
+
+Start here after cloning the repo:
+
+1. `uv sync --all-extras`
+2. `uv run pytest`
+3. Run the end-to-end HITL tutorial (mirrors
+   `tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow`):
+
+```bash
+uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
+```
+
+4. Review `docs/agentframework.md` and run agent framework tests:
+
+```bash
+uv run pytest tests/test_agentframework_models.py tests/test_agentframework_mixins.py -v
+```
+
+---
+
 ## Before Making Changes
 
 Ask:

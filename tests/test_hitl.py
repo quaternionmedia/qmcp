@@ -1,6 +1,5 @@
 """Tests for Human-in-the-Loop (HITL) endpoints."""
 
-import pytest
 
 
 # Client fixture is inherited from conftest.py

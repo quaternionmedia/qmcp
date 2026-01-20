@@ -4,7 +4,6 @@ import pytest
 
 from qmcp.metrics import Histogram, MetricsRegistry
 
-
 # Note: The 'client' fixture is provided by conftest.py with proper DB isolation
 
 

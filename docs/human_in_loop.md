@@ -218,6 +218,57 @@ while True:
     time.sleep(30)  # Poll every 30 seconds
 ```
 
+## End-to-End Walkthrough (Live Server)
+
+This mirrors `tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow`.
+
+Start the server in one terminal:
+
+```bash
+uv run qmcp serve
+```
+
+Then run the workflow in another terminal.
+
+### Bash (curl)
+
+```bash
+curl -s -X POST http://localhost:3333/v1/human/requests \
+  -H "Content-Type: application/json" \
+  -d '{"id":"workflow-001","request_type":"approval","prompt":"Approve deployment to production?","options":["approve","reject"],"context":{"service":"api-gateway","environment":"prod"}}'
+
+curl -s http://localhost:3333/v1/human/requests/workflow-001
+
+curl -s -X POST http://localhost:3333/v1/human/responses \
+  -H "Content-Type: application/json" \
+  -d '{"request_id":"workflow-001","response":"approve","responded_by":"ops@example.com","response_metadata":{"reason":"Looks good"}}'
+
+curl -s http://localhost:3333/v1/human/requests/workflow-001
+```
+
+### PowerShell
+
+```powershell
+$create = @{
+  id = "workflow-001"
+  request_type = "approval"
+  prompt = "Approve deployment to production?"
+  options = @("approve","reject")
+  context = @{ service = "api-gateway"; environment = "prod" }
+} | ConvertTo-Json -Depth 4
+Invoke-RestMethod -Method Post -Uri http://localhost:3333/v1/human/requests -ContentType "application/json" -Body $create
+Invoke-RestMethod -Method Get -Uri http://localhost:3333/v1/human/requests/workflow-001
+
+$respond = @{
+  request_id = "workflow-001"
+  response = "approve"
+  responded_by = "ops@example.com"
+  response_metadata = @{ reason = "Looks good" }
+} | ConvertTo-Json -Depth 4
+Invoke-RestMethod -Method Post -Uri http://localhost:3333/v1/human/responses -ContentType "application/json" -Body $respond
+Invoke-RestMethod -Method Get -Uri http://localhost:3333/v1/human/requests/workflow-001
+```
+
 ## Best Practices
 
 1. **Use meaningful IDs**: Include flow/run context in request IDs for traceability

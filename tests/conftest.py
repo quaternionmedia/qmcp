@@ -9,13 +9,9 @@ import pytest
 def client(monkeypatch):
     """Create a test client for the server with isolated in-memory database."""
     import qmcp.config
-    import qmcp.db.engine
 
     # Clear any cached settings FIRST
     qmcp.config.get_settings.cache_clear()
-
-    # Reset engine to force new connection
-    qmcp.db.engine._engine = None
 
     # Generate unique DB name for THIS test
     unique_name = f"test_{uuid.uuid4().hex}"
@@ -36,9 +32,16 @@ def client(monkeypatch):
     # Use monkeypatch to replace the function
     monkeypatch.setattr(qmcp.config, "get_settings", lambda: test_settings)
 
+    import qmcp.db.engine
+
+    # Reset engine to force new connection
+    qmcp.db.engine._engine = None
+    monkeypatch.setattr(qmcp.db.engine, "get_settings", lambda: test_settings)
+
     # Import create_app AFTER patching
-    from qmcp.server import create_app
     from fastapi.testclient import TestClient
+
+    from qmcp.server import create_app
 
     app = create_app()
     with TestClient(app) as test_client:

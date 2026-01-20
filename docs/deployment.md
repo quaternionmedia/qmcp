@@ -21,7 +21,7 @@ uv run qmcp serve --reload
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `QMCP_HOST` | `127.0.0.1` | Server bind address |
-| `QMCP_PORT` | `8000` | Server port |
+| `QMCP_PORT` | `3333` | Server port |
 | `QMCP_DEBUG` | `false` | Enable debug mode |
 | `QMCP_DATABASE_URL` | `sqlite+aiosqlite:///./qmcp.db` | Database connection |
 
@@ -29,10 +29,10 @@ uv run qmcp serve --reload
 
 ```bash
 # Production mode (JSON logging)
-uvicorn qmcp.server:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn qmcp.server:app --host 0.0.0.0 --port 3333 --workers 4
 
 # With environment variables
-QMCP_HOST=0.0.0.0 QMCP_PORT=8000 uv run qmcp serve
+QMCP_HOST=0.0.0.0 QMCP_PORT=3333 uv run qmcp serve
 ```
 
 ### Docker Deployment
@@ -53,7 +53,7 @@ COPY qmcp/ qmcp/
 RUN uv sync --no-dev
 
 # Expose port
-EXPOSE 8000
+EXPOSE 3333
 
 # Run server
 CMD ["uv", "run", "qmcp", "serve", "--host", "0.0.0.0"]
@@ -63,7 +63,7 @@ Build and run:
 
 ```bash
 docker build -t qmcp .
-docker run -p 8000:8000 qmcp
+docker run -p 3333:3333 qmcp
 ```
 
 ### Docker Compose
@@ -74,15 +74,15 @@ services:
   qmcp:
     build: .
     ports:
-      - "8000:8000"
+      - "3333:3333"
     environment:
       - QMCP_HOST=0.0.0.0
-      - QMCP_PORT=8000
+      - QMCP_PORT=3333
       - QMCP_DEBUG=false
     volumes:
       - qmcp-data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3333/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -143,7 +143,7 @@ Operational accountability is strengthened by:
 Prometheus-compatible metrics are available at `/metrics`:
 
 ```bash
-curl http://localhost:8000/metrics
+curl http://localhost:3333/metrics
 ```
 
 **Available metrics:**
@@ -162,7 +162,7 @@ curl http://localhost:8000/metrics
 scrape_configs:
   - job_name: 'qmcp'
     static_configs:
-      - targets: ['qmcp:8000']
+      - targets: ['qmcp:3333']
     metrics_path: '/metrics'
 ```
 
@@ -170,7 +170,7 @@ scrape_configs:
 
 ```bash
 # Simple health check
-curl http://localhost:8000/health
+curl http://localhost:3333/health
 
 # Response
 {"status": "healthy", "version": "0.1.0"}
@@ -193,7 +193,7 @@ Use correlation IDs to trace requests across services:
 import httpx
 
 response = httpx.post(
-    "http://localhost:8000/v1/tools/echo",
+    "http://localhost:3333/v1/tools/echo",
     json={"input": {"message": "hello"}},
     headers={"X-Correlation-ID": "my-workflow-123"}
 )
@@ -250,7 +250,7 @@ sqlite3.OperationalError: database is locked
 OSError: [Errno 98] Address already in use
 ```
 - Change port with `--port` flag
-- Kill existing process: `lsof -i :8000`
+- Kill existing process: `lsof -i :3333`
 
 ### Debug Mode
 

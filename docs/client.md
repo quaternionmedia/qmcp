@@ -18,7 +18,7 @@ uv pip install qmcp
 from qmcp.client import MCPClient
 
 # Connect to MCP server
-with MCPClient(base_url="http://localhost:8000") as client:
+with MCPClient(base_url="http://localhost:3333") as client:
     # Check server health
     health = client.health()
     print(f"Server status: {health['status']}")
@@ -41,14 +41,14 @@ The main client class for MCP server interaction.
 
 ```python
 MCPClient(
-    base_url: str = "http://localhost:8000",
+    base_url: str = "http://localhost:3333",
     timeout: float = 30.0,
     http_client: Optional[httpx.Client] = None
 )
 ```
 
 **Parameters:**
-- `base_url` – MCP server URL (default: `http://localhost:8000`)
+- `base_url` – MCP server URL (default: `http://localhost:3333`)
 - `timeout` – Request timeout in seconds (default: `30.0`)
 - `http_client` – Optional custom httpx client for testing
 
@@ -372,13 +372,21 @@ See [examples/flows/](../examples/flows/) for complete Metaflow integration exam
 ### Basic Flow
 
 ```python
-from metaflow import FlowSpec, step
+import os
+
+from metaflow import FlowSpec, step, Parameter
 from qmcp.client import MCPClient
 
 class MCPToolFlow(FlowSpec):
+    mcp_url = Parameter(
+        "mcp-url",
+        help="MCP server URL",
+        default=os.getenv("MCP_URL", "http://localhost:3333"),
+    )
+
     @step
     def start(self):
-        with MCPClient() as client:
+        with MCPClient(self.mcp_url) as client:
             result = client.invoke_tool("echo", {"message": "Hello from Metaflow"})
             self.echo_result = result.result
         self.next(self.end)
@@ -390,6 +398,13 @@ class MCPToolFlow(FlowSpec):
 if __name__ == "__main__":
     MCPToolFlow()
 ```
+
+Run locally (Linux/macOS):
+- `uv run python my_flow.py run --mcp-url http://localhost:3333`
+
+Run with Docker (recommended on Windows):
+- `docker compose -f docker-compose.flows.yml run --rm flow-runner my_flow.py run --mcp-url http://host.docker.internal:3333`
+- Set `MCP_URL` if you need a different host target.
 
 ### HITL Approval Flow
 
