@@ -88,15 +88,33 @@ See [docs/client.md](docs/client.md) for full API documentation.
 # Start the server
 qmcp serve [--host HOST] [--port PORT] [--reload]
 
+# Start the server for Docker-based flows
+qmcp cookbook serve [--host 0.0.0.0] [--port PORT] [--reload]
+
 # List registered tools
 qmcp tools list
 
 # Show configuration
 qmcp info
 
+# Run a cookbook flow in Docker
+qmcp cookbook simple-plan --goal "Deploy a web service"
+
+# Run a cookbook flow via the generic runner
+qmcp cookbook run simple-plan --goal "Deploy a web service"
+
+# Run a cookbook flow in Docker explicitly
+qmcp cookbook docker simple-plan --goal "Deploy a web service"
+
+# If the qmcp shim cannot be installed (Windows)
+uv run --no-sync python -m qmcp cookbook run simple-plan --goal "Deploy a web service"
+
 # Run tests with auto setup/teardown
 qmcp test [-v] [--coverage] [TEST_PATH]
 ```
+
+Cookbook flows run in Docker and require Docker Desktop (Linux engine).
+Add `--no-sync` to skip syncing flow dependencies if the image is already built.
 
 ## API Endpoints
 
@@ -171,7 +189,8 @@ See [examples/flows/](examples/flows/) for Metaflow integration examples:
 - **local_release_notes.py** - Local LLM release notes and doc update suggestions
 
 For local LLM flows, install extras with `uv sync --extra flows`.
-Start `uv run qmcp serve` when `--use-mcp True` to enable MCP calls.
+Start `uv run qmcp serve --host 0.0.0.0` when `--use-mcp True` to enable MCP calls
+from Docker-based flows.
 On Windows, prefer running flows in a Linux container to avoid platform-specific
 Metaflow dependencies.
 

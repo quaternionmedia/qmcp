@@ -16,6 +16,16 @@ uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workf
 uv run qmcp serve
 ```
 
+For Docker-based flows, use the cookbook wrapper (binds to all interfaces by default):
+```bash
+uv run qmcp cookbook serve
+```
+
+If the qmcp shim cannot be installed (Windows), use:
+```bash
+uv run --no-sync python -m qmcp serve
+```
+
 ## 3) Call the server (curl)
 
 ```bash
@@ -40,3 +50,5 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3333/v1/tools/echo -Content
 - Read `docs/overview.md` for architecture boundaries.
 - Read `docs/agentframework.md` for agent schema and mixin status.
 - Run example flows in `examples/flows/`.
+- Run `qmcp cookbook run simple-plan` (requires Docker Desktop).
+- Windows fallback: `uv run --no-sync python -m qmcp cookbook run simple-plan`.
