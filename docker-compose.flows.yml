@@ -12,3 +12,5 @@ services:
       LLM_MODEL: ${LLM_MODEL:-llama3.1}
       LLM_API_KEY: ${LLM_API_KEY:-local}
       FLOW_DB_PATH: ${FLOW_DB_PATH:-/app/.qmcp_devflows.db}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

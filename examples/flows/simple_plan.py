@@ -21,7 +21,7 @@ Usage:
 
 import os
 
-from metaflow import FlowSpec, Parameter, step
+from metaflow import FlowSpec, Parameter, current, step
 
 from qmcp.client import MCPClient
 
@@ -54,6 +54,7 @@ class SimplePlanFlow(FlowSpec):
         """Initialize the flow and verify MCP server connectivity."""
         print(f"Goal: {self.goal}")
         print(f"MCP Server: {self.mcp_url}")
+        self.run_id = current.run_id
 
         # Check server health
         with MCPClient(self.mcp_url) as client:
