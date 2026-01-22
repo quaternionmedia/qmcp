@@ -13,8 +13,10 @@ def test_cookbook_list_includes_run() -> None:
 
     assert result.exit_code == 0
     assert "simple-plan" in result.output
-    assert "run simple-plan" in result.output
-    assert "dev simple-plan" in result.output
+    assert "approved-deploy" in result.output
+    assert "local-qc-gauntlet" in result.output
+    assert "run <recipe>" in result.output
+    assert "dev <recipe>" in result.output
     assert "docker simple-plan" in result.output
     assert "serve" in result.output
 
@@ -51,7 +53,7 @@ def test_cookbook_simple_plan_dispatches(monkeypatch) -> None:
     assert result.exit_code == 0
     assert called["repo_root"] == repo_root
     assert called["flow_path"] == flow_path
-    assert called["goal"] == "Ship a service"
+    assert called["flow_args"] == ["--goal", "Ship a service"]
     assert called["mcp_url"] == "http://example.com:3333"
     assert called["metaflow_user"] == "tester"
     assert called["build"] is False
@@ -88,7 +90,7 @@ def test_cookbook_run_dispatches(monkeypatch) -> None:
     assert result.exit_code == 0
     assert called["repo_root"] == repo_root
     assert called["flow_path"] == flow_path
-    assert called["goal"] == "Deploy a web service"
+    assert called["flow_args"] == ["--goal", "Deploy a web service"]
     assert called["mcp_url"] == "http://example.com:3333"
     assert called["build"] is True
     assert called["sync"] is True
@@ -100,40 +102,6 @@ def test_cookbook_run_rejects_unknown_recipe() -> None:
 
     assert result.exit_code != 0
     assert "Unknown recipe" in result.output
-
-
-def test_cookbook_dev_dispatches(monkeypatch) -> None:
-    called: dict[str, object] = {}
-
-    class DummySettings:
-        port = 4444
-
-    def fake_run_simple_plan_recipe(**kwargs):
-        called.update(kwargs)
-
-    monkeypatch.setattr(cli, "get_settings", lambda: DummySettings())
-    monkeypatch.setattr(cli, "_run_simple_plan_recipe", fake_run_simple_plan_recipe)
-
-    runner = CliRunner()
-    result = runner.invoke(
-        cli.cli,
-        [
-            "cookbook",
-            "dev",
-            "simple-plan",
-            "--goal",
-            "Ship a service",
-            "--no-build",
-            "--no-sync",
-            "--no-start-server",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert called["goal"] == "Ship a service"
-    assert called["build"] is False
-    assert called["sync"] is False
-    assert called["mcp_url"] == "http://host.docker.internal:4444"
 
 
 def test_cookbook_dev_rejects_unknown_recipe() -> None:
@@ -174,3 +142,46 @@ def test_build_flow_shell_command_sync_modes() -> None:
 
     assert "uv sync --extra flows" not in no_sync_command
     assert "uv run --no-sync" in no_sync_command
+
+
+def test_cookbook_dev_dispatches(monkeypatch) -> None:
+    called: dict[str, object] = {}
+
+    class DummySettings:
+        port = 4444
+
+    def fake_run_flow_docker(**kwargs):
+        called.update(kwargs)
+
+    monkeypatch.setattr(cli, "get_settings", lambda: DummySettings())
+    monkeypatch.setattr(cli, "_run_flow_docker", fake_run_flow_docker)
+    monkeypatch.setattr(cli, "_find_repo_root", lambda: Path(__file__).resolve().parents[1])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.cli,
+        [
+            "cookbook",
+            "dev",
+            "simple-plan",
+            "--goal",
+            "Ship a service",
+            "--no-build",
+            "--no-sync",
+            "--no-start-server",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert called["flow_args"] == ["--goal", "Ship a service"]
+    assert called["mcp_url"] == "http://host.docker.internal:4444"
+    assert called["build"] is False
+    assert called["sync"] is False
+
+
+def test_cookbook_run_requires_flags() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli.cli, ["cookbook", "run", "local-qc-gauntlet"])
+
+    assert result.exit_code != 0
+    assert "Missing required flow arguments" in result.output

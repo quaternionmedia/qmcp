@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -115,6 +116,87 @@ def _get_simple_plan_paths() -> tuple[Path, Path]:
     return repo_root, flow_path
 
 
+@dataclass(frozen=True)
+class RecipeSpec:
+    name: str
+    description: str
+    flow_rel: str
+    required_flags: tuple[str, ...] = ()
+
+
+def _recipe_specs(repo_root: Path) -> dict[str, RecipeSpec]:
+    return {
+        "simple-plan": RecipeSpec(
+            name="simple-plan",
+            description="Plan -> execute -> review using MCP tools",
+            flow_rel="examples/flows/simple_plan.py",
+        ),
+        "approved-deploy": RecipeSpec(
+            name="approved-deploy",
+            description="HITL approval workflow for deployments",
+            flow_rel="examples/flows/approved_deploy.py",
+            required_flags=("--service",),
+        ),
+        "local-agent-chain": RecipeSpec(
+            name="local-agent-chain",
+            description="Local LLM plan -> review -> refine chain",
+            flow_rel="examples/flows/local_agent_chain.py",
+            required_flags=("--goal",),
+        ),
+        "local-qc-gauntlet": RecipeSpec(
+            name="local-qc-gauntlet",
+            description="Local LLM QC checklist + tasks + gate",
+            flow_rel="examples/flows/local_qc_gauntlet.py",
+            required_flags=("--change-summary",),
+        ),
+        "local-release-notes": RecipeSpec(
+            name="local-release-notes",
+            description="Local LLM release notes + doc updates",
+            flow_rel="examples/flows/local_release_notes.py",
+            required_flags=("--change-summary",),
+        ),
+    }
+
+
+def _resolve_recipe(repo_root: Path, recipe: str) -> RecipeSpec:
+    normalized = recipe.lower().replace("_", "-")
+    spec = _recipe_specs(repo_root).get(normalized)
+    if not spec:
+        raise click.ClickException(
+            "Unknown recipe. Available recipes: "
+            + ", ".join(sorted(_recipe_specs(repo_root).keys()))
+        )
+    flow_path = repo_root / spec.flow_rel
+    if not flow_path.exists():
+        raise click.ClickException(f"Flow not found at {flow_path}.")
+    return spec
+
+
+def _flag_present(args: list[str], flag: str) -> bool:
+    if flag in args:
+        return True
+    prefix = f"{flag}="
+    return any(arg.startswith(prefix) for arg in args)
+
+
+def _extract_flag_value(args: list[str], flag: str) -> str | None:
+    prefix = f"{flag}="
+    for idx, arg in enumerate(args):
+        if arg == flag and idx + 1 < len(args):
+            return args[idx + 1]
+        if arg.startswith(prefix):
+            return arg[len(prefix) :]
+    return None
+
+
+def _ensure_required_flags(flow_args: list[str], required_flags: tuple[str, ...]) -> None:
+    missing = [flag for flag in required_flags if not _flag_present(flow_args, flag)]
+    if missing:
+        raise click.ClickException(
+            "Missing required flow arguments: " + ", ".join(missing)
+        )
+
+
 def _default_flow_mcp_url(server_host: str, server_port: int) -> str:
     host = server_host or "0.0.0.0"
     if host in {"0.0.0.0", "127.0.0.1", "localhost"}:
@@ -203,7 +285,7 @@ def _run_simple_plan_recipe(
     _run_flow_docker(
         repo_root=repo_root,
         flow_path=flow_path,
-        goal=goal,
+        flow_args=["--goal", goal],
         mcp_url=mcp_url,
         metaflow_user=metaflow_user,
         build=build,
@@ -270,10 +352,12 @@ def cookbook() -> None:
 @cookbook.command("list")
 def list_recipes() -> None:
     """List available cookbook recipes."""
+    repo_root = _find_repo_root()
     click.echo("Cookbook recipes:\n")
-    click.echo("  simple-plan         Plan -> execute -> review using MCP tools (Docker)")
-    click.echo("  run simple-plan     Run simple-plan via the generic runner (Docker)")
-    click.echo("  dev simple-plan     Start server + run simple-plan (Docker)")
+    for name, spec in _recipe_specs(repo_root).items():
+        click.echo(f"  {name:<18} {spec.description} (Docker)")
+    click.echo("  run <recipe>        Run a recipe via the generic runner (Docker)")
+    click.echo("  dev <recipe>        Start server + run a recipe (Docker)")
     click.echo("  docker simple-plan  Run simple-plan in Docker (explicit)")
     click.echo("  serve               Start the MCP server for Docker flows")
 
@@ -371,7 +455,7 @@ def _build_flow_shell_command(flow_args: list[str], sync: bool) -> str:
 def _run_flow_docker(
     repo_root: Path,
     flow_path: Path,
-    goal: str,
+    flow_args: list[str],
     mcp_url: str,
     metaflow_user: str,
     build: bool,
@@ -387,16 +471,11 @@ def _run_flow_docker(
         _ensure_flow_runner_image(image_tag)
 
     flow_rel = flow_path.relative_to(repo_root).as_posix()
-    flow_args = [
-        "python",
-        flow_rel,
-        "run",
-        "--goal",
-        goal,
-        "--mcp-url",
-        mcp_url,
-    ]
-    shell_command = _build_flow_shell_command(flow_args, sync=sync)
+    args = ["python", flow_rel, "run"]
+    args.extend(flow_args)
+    if mcp_url and not _flag_present(args, "--mcp-url"):
+        args.extend(["--mcp-url", mcp_url])
+    shell_command = _build_flow_shell_command(args, sync=sync)
 
     cmd = [
         "docker",
@@ -470,14 +549,11 @@ def run_simple_plan(
     )
 
 
-@cookbook.command("run")
-@click.argument("recipe")
-@click.option(
-    "--goal",
-    default="Deploy a web service",
-    show_default=True,
-    help="Planning goal to pass into the flow.",
+@cookbook.command(
+    "run",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
 )
+@click.argument("recipe")
 @click.option(
     "--mcp-url",
     default=None,
@@ -498,37 +574,42 @@ def run_simple_plan(
     default=None,
     help="Override the METAFLOW_USER value for this run.",
 )
+@click.pass_context
 def run_cookbook_recipe(
+    ctx: click.Context,
     recipe: str,
-    goal: str,
     mcp_url: str | None,
     build: bool,
     sync: bool,
     metaflow_user: str | None,
 ) -> None:
     """Run a cookbook recipe in Docker."""
-    normalized = recipe.lower().replace("_", "-")
-    if normalized != "simple-plan":
-        raise click.ClickException(
-            "Unknown recipe. Available recipes: simple-plan",
-        )
-    _run_simple_plan_recipe(
-        goal=goal,
+    repo_root = _find_repo_root()
+    spec = _resolve_recipe(repo_root, recipe)
+    flow_path = repo_root / spec.flow_rel
+    flow_args = list(ctx.args)
+    mcp_from_args = _extract_flag_value(flow_args, "--mcp-url")
+    mcp_url = mcp_url or mcp_from_args or _default_mcp_url()
+    metaflow_user = metaflow_user or _default_metaflow_user()
+    if spec.name == "simple-plan" and not _flag_present(flow_args, "--goal"):
+        flow_args.extend(["--goal", "Deploy a web service"])
+    _ensure_required_flags(flow_args, spec.required_flags)
+    _run_flow_docker(
+        repo_root=repo_root,
+        flow_path=flow_path,
+        flow_args=flow_args,
         mcp_url=mcp_url,
-        build=build,
         metaflow_user=metaflow_user,
+        build=build,
         sync=sync,
     )
 
 
-@cookbook.command("dev")
-@click.argument("recipe", default="simple-plan", required=False)
-@click.option(
-    "--goal",
-    default="Deploy a web service",
-    show_default=True,
-    help="Planning goal to pass into the flow.",
+@cookbook.command(
+    "dev",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
 )
+@click.argument("recipe", default="simple-plan", required=False)
 @click.option(
     "--mcp-url",
     default=None,
@@ -583,9 +664,10 @@ def run_cookbook_recipe(
     is_flag=True,
     help="Leave the MCP server running after the flow completes.",
 )
+@click.pass_context
 def cookbook_dev(
+    ctx: click.Context,
     recipe: str,
-    goal: str,
     mcp_url: str | None,
     build: bool,
     sync: bool,
@@ -598,15 +680,12 @@ def cookbook_dev(
     keep_server: bool,
 ) -> None:
     """Start the MCP server and run a cookbook recipe in Docker."""
-    normalized = recipe.lower().replace("_", "-")
-    if normalized != "simple-plan":
-        raise click.ClickException(
-            "Unknown recipe. Available recipes: simple-plan",
-        )
+    repo_root = _find_repo_root()
+    spec = _resolve_recipe(repo_root, recipe)
+    flow_path = repo_root / spec.flow_rel
 
     settings = get_settings()
     server_port = server_port or settings.port
-    repo_root, _ = _get_simple_plan_paths()
 
     if start_server and server_host in {"127.0.0.1", "localhost"}:
         raise click.ClickException(
@@ -616,6 +695,9 @@ def cookbook_dev(
     health_url = _server_health_url(server_host, server_port)
     server_process: subprocess.Popen | None = None
     started_server = False
+    flow_args = list(ctx.args)
+    _ensure_required_flags(flow_args, spec.required_flags)
+    mcp_from_args = _extract_flag_value(flow_args, "--mcp-url")
     try:
         if start_server:
             if _is_server_healthy(health_url):
@@ -630,12 +712,18 @@ def cookbook_dev(
                 started_server = True
                 _wait_for_server(health_url, server_wait, server_process)
 
-        flow_mcp_url = mcp_url or _default_flow_mcp_url(server_host, server_port)
-        _run_simple_plan_recipe(
-            goal=goal,
+        if spec.name == "simple-plan" and not _flag_present(flow_args, "--goal"):
+            flow_args.extend(["--goal", "Deploy a web service"])
+        flow_mcp_url = mcp_url or mcp_from_args or _default_flow_mcp_url(
+            server_host, server_port
+        )
+        _run_flow_docker(
+            repo_root=repo_root,
+            flow_path=flow_path,
+            flow_args=flow_args,
             mcp_url=flow_mcp_url,
+            metaflow_user=metaflow_user or _default_metaflow_user(),
             build=build,
-            metaflow_user=metaflow_user,
             sync=sync,
         )
     finally:
