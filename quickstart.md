@@ -53,3 +53,4 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3333/v1/tools/echo -Content
 - Run `qmcp cookbook dev simple-plan` to start the server and flow together.
 - Or run `qmcp cookbook run simple-plan` (requires Docker Desktop).
 - Windows fallback: `uv run --no-sync python -m qmcp cookbook run simple-plan`.
+- Other recipes: `qmcp cookbook run approved-deploy --service "api-gateway"`.

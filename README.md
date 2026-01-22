@@ -106,6 +106,10 @@ qmcp cookbook dev simple-plan --goal "Deploy a web service"
 # Run a cookbook flow via the generic runner
 qmcp cookbook run simple-plan --goal "Deploy a web service"
 
+# Run other cookbook recipes (flow args are passed through)
+qmcp cookbook run approved-deploy --service "api-gateway" --environment "staging"
+qmcp cookbook dev local-qc-gauntlet --change-summary "Add audit fields" --target-area "metrics, logging"
+
 # Run a cookbook flow in Docker explicitly
 qmcp cookbook docker simple-plan --goal "Deploy a web service"
 
