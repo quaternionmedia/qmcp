@@ -100,6 +100,9 @@ qmcp info
 # Run a cookbook flow in Docker
 qmcp cookbook simple-plan --goal "Deploy a web service"
 
+# Start the server + run a cookbook flow (unified dev)
+qmcp cookbook dev simple-plan --goal "Deploy a web service"
+
 # Run a cookbook flow via the generic runner
 qmcp cookbook run simple-plan --goal "Deploy a web service"
 
