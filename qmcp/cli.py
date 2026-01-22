@@ -10,7 +10,9 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -113,6 +115,79 @@ def _get_simple_plan_paths() -> tuple[Path, Path]:
     return repo_root, flow_path
 
 
+def _default_flow_mcp_url(server_host: str, server_port: int) -> str:
+    host = server_host or "0.0.0.0"
+    if host in {"0.0.0.0", "127.0.0.1", "localhost"}:
+        host = "host.docker.internal"
+    return f"http://{host}:{server_port}"
+
+
+def _server_health_url(server_host: str, server_port: int) -> str:
+    host = server_host or "127.0.0.1"
+    if host in {"0.0.0.0", ""}:
+        host = "127.0.0.1"
+    return f"http://{host}:{server_port}/health"
+
+
+def _is_server_healthy(health_url: str) -> bool:
+    try:
+        import httpx
+    except ImportError as exc:
+        raise click.ClickException("httpx is required to run health checks.") from exc
+    try:
+        response = httpx.get(health_url, timeout=1.0)
+        response.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def _wait_for_server(health_url: str, timeout_seconds: float, process: subprocess.Popen) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise click.ClickException(
+                "MCP server process exited before becoming healthy."
+            )
+        if _is_server_healthy(health_url):
+            return
+        time.sleep(0.25)
+    raise click.ClickException(
+        f"MCP server did not become healthy within {timeout_seconds:.1f}s at {health_url}."
+    )
+
+
+def _start_server_process(
+    repo_root: Path,
+    host: str,
+    port: int,
+    reload: bool,
+) -> subprocess.Popen:
+    cmd = [
+        sys.executable,
+        "-m",
+        "qmcp",
+        "serve",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    if reload:
+        cmd.append("--reload")
+    click.echo(click.style(f"Starting MCP server: {' '.join(cmd)}", fg="blue"))
+    return subprocess.Popen(cmd, cwd=repo_root)
+
+
+def _stop_server_process(process: subprocess.Popen) -> None:
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
 def _run_simple_plan_recipe(
     goal: str,
     mcp_url: str | None,
@@ -198,6 +273,7 @@ def list_recipes() -> None:
     click.echo("Cookbook recipes:\n")
     click.echo("  simple-plan         Plan -> execute -> review using MCP tools (Docker)")
     click.echo("  run simple-plan     Run simple-plan via the generic runner (Docker)")
+    click.echo("  dev simple-plan     Start server + run simple-plan (Docker)")
     click.echo("  docker simple-plan  Run simple-plan in Docker (explicit)")
     click.echo("  serve               Start the MCP server for Docker flows")
 
@@ -443,6 +519,128 @@ def run_cookbook_recipe(
         metaflow_user=metaflow_user,
         sync=sync,
     )
+
+
+@cookbook.command("dev")
+@click.argument("recipe", default="simple-plan", required=False)
+@click.option(
+    "--goal",
+    default="Deploy a web service",
+    show_default=True,
+    help="Planning goal to pass into the flow.",
+)
+@click.option(
+    "--mcp-url",
+    default=None,
+    help="Override the MCP URL passed to the flow.",
+)
+@click.option(
+    "--build/--no-build",
+    default=True,
+    help="Build the flow-runner image before running.",
+)
+@click.option(
+    "--sync/--no-sync",
+    default=True,
+    help="Sync flow dependencies inside the runner before executing.",
+)
+@click.option(
+    "--metaflow-user",
+    default=None,
+    help="Override the METAFLOW_USER value for this run.",
+)
+@click.option(
+    "--start-server/--no-start-server",
+    default=True,
+    help="Start the MCP server before running the flow.",
+)
+@click.option(
+    "--server-host",
+    default="0.0.0.0",
+    show_default=True,
+    help="Host to bind the MCP server for Docker access.",
+)
+@click.option(
+    "--server-port",
+    default=None,
+    type=int,
+    help="Port to bind the MCP server.",
+)
+@click.option(
+    "--server-reload",
+    is_flag=True,
+    help="Enable auto-reload for the MCP server.",
+)
+@click.option(
+    "--server-wait",
+    default=15.0,
+    show_default=True,
+    type=float,
+    help="Seconds to wait for the MCP server health check.",
+)
+@click.option(
+    "--keep-server",
+    is_flag=True,
+    help="Leave the MCP server running after the flow completes.",
+)
+def cookbook_dev(
+    recipe: str,
+    goal: str,
+    mcp_url: str | None,
+    build: bool,
+    sync: bool,
+    metaflow_user: str | None,
+    start_server: bool,
+    server_host: str,
+    server_port: int | None,
+    server_reload: bool,
+    server_wait: float,
+    keep_server: bool,
+) -> None:
+    """Start the MCP server and run a cookbook recipe in Docker."""
+    normalized = recipe.lower().replace("_", "-")
+    if normalized != "simple-plan":
+        raise click.ClickException(
+            "Unknown recipe. Available recipes: simple-plan",
+        )
+
+    settings = get_settings()
+    server_port = server_port or settings.port
+    repo_root, _ = _get_simple_plan_paths()
+
+    if start_server and server_host in {"127.0.0.1", "localhost"}:
+        raise click.ClickException(
+            "Docker flows cannot reach a server bound to localhost. Use --server-host 0.0.0.0."
+        )
+
+    health_url = _server_health_url(server_host, server_port)
+    server_process: subprocess.Popen | None = None
+    started_server = False
+    try:
+        if start_server:
+            if _is_server_healthy(health_url):
+                click.echo(click.style("MCP server already running.", fg="yellow"))
+            else:
+                server_process = _start_server_process(
+                    repo_root=repo_root,
+                    host=server_host,
+                    port=server_port,
+                    reload=server_reload,
+                )
+                started_server = True
+                _wait_for_server(health_url, server_wait, server_process)
+
+        flow_mcp_url = mcp_url or _default_flow_mcp_url(server_host, server_port)
+        _run_simple_plan_recipe(
+            goal=goal,
+            mcp_url=flow_mcp_url,
+            build=build,
+            metaflow_user=metaflow_user,
+            sync=sync,
+        )
+    finally:
+        if started_server and not keep_server and server_process is not None:
+            _stop_server_process(server_process)
 
 
 @cookbook_docker.command("simple-plan")

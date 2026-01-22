@@ -14,6 +14,7 @@ def test_cookbook_list_includes_run() -> None:
     assert result.exit_code == 0
     assert "simple-plan" in result.output
     assert "run simple-plan" in result.output
+    assert "dev simple-plan" in result.output
     assert "docker simple-plan" in result.output
     assert "serve" in result.output
 
@@ -96,6 +97,48 @@ def test_cookbook_run_dispatches(monkeypatch) -> None:
 def test_cookbook_run_rejects_unknown_recipe() -> None:
     runner = CliRunner()
     result = runner.invoke(cli.cli, ["cookbook", "run", "missing"])
+
+    assert result.exit_code != 0
+    assert "Unknown recipe" in result.output
+
+
+def test_cookbook_dev_dispatches(monkeypatch) -> None:
+    called: dict[str, object] = {}
+
+    class DummySettings:
+        port = 4444
+
+    def fake_run_simple_plan_recipe(**kwargs):
+        called.update(kwargs)
+
+    monkeypatch.setattr(cli, "get_settings", lambda: DummySettings())
+    monkeypatch.setattr(cli, "_run_simple_plan_recipe", fake_run_simple_plan_recipe)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.cli,
+        [
+            "cookbook",
+            "dev",
+            "simple-plan",
+            "--goal",
+            "Ship a service",
+            "--no-build",
+            "--no-sync",
+            "--no-start-server",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert called["goal"] == "Ship a service"
+    assert called["build"] is False
+    assert called["sync"] is False
+    assert called["mcp_url"] == "http://host.docker.internal:4444"
+
+
+def test_cookbook_dev_rejects_unknown_recipe() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli.cli, ["cookbook", "dev", "unknown", "--no-start-server"])
 
     assert result.exit_code != 0
     assert "Unknown recipe" in result.output
