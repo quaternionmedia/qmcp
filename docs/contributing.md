@@ -88,6 +88,12 @@ uv run qmcp test --coverage
 # Run specific test file
 uv run qmcp test tests/test_hitl.py
 
+# Smoke-check example flows (skips Metaflow flows on Windows)
+uv run pytest tests/test_examples_smoke.py
+
+# Cookbook CLI tests
+uv run pytest tests/test_cli_cookbook.py
+
 # Run linter
 uv run ruff check .
 
