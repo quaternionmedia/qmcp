@@ -20,7 +20,7 @@ Usage:
 
 import os
 
-from metaflow import FlowSpec, Parameter, step
+from metaflow import FlowSpec, Parameter, current, step
 
 from qmcp.client import HumanRequestExpiredError, MCPClient
 
@@ -67,6 +67,7 @@ class ApprovedDeployFlow(FlowSpec):
         print(f"Service: {self.service}")
         print(f"Environment: {self.environment}")
         print(f"MCP Server: {self.mcp_url}")
+        self.run_id = current.run_id
 
         # Validate environment
         if self.environment not in ("staging", "production"):
