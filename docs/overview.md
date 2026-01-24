@@ -55,10 +55,20 @@ Quickstart: see `../quickstart.md` for a copy-paste walkthrough.
 
 The agent framework provides:
 - SQLModel tables for agent types, topologies, and executions
-- Mixins for optional capabilities such as tool use, memory, reasoning, and HITL
+- Mixins for optional capabilities such as memory, reasoning, and HITL
+- Multi-agent topologies (Debate, Pipeline, Ensemble, etc.)
 
 Runtime orchestration is intentionally not implemented on the server.
-See `docs/agentframework.md` for implementation status.
+See [Agent Framework](agentframework/overview.md) for implementation status.
+
+### PydanticAI Integration
+
+QMCP integrates with [PydanticAI](https://ai.pydantic.dev/) for agent execution:
+- `create_agent()` - Create PydanticAI agents from QMCP model configs
+- `QMCPToolset` - Connect agents to QMCP server with full audit trail
+- Model metadata (pricing, limits, capabilities) preserved
+
+See [PydanticAI Integration](integrations/pydantic-ai.md) for usage.
 
 ### Local Dev Workflows
 
@@ -109,7 +119,9 @@ If logic appears below it, it is likely a bug.
 | 2. Persistence | ✅ Complete | SQLite with audit logging |
 | 3. HITL | ✅ Complete | Human-in-the-loop endpoints |
 | 4. Client | ✅ Complete | Python client + Metaflow examples |
-| 5. Hardening | 🔄 Next | Production observability |
+| 5. Agent Framework | ✅ Complete | Models, mixins, topologies |
+| 6. PydanticAI | ✅ Complete | Integration with PydanticAI agents |
+| 7. Hardening | 🔄 Next | Production observability |
 
 See [ROADMAP.md](ROADMAP.md) for details.
 

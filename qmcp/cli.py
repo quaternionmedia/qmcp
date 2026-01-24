@@ -6,11 +6,291 @@ Provides commands for:
 - Development utilities
 """
 
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlparse
+
 import click
 import uvicorn
 
 from qmcp import __version__
 from qmcp.config import get_settings
+
+
+def _find_repo_root() -> Path:
+    current = Path.cwd().resolve()
+    markers = ("pyproject.toml", "docker-compose.flows.yml")
+    for candidate in (current, *current.parents):
+        if all((candidate / marker).exists() for marker in markers):
+            return candidate
+    raise click.ClickException(
+        "Could not find repo root with pyproject.toml and docker-compose.flows.yml.",
+    )
+
+
+def _default_metaflow_user() -> str:
+    return (
+        os.getenv("METAFLOW_USER")
+        or os.getenv("USERNAME")
+        or os.getenv("USER")
+        or "local"
+    )
+
+
+def _default_mcp_url() -> str:
+    return os.getenv("MCP_URL", "http://host.docker.internal:3333")
+
+
+def _run_cmd(cmd: list[str], cwd: Path) -> None:
+    click.echo(click.style(f"Running: {' '.join(cmd)}", fg="blue"))
+    try:
+        subprocess.run(cmd, cwd=cwd, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise click.ClickException(
+            f"Command failed with exit code {exc.returncode}.",
+        ) from exc
+
+
+def _ensure_docker_available() -> None:
+    try:
+        subprocess.run(
+            ["docker", "version", "--format", "{{.Server.Version}}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise click.ClickException(
+            "Docker CLI not found. Install Docker Desktop and try again."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        message = (
+            "Docker engine is not reachable. Start Docker Desktop and ensure the "
+            "Linux engine is running, then retry."
+        )
+        if stderr:
+            message = f"{message}\nDocker error: {stderr}"
+        raise click.ClickException(message) from exc
+
+
+def _ensure_flow_runner_image(image_tag: str) -> None:
+    result = subprocess.run(
+        ["docker", "image", "inspect", image_tag],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise click.ClickException(
+            f"Flow-runner image '{image_tag}' not found. Re-run with --build."
+        )
+
+
+def _validate_mcp_url(mcp_url: str) -> str:
+    try:
+        parsed = urlparse(mcp_url)
+    except ValueError as exc:
+        raise click.ClickException(f"Invalid MCP URL: {mcp_url}") from exc
+    if not parsed.scheme or not parsed.netloc:
+        raise click.ClickException(f"Invalid MCP URL: {mcp_url}")
+    hostname = parsed.hostname or ""
+    if hostname in {"localhost", "127.0.0.1"}:
+        raise click.ClickException(
+            "MCP URL points at localhost. Use host.docker.internal when running flows in Docker."
+        )
+    return hostname
+
+
+def _get_simple_plan_paths() -> tuple[Path, Path]:
+    repo_root = _find_repo_root()
+    flow_path = repo_root / "examples" / "flows" / "simple_plan.py"
+    if not flow_path.exists():
+        raise click.ClickException(f"Flow not found at {flow_path}.")
+    return repo_root, flow_path
+
+
+@dataclass(frozen=True)
+class RecipeSpec:
+    name: str
+    description: str
+    flow_rel: str
+    required_flags: tuple[str, ...] = ()
+
+
+def _recipe_specs(repo_root: Path) -> dict[str, RecipeSpec]:
+    return {
+        "simple-plan": RecipeSpec(
+            name="simple-plan",
+            description="Plan -> execute -> review using MCP tools",
+            flow_rel="examples/flows/simple_plan.py",
+        ),
+        "approved-deploy": RecipeSpec(
+            name="approved-deploy",
+            description="HITL approval workflow for deployments",
+            flow_rel="examples/flows/approved_deploy.py",
+            required_flags=("--service",),
+        ),
+        "local-agent-chain": RecipeSpec(
+            name="local-agent-chain",
+            description="Local LLM plan -> review -> refine chain",
+            flow_rel="examples/flows/local_agent_chain.py",
+            required_flags=("--goal",),
+        ),
+        "local-qc-gauntlet": RecipeSpec(
+            name="local-qc-gauntlet",
+            description="Local LLM QC checklist + tasks + gate",
+            flow_rel="examples/flows/local_qc_gauntlet.py",
+            required_flags=("--change-summary",),
+        ),
+        "local-release-notes": RecipeSpec(
+            name="local-release-notes",
+            description="Local LLM release notes + doc updates",
+            flow_rel="examples/flows/local_release_notes.py",
+            required_flags=("--change-summary",),
+        ),
+    }
+
+
+def _resolve_recipe(repo_root: Path, recipe: str) -> RecipeSpec:
+    normalized = recipe.lower().replace("_", "-")
+    spec = _recipe_specs(repo_root).get(normalized)
+    if not spec:
+        raise click.ClickException(
+            "Unknown recipe. Available recipes: "
+            + ", ".join(sorted(_recipe_specs(repo_root).keys()))
+        )
+    flow_path = repo_root / spec.flow_rel
+    if not flow_path.exists():
+        raise click.ClickException(f"Flow not found at {flow_path}.")
+    return spec
+
+
+def _flag_present(args: list[str], flag: str) -> bool:
+    if flag in args:
+        return True
+    prefix = f"{flag}="
+    return any(arg.startswith(prefix) for arg in args)
+
+
+def _extract_flag_value(args: list[str], flag: str) -> str | None:
+    prefix = f"{flag}="
+    for idx, arg in enumerate(args):
+        if arg == flag and idx + 1 < len(args):
+            return args[idx + 1]
+        if arg.startswith(prefix):
+            return arg[len(prefix) :]
+    return None
+
+
+def _ensure_required_flags(flow_args: list[str], required_flags: tuple[str, ...]) -> None:
+    missing = [flag for flag in required_flags if not _flag_present(flow_args, flag)]
+    if missing:
+        raise click.ClickException(
+            "Missing required flow arguments: " + ", ".join(missing)
+        )
+
+
+def _default_flow_mcp_url(server_host: str, server_port: int) -> str:
+    host = server_host or "0.0.0.0"
+    if host in {"0.0.0.0", "127.0.0.1", "localhost"}:
+        host = "host.docker.internal"
+    return f"http://{host}:{server_port}"
+
+
+def _server_health_url(server_host: str, server_port: int) -> str:
+    host = server_host or "127.0.0.1"
+    if host in {"0.0.0.0", ""}:
+        host = "127.0.0.1"
+    return f"http://{host}:{server_port}/health"
+
+
+def _is_server_healthy(health_url: str) -> bool:
+    try:
+        import httpx
+    except ImportError as exc:
+        raise click.ClickException("httpx is required to run health checks.") from exc
+    try:
+        response = httpx.get(health_url, timeout=1.0)
+        response.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def _wait_for_server(health_url: str, timeout_seconds: float, process: subprocess.Popen) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise click.ClickException(
+                "MCP server process exited before becoming healthy."
+            )
+        if _is_server_healthy(health_url):
+            return
+        time.sleep(0.25)
+    raise click.ClickException(
+        f"MCP server did not become healthy within {timeout_seconds:.1f}s at {health_url}."
+    )
+
+
+def _start_server_process(
+    repo_root: Path,
+    host: str,
+    port: int,
+    reload: bool,
+) -> subprocess.Popen:
+    cmd = [
+        sys.executable,
+        "-m",
+        "qmcp",
+        "serve",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    if reload:
+        cmd.append("--reload")
+    click.echo(click.style(f"Starting MCP server: {' '.join(cmd)}", fg="blue"))
+    return subprocess.Popen(cmd, cwd=repo_root)
+
+
+def _stop_server_process(process: subprocess.Popen) -> None:
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def _run_simple_plan_recipe(
+    goal: str,
+    mcp_url: str | None,
+    build: bool,
+    metaflow_user: str | None,
+    sync: bool,
+) -> None:
+    mcp_url = mcp_url or _default_mcp_url()
+    metaflow_user = metaflow_user or _default_metaflow_user()
+    repo_root, flow_path = _get_simple_plan_paths()
+
+    click.echo(click.style("Running cookbook recipe simple-plan (docker).", fg="green"))
+    _run_flow_docker(
+        repo_root=repo_root,
+        flow_path=flow_path,
+        flow_args=["--goal", goal],
+        mcp_url=mcp_url,
+        metaflow_user=metaflow_user,
+        build=build,
+        sync=sync,
+    )
 
 
 @click.group()
@@ -29,20 +309,7 @@ def cli() -> None:
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
 def serve(host: str | None, port: int | None, reload: bool) -> None:
     """Start the MCP server."""
-    settings = get_settings()
-
-    actual_host = host or settings.host
-    actual_port = port or settings.port
-
-    click.echo(f"Starting QMCP server on {actual_host}:{actual_port}")
-
-    uvicorn.run(
-        "qmcp.server:app",
-        host=actual_host,
-        port=actual_port,
-        reload=reload,
-        log_level=settings.log_level.lower(),
-    )
+    _run_server(host, port, reload)
 
 
 @cli.group()
@@ -74,6 +341,438 @@ def list_tools() -> None:
             if props:
                 click.echo(f"    Parameters: {', '.join(props.keys())}")
         click.echo()
+
+
+@cli.group()
+def cookbook() -> None:
+    """Cookbook recipes for example flows."""
+    pass
+
+
+@cookbook.command("list")
+def list_recipes() -> None:
+    """List available cookbook recipes."""
+    repo_root = _find_repo_root()
+    click.echo("Cookbook recipes:\n")
+    for name, spec in _recipe_specs(repo_root).items():
+        click.echo(f"  {name:<18} {spec.description} (Docker)")
+    click.echo("  run <recipe>        Run a recipe via the generic runner (Docker)")
+    click.echo("  dev <recipe>        Start server + run a recipe (Docker)")
+    click.echo("  docker simple-plan  Run simple-plan in Docker (explicit)")
+    click.echo("  serve               Start the MCP server for Docker flows")
+
+
+@cookbook.group("docker")
+def cookbook_docker() -> None:
+    """Run cookbook recipes in Docker."""
+    pass
+
+
+@cookbook.command("serve")
+@click.option(
+    "--host",
+    "-h",
+    default="0.0.0.0",
+    show_default=True,
+    help="Host to bind to for Docker-based flows.",
+)
+@click.option("--port", "-p", default=None, type=int, help="Port to bind to")
+@click.option("--reload", is_flag=True, help="Enable auto-reload for development")
+def cookbook_serve(host: str, port: int | None, reload: bool) -> None:
+    """Start the MCP server with Docker-friendly defaults."""
+    _run_server(host, port, reload)
+
+
+def _run_server(host: str | None, port: int | None, reload: bool) -> None:
+    settings = get_settings()
+
+    actual_host = host or settings.host
+    actual_port = port or settings.port
+
+    click.echo(f"Starting QMCP server on {actual_host}:{actual_port}")
+
+    uvicorn.run(
+        "qmcp.server:app",
+        host=actual_host,
+        port=actual_port,
+        reload=reload,
+        log_level=settings.log_level.lower(),
+    )
+
+
+def _flow_runner_image_tag(repo_root: Path) -> str:
+    return f"{repo_root.name}-flow-runner"
+
+
+def _build_flow_runner_image(repo_root: Path, image_tag: str) -> None:
+    _ensure_docker_available()
+    dockerfile_src = repo_root / "docker" / "flows.Dockerfile"
+    if not dockerfile_src.exists():
+        raise click.ClickException(f"Dockerfile not found at {dockerfile_src}.")
+
+    required_files = ["pyproject.toml", "uv.lock", "README.md"]
+    for filename in required_files:
+        if not (repo_root / filename).exists():
+            raise click.ClickException(f"Required file missing: {repo_root / filename}.")
+
+    with tempfile.TemporaryDirectory(prefix="qmcp-flow-build-") as temp_dir:
+        temp_root = Path(temp_dir)
+        (temp_root / "docker").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(dockerfile_src, temp_root / "docker" / "flows.Dockerfile")
+        for filename in required_files:
+            shutil.copy2(repo_root / filename, temp_root / filename)
+        shutil.copytree(
+            repo_root / "qmcp",
+            temp_root / "qmcp",
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        )
+
+        _run_cmd(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(temp_root / "docker" / "flows.Dockerfile"),
+                "-t",
+                image_tag,
+                str(temp_root),
+            ],
+            cwd=temp_root,
+        )
+
+
+def _build_flow_shell_command(flow_args: list[str], sync: bool) -> str:
+    uv_run = ["uv", "run"]
+    if not sync:
+        uv_run.append("--no-sync")
+    uv_run.extend(flow_args)
+    uv_run_cmd = " ".join(shlex.quote(arg) for arg in uv_run)
+    if sync:
+        return f"uv sync --extra flows && {uv_run_cmd}"
+    return uv_run_cmd
+
+
+def _run_flow_docker(
+    repo_root: Path,
+    flow_path: Path,
+    flow_args: list[str],
+    mcp_url: str,
+    metaflow_user: str,
+    build: bool,
+    sync: bool,
+) -> None:
+    _ensure_docker_available()
+    _validate_mcp_url(mcp_url)
+    compose_file = repo_root / "docker-compose.flows.yml"
+    image_tag = _flow_runner_image_tag(repo_root)
+    if build:
+        _build_flow_runner_image(repo_root, image_tag)
+    else:
+        _ensure_flow_runner_image(image_tag)
+
+    flow_rel = flow_path.relative_to(repo_root).as_posix()
+    args = ["python", flow_rel, "run"]
+    args.extend(flow_args)
+    if mcp_url and not _flag_present(args, "--mcp-url"):
+        args.extend(["--mcp-url", mcp_url])
+    shell_command = _build_flow_shell_command(args, sync=sync)
+
+    cmd = [
+        "docker",
+        "compose",
+        "-f",
+        str(compose_file),
+        "run",
+        "--rm",
+        "--entrypoint",
+        "sh",
+        "-e",
+        "UV_PROJECT_ENVIRONMENT=/tmp/uv-venv",
+        "-e",
+        f"METAFLOW_USER={metaflow_user}",
+        "-e",
+        "METAFLOW_HOME=/tmp/metaflow",
+        "-e",
+        "METAFLOW_DATASTORE_SYSROOT_LOCAL=/tmp/metaflow",
+        "-e",
+        "FLOW_DB_PATH=/app/.qmcp_devflows.db",
+        "-e",
+        f"MCP_URL={mcp_url}",
+        "flow-runner",
+        "-c",
+        shell_command,
+    ]
+    _run_cmd(cmd, cwd=repo_root)
+
+
+@cookbook.command("simple-plan")
+@click.option(
+    "--goal",
+    default="Deploy a web service",
+    show_default=True,
+    help="Planning goal to pass into the flow.",
+)
+@click.option(
+    "--mcp-url",
+    default=None,
+    help="MCP server URL (defaults to host.docker.internal).",
+)
+@click.option(
+    "--build/--no-build",
+    default=True,
+    help="Build the flow-runner image before running.",
+)
+@click.option(
+    "--sync/--no-sync",
+    default=True,
+    help="Sync flow dependencies inside the runner before executing.",
+)
+@click.option(
+    "--metaflow-user",
+    default=None,
+    help="Override the METAFLOW_USER value for this run.",
+)
+def run_simple_plan(
+    goal: str,
+    mcp_url: str | None,
+    build: bool,
+    sync: bool,
+    metaflow_user: str | None,
+) -> None:
+    """Run the simple planning flow from the cookbook."""
+    _run_simple_plan_recipe(
+        goal=goal,
+        mcp_url=mcp_url,
+        build=build,
+        metaflow_user=metaflow_user,
+        sync=sync,
+    )
+
+
+@cookbook.command(
+    "run",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+)
+@click.argument("recipe")
+@click.option(
+    "--mcp-url",
+    default=None,
+    help="MCP server URL (defaults to host.docker.internal).",
+)
+@click.option(
+    "--build/--no-build",
+    default=True,
+    help="Build the flow-runner image before running.",
+)
+@click.option(
+    "--sync/--no-sync",
+    default=True,
+    help="Sync flow dependencies inside the runner before executing.",
+)
+@click.option(
+    "--metaflow-user",
+    default=None,
+    help="Override the METAFLOW_USER value for this run.",
+)
+@click.pass_context
+def run_cookbook_recipe(
+    ctx: click.Context,
+    recipe: str,
+    mcp_url: str | None,
+    build: bool,
+    sync: bool,
+    metaflow_user: str | None,
+) -> None:
+    """Run a cookbook recipe in Docker."""
+    repo_root = _find_repo_root()
+    spec = _resolve_recipe(repo_root, recipe)
+    flow_path = repo_root / spec.flow_rel
+    flow_args = list(ctx.args)
+    mcp_from_args = _extract_flag_value(flow_args, "--mcp-url")
+    mcp_url = mcp_url or mcp_from_args or _default_mcp_url()
+    metaflow_user = metaflow_user or _default_metaflow_user()
+    if spec.name == "simple-plan" and not _flag_present(flow_args, "--goal"):
+        flow_args.extend(["--goal", "Deploy a web service"])
+    _ensure_required_flags(flow_args, spec.required_flags)
+    _run_flow_docker(
+        repo_root=repo_root,
+        flow_path=flow_path,
+        flow_args=flow_args,
+        mcp_url=mcp_url,
+        metaflow_user=metaflow_user,
+        build=build,
+        sync=sync,
+    )
+
+
+@cookbook.command(
+    "dev",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+)
+@click.argument("recipe", default="simple-plan", required=False)
+@click.option(
+    "--mcp-url",
+    default=None,
+    help="Override the MCP URL passed to the flow.",
+)
+@click.option(
+    "--build/--no-build",
+    default=True,
+    help="Build the flow-runner image before running.",
+)
+@click.option(
+    "--sync/--no-sync",
+    default=True,
+    help="Sync flow dependencies inside the runner before executing.",
+)
+@click.option(
+    "--metaflow-user",
+    default=None,
+    help="Override the METAFLOW_USER value for this run.",
+)
+@click.option(
+    "--start-server/--no-start-server",
+    default=True,
+    help="Start the MCP server before running the flow.",
+)
+@click.option(
+    "--server-host",
+    default="0.0.0.0",
+    show_default=True,
+    help="Host to bind the MCP server for Docker access.",
+)
+@click.option(
+    "--server-port",
+    default=None,
+    type=int,
+    help="Port to bind the MCP server.",
+)
+@click.option(
+    "--server-reload",
+    is_flag=True,
+    help="Enable auto-reload for the MCP server.",
+)
+@click.option(
+    "--server-wait",
+    default=15.0,
+    show_default=True,
+    type=float,
+    help="Seconds to wait for the MCP server health check.",
+)
+@click.option(
+    "--keep-server",
+    is_flag=True,
+    help="Leave the MCP server running after the flow completes.",
+)
+@click.pass_context
+def cookbook_dev(
+    ctx: click.Context,
+    recipe: str,
+    mcp_url: str | None,
+    build: bool,
+    sync: bool,
+    metaflow_user: str | None,
+    start_server: bool,
+    server_host: str,
+    server_port: int | None,
+    server_reload: bool,
+    server_wait: float,
+    keep_server: bool,
+) -> None:
+    """Start the MCP server and run a cookbook recipe in Docker."""
+    repo_root = _find_repo_root()
+    spec = _resolve_recipe(repo_root, recipe)
+    flow_path = repo_root / spec.flow_rel
+
+    settings = get_settings()
+    server_port = server_port or settings.port
+
+    if start_server and server_host in {"127.0.0.1", "localhost"}:
+        raise click.ClickException(
+            "Docker flows cannot reach a server bound to localhost. Use --server-host 0.0.0.0."
+        )
+
+    health_url = _server_health_url(server_host, server_port)
+    server_process: subprocess.Popen | None = None
+    started_server = False
+    flow_args = list(ctx.args)
+    _ensure_required_flags(flow_args, spec.required_flags)
+    mcp_from_args = _extract_flag_value(flow_args, "--mcp-url")
+    try:
+        if start_server:
+            if _is_server_healthy(health_url):
+                click.echo(click.style("MCP server already running.", fg="yellow"))
+            else:
+                server_process = _start_server_process(
+                    repo_root=repo_root,
+                    host=server_host,
+                    port=server_port,
+                    reload=server_reload,
+                )
+                started_server = True
+                _wait_for_server(health_url, server_wait, server_process)
+
+        if spec.name == "simple-plan" and not _flag_present(flow_args, "--goal"):
+            flow_args.extend(["--goal", "Deploy a web service"])
+        flow_mcp_url = mcp_url or mcp_from_args or _default_flow_mcp_url(
+            server_host, server_port
+        )
+        _run_flow_docker(
+            repo_root=repo_root,
+            flow_path=flow_path,
+            flow_args=flow_args,
+            mcp_url=flow_mcp_url,
+            metaflow_user=metaflow_user or _default_metaflow_user(),
+            build=build,
+            sync=sync,
+        )
+    finally:
+        if started_server and not keep_server and server_process is not None:
+            _stop_server_process(server_process)
+
+
+@cookbook_docker.command("simple-plan")
+@click.option(
+    "--goal",
+    default="Deploy a web service",
+    show_default=True,
+    help="Planning goal to pass into the flow.",
+)
+@click.option(
+    "--mcp-url",
+    default=None,
+    help="MCP server URL (defaults to host.docker.internal).",
+)
+@click.option(
+    "--build/--no-build",
+    default=True,
+    help="Build the flow-runner image before running.",
+)
+@click.option(
+    "--sync/--no-sync",
+    default=True,
+    help="Sync flow dependencies inside the runner before executing.",
+)
+@click.option(
+    "--metaflow-user",
+    default=None,
+    help="Override the METAFLOW_USER value for this run.",
+)
+def run_simple_plan_docker(
+    goal: str,
+    mcp_url: str | None,
+    build: bool,
+    sync: bool,
+    metaflow_user: str | None,
+) -> None:
+    """Run the simple planning flow in Docker."""
+    _run_simple_plan_recipe(
+        goal=goal,
+        mcp_url=mcp_url,
+        build=build,
+        metaflow_user=metaflow_user,
+        sync=sync,
+    )
 
 
 @cli.command()

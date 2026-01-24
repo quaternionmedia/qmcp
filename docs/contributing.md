@@ -23,7 +23,7 @@ Start here after cloning the repo:
 uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
 ```
 
-4. Review `docs/agentframework.md` and run agent framework tests:
+4. Review `docs/agentframework/overview.md` and run agent framework tests:
 
 ```bash
 uv run pytest tests/test_agentframework_models.py tests/test_agentframework_mixins.py -v
@@ -88,6 +88,12 @@ uv run qmcp test --coverage
 # Run specific test file
 uv run qmcp test tests/test_hitl.py
 
+# Smoke-check example flows (skips Metaflow flows on Windows)
+uv run pytest tests/test_examples_smoke.py
+
+# Cookbook CLI tests
+uv run pytest tests/test_cli_cookbook.py
+
 # Run linter
 uv run ruff check .
 
@@ -110,16 +116,25 @@ qmcp/
 ├── tools/            # Tool system
 │   ├── registry.py   # Tool registration
 │   └── builtin.py    # Built-in tools
-└── db/               # Database persistence
-    ├── engine.py     # Async SQLModel engine
-    └── models.py     # ToolInvocation, HumanRequest, HumanResponse
+├── db/               # Database persistence
+│   ├── engine.py     # Async SQLModel engine
+│   └── models.py     # ToolInvocation, HumanRequest, HumanResponse
+├── agentframework/   # Agent types, mixins, topologies
+│   ├── models/       # Data models and registry
+│   ├── mixins.py     # Capability mixins
+│   ├── topologies.py # Collaboration patterns
+│   └── runners.py    # Execution environments
+└── integrations/     # External library integrations
+    └── pydantic_ai/  # PydanticAI adapter
 
 tests/
 ├── conftest.py       # Shared fixtures (DB isolation)
 ├── test_db.py        # Database model tests
 ├── test_hitl.py      # Human-in-the-loop tests
 ├── test_server.py    # API endpoint tests
-└── test_tools.py     # Tool registry tests
+├── test_tools.py     # Tool registry tests
+├── test_agentframework_*.py  # Agent framework tests
+└── test_pydantic_ai_integration.py  # PydanticAI integration tests
 ```
 
 ---

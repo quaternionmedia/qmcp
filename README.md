@@ -12,6 +12,7 @@ A spec-aligned **Model Context Protocol (MCP) server** built with FastAPI.
 - ✅ **Python Client** - `qmcp.client.MCPClient` for workflows
 - ✅ **Metaflow Examples** - Ready-to-use flow templates
 - ✅ **Agent Framework** - SQLModel schemas + mixins for agent types/topologies
+- ✅ **PydanticAI Integration** - Create agents from QMCP models with full audit trail
 - ✅ **Structured Logging** - JSON logs with structlog
 - ✅ **Request Tracing** - Correlation IDs across requests
 - ✅ **Metrics** - Prometheus-compatible `/metrics` endpoint
@@ -88,15 +89,40 @@ See [docs/client.md](docs/client.md) for full API documentation.
 # Start the server
 qmcp serve [--host HOST] [--port PORT] [--reload]
 
+# Start the server for Docker-based flows
+qmcp cookbook serve [--host 0.0.0.0] [--port PORT] [--reload]
+
 # List registered tools
 qmcp tools list
 
 # Show configuration
 qmcp info
 
+# Run a cookbook flow in Docker
+qmcp cookbook simple-plan --goal "Deploy a web service"
+
+# Start the server + run a cookbook flow (unified dev)
+qmcp cookbook dev simple-plan --goal "Deploy a web service"
+
+# Run a cookbook flow via the generic runner
+qmcp cookbook run simple-plan --goal "Deploy a web service"
+
+# Run other cookbook recipes (flow args are passed through)
+qmcp cookbook run approved-deploy --service "api-gateway" --environment "staging"
+qmcp cookbook dev local-qc-gauntlet --change-summary "Add audit fields" --target-area "metrics, logging"
+
+# Run a cookbook flow in Docker explicitly
+qmcp cookbook docker simple-plan --goal "Deploy a web service"
+
+# If the qmcp shim cannot be installed (Windows)
+uv run --no-sync python -m qmcp cookbook run simple-plan --goal "Deploy a web service"
+
 # Run tests with auto setup/teardown
 qmcp test [-v] [--coverage] [TEST_PATH]
 ```
+
+Cookbook flows run in Docker and require Docker Desktop (Linux engine).
+Add `--no-sync` to skip syncing flow dependencies if the image is already built.
 
 ## API Endpoints
 
@@ -155,7 +181,8 @@ The system follows a three-plane architecture:
 - [Tools](docs/tools.md) - Tool capabilities
 - [Client Library](docs/client.md) - Python client API
 - [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
-- [Agent Framework](docs/agentframework.md) - Agent schemas and mixins
+- [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
+- [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
 - [Deployment](docs/deployment.md) - Production deployment guide
 - [Contributing](docs/contributing.md) - Development guidelines
 - [Roadmap](docs/ROADMAP.md) - Development phases
@@ -171,7 +198,8 @@ See [examples/flows/](examples/flows/) for Metaflow integration examples:
 - **local_release_notes.py** - Local LLM release notes and doc update suggestions
 
 For local LLM flows, install extras with `uv sync --extra flows`.
-Start `uv run qmcp serve` when `--use-mcp True` to enable MCP calls.
+Start `uv run qmcp serve --host 0.0.0.0` when `--use-mcp True` to enable MCP calls
+from Docker-based flows.
 On Windows, prefer running flows in a Linux container to avoid platform-specific
 Metaflow dependencies.
 
