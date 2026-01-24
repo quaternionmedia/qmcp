@@ -12,6 +12,7 @@ A spec-aligned **Model Context Protocol (MCP) server** built with FastAPI.
 - ✅ **Python Client** - `qmcp.client.MCPClient` for workflows
 - ✅ **Metaflow Examples** - Ready-to-use flow templates
 - ✅ **Agent Framework** - SQLModel schemas + mixins for agent types/topologies
+- ✅ **PydanticAI Integration** - Create agents from QMCP models with full audit trail
 - ✅ **Structured Logging** - JSON logs with structlog
 - ✅ **Request Tracing** - Correlation IDs across requests
 - ✅ **Metrics** - Prometheus-compatible `/metrics` endpoint
@@ -180,7 +181,8 @@ The system follows a three-plane architecture:
 - [Tools](docs/tools.md) - Tool capabilities
 - [Client Library](docs/client.md) - Python client API
 - [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
-- [Agent Framework](docs/agentframework.md) - Agent schemas and mixins
+- [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
+- [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
 - [Deployment](docs/deployment.md) - Production deployment guide
 - [Contributing](docs/contributing.md) - Development guidelines
 - [Roadmap](docs/ROADMAP.md) - Development phases

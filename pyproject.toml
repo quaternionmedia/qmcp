@@ -29,6 +29,26 @@ flows = [
     "metaflow>=2.12.0",
     "pydantic-ai[openai]",
 ]
+# PydanticAI integration - core agent framework
+# Note: pydantic-ai bundles provider SDKs, install provider packages separately if needed
+pydantic-ai = [
+    "pydantic-ai>=0.1.0",
+]
+# Provider SDKs for model support
+anthropic = [
+    "pydantic-ai>=0.1.0",
+    "anthropic>=0.40.0",
+]
+openai = [
+    "pydantic-ai>=0.1.0",
+    "openai>=1.50.0",
+]
+all-providers = [
+    "pydantic-ai>=0.1.0",
+    "anthropic>=0.40.0",
+    "openai>=1.50.0",
+    "google-generativeai>=0.8.0",
+]
 
 [tool.uv]
 package = true
