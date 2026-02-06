@@ -76,14 +76,24 @@ Metaflow flows can run:
 Local dev flows may chain local LLM agents with PydanticAI and persist artifacts
 with SQLModel. This orchestration stays in the client plane.
 
+### PydanticAI Integration
+
+QMCP integrates with [PydanticAI](https://ai.pydantic.dev/) for agent execution:
+- PydanticAI provides the agent runtime (tools, deps injection, retries)
+- QMCP provides model metadata, audit trails, and HITL
+- The `QMCPToolset` connects PydanticAI agents to the MCP server
+
+See [PydanticAI Integration](integrations/pydantic-ai.md) for usage.
+
 ### Agent Framework
 
 The agent framework is a client-side schema and mixin layer:
 - SQLModel tables define agent types, topologies, and executions
-- Mixins provide optional capabilities (tool use, memory, reasoning, HITL)
+- Mixins provide optional capabilities (memory, reasoning, HITL)
+- Multi-agent topologies orchestrate agent collaboration
 - No server-side orchestration is implemented; the server only persists data
 
-See `docs/agentframework.md` for current implementation status.
+See [Agent Framework](agentframework/overview.md) for current implementation status.
 
 ---
 

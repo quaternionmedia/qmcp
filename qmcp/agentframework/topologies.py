@@ -11,6 +11,7 @@ from qmcp.agentframework.models import (
     AgentType,
     ChainOfCommandConfig,
     CompoundConfig,
+    CouncilConfig,
     CrossCheckConfig,
     DebateConfig,
     DelegationConfig,
@@ -144,6 +145,31 @@ class CompoundTopology(BaseTopology):
     config_class = CompoundConfig
 
 
+@topology
+class CouncilTopology(BaseTopology):
+    """Council topology with arbiter presiding over diverse perspectives.
+
+    A deliberative topology where multiple specialized agents contribute
+    unique viewpoints to reach consensus or majority agreement. The arbiter
+    (council manager) facilitates discussion and can make final decisions
+    if consensus cannot be reached.
+
+    Required Slots:
+        - arbiter: Council manager who facilitates and makes final decisions
+        - storyteller: Frames issues in relatable narrative form
+        - dreamer: Explores possibilities without practical constraints
+        - strategist: Focuses on practical implementation paths
+        - sanity_check: Validates feasibility and catches potential issues
+        - archivist: Maintains context and references historical precedents
+        - efficist: Cuts through complexity to find efficient solutions
+        - accomplisher: Drives toward completion and actionable outcomes
+        - reflector: Provides deep technical analysis and reflection
+    """
+
+    topology_type = TopologyType.COUNCIL
+    config_class = CouncilConfig
+
+
 __all__ = [
     "ExecutionContext",
     "AgentInvocationResult",
@@ -157,4 +183,5 @@ __all__ = [
     "EnsembleTopology",
     "PipelineTopology",
     "CompoundTopology",
+    "CouncilTopology",
 ]

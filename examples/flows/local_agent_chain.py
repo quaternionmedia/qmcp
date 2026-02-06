@@ -37,7 +37,7 @@ from local_mcp import (
     invoke_tool,
     require_invocation_id,
 )
-from metaflow import FlowSpec, Parameter, step
+from metaflow import FlowSpec, Parameter, current, step
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
@@ -114,6 +114,7 @@ class LocalAgentChainFlow(FlowSpec):
     @step
     def start(self):
         """Initialize storage for this run."""
+        self.run_id = current.run_id
         engine = init_db(self.db_path)
         with Session(engine) as session:
             flow_run = save_flow_run(

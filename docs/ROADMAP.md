@@ -19,7 +19,8 @@ This document outlines the phased implementation plan for building a production-
 - ✅ Prometheus-compatible metrics endpoint
 - ✅ 4 built-in tools
 - ✅ Agent framework schemas + mixins
-- ✅ 122 passing tests
+- ✅ PydanticAI integration for agent execution
+- ✅ 148+ passing tests
 
 ---
 
@@ -189,7 +190,7 @@ This document outlines the phased implementation plan for building a production-
    - Metrics and observability tests
 
 ### Acceptance Criteria
-- [x] 122 passing tests
+- [x] Tests passing
 - [x] Structured logs in JSON (production mode)
 - [x] Request tracing with correlation IDs
 - [x] Prometheus-compatible metrics
@@ -228,6 +229,42 @@ This document outlines the phased implementation plan for building a production-
 
 ---
 
+## Phase 7: PydanticAI Integration ✅ COMPLETE
+
+**Goal**: Integrate with PydanticAI for agent execution while preserving QMCP's unique capabilities.
+
+### Deliverables
+
+1. **Integration Module**
+   ```
+   qmcp/
+   └── integrations/
+       └── pydantic_ai/
+           ├── __init__.py    # Public exports
+           ├── models.py      # Model conversion utilities
+           ├── agents.py      # Agent creation adapters
+           └── toolsets.py    # QMCPToolset for server connection
+   ```
+
+2. **Features**
+   - `model_to_pydantic_ai()` - Convert QMCP ModelConfig to PydanticAI string
+   - `create_agent()` - Create PydanticAI agents from QMCP model configs
+   - `QMCPToolset` - Connect PydanticAI agents to QMCP server with audit trail
+   - `estimate_cost()` - Cost estimation using QMCP pricing metadata
+   - `AgentBuilder` - Fluent API for agent configuration
+
+3. **Documentation**
+   - `docs/integrations/index.md` - Integration overview
+   - `docs/integrations/pydantic-ai.md` - Full usage documentation
+
+### Acceptance Criteria
+- [x] PydanticAI agents can be created from QMCP model configs
+- [x] QMCPToolset connects agents to QMCP server
+- [x] HITL support through toolset
+- [x] 15 integration tests passing
+
+---
+
 ## Prioritization Rationale
 
 | Phase | Value | Complexity | Dependencies |
@@ -244,7 +281,7 @@ This document outlines the phased implementation plan for building a production-
 
 ## Current Sprint: ALL PHASES COMPLETE ✅
 
-All 6 phases are complete. QMCP is a production-ready MCP server:
+All 7 phases are complete. QMCP is a production-ready MCP server with PydanticAI integration:
 
 **Phase Summary:**
 | Phase | Description | Tests |
@@ -255,12 +292,14 @@ All 6 phases are complete. QMCP is a production-ready MCP server:
 | 4. Client | Python client + Metaflow | 16 |
 | 5. Hardening | Observability + metrics | 18 |
 | 6. Agent Framework | Schemas + mixins | 47 |
-| **Total** | | **122** |
+| 7. PydanticAI | Agent runtime integration | 15 |
+| **Total** | | **137+** |
 
 **Production Features:**
 - Structured JSON logging (structlog)
 - Request tracing with correlation IDs
 - Prometheus-compatible `/metrics` endpoint
+- PydanticAI agent execution with QMCP audit trail
 - Comprehensive test coverage
 
 **Next Steps (Future Work):**
