@@ -155,6 +155,12 @@ def _recipe_specs(repo_root: Path) -> dict[str, RecipeSpec]:
             flow_rel="examples/flows/local_release_notes.py",
             required_flags=("--change-summary",),
         ),
+        "council-deliberation": RecipeSpec(
+            name="council-deliberation",
+            description="Multi-agent council deliberation for decisions",
+            flow_rel="examples/flows/council_deliberation.py",
+            required_flags=("--question",),
+        ),
     }
 
 
@@ -773,6 +779,298 @@ def run_simple_plan_docker(
         metaflow_user=metaflow_user,
         sync=sync,
     )
+
+
+@cli.group()
+def council() -> None:
+    """Council topology management commands."""
+    pass
+
+
+@council.command("create")
+@click.option(
+    "--name",
+    required=True,
+    help="Name for the council topology.",
+)
+@click.option(
+    "--description",
+    default="Council for multi-perspective deliberation",
+    help="Description of the council's purpose.",
+)
+@click.option(
+    "--max-rounds",
+    default=5,
+    type=int,
+    help="Maximum deliberation rounds before arbiter decides.",
+)
+@click.option(
+    "--consensus-threshold",
+    default=0.67,
+    type=float,
+    help="Proportion required for consensus (0.5=majority, 0.67=supermajority, 1.0=unanimous).",
+)
+@click.option(
+    "--arbiter-override/--no-arbiter-override",
+    default=True,
+    help="Allow arbiter to make final decision if no consensus.",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Choice(["json", "yaml", "table"]),
+    default="table",
+    help="Output format.",
+)
+def council_create(
+    name: str,
+    description: str,
+    max_rounds: int,
+    consensus_threshold: float,
+    arbiter_override: bool,
+    output: str,
+) -> None:
+    """Create a new council topology configuration.
+
+    Creates a council with 9 specialized agent roles:
+    - Council Manager (Arbiter): Facilitates and decides
+    - Relatable Storyteller: Frames issues narratively
+    - Infinite Dreamer: Explores possibilities
+    - Pragmatic Strategist: Focuses on implementation
+    - Sanity Check: Validates feasibility
+    - Tidy Archivist: Maintains context
+    - Brutal Efficist: Demands efficiency
+    - Eager Accomplisher: Drives completion
+    - Technical Reflector: Provides technical analysis
+    """
+    from qmcp.agentframework import CouncilConfig, Topology, TopologyType
+
+    config = CouncilConfig(
+        max_rounds=max_rounds,
+        consensus_threshold=consensus_threshold,
+        arbiter_can_override=arbiter_override,
+    )
+
+    topology = Topology(
+        name=name,
+        description=description,
+        topology_type=TopologyType.COUNCIL,
+        config=config.model_dump(),
+    )
+
+    if output == "json":
+        import json
+
+        click.echo(json.dumps(topology.model_dump(), indent=2, default=str))
+    elif output == "yaml":
+        try:
+            import yaml
+
+            click.echo(yaml.dump(topology.model_dump(), default_flow_style=False))
+        except ImportError:
+            click.echo("PyYAML not installed. Falling back to JSON.")
+            import json
+
+            click.echo(json.dumps(topology.model_dump(), indent=2, default=str))
+    else:
+        click.echo(f"\n{click.style('Council Topology Created', fg='green', bold=True)}\n")
+        click.echo(f"  Name:                {topology.name}")
+        click.echo(f"  Type:                {topology.topology_type.value}")
+        click.echo(f"  Description:         {topology.description}")
+        click.echo(f"\n  {click.style('Configuration:', bold=True)}")
+        click.echo(f"    Max Rounds:        {config.max_rounds}")
+        click.echo(f"    Consensus:         {config.consensus_threshold:.0%}")
+        click.echo(f"    Arbiter Override:  {config.arbiter_can_override}")
+        click.echo(f"    Deliberation:      {config.deliberation_style}")
+        click.echo(f"\n  {click.style('Council Members:', bold=True)}")
+        members = [
+            ("arbiter", "Council Manager", "Facilitates, synthesizes, decides"),
+            ("storyteller", "Relatable Storyteller", "Frames in narrative form"),
+            ("dreamer", "Infinite Dreamer", "Explores possibilities"),
+            ("strategist", "Pragmatic Strategist", "Implementation focus"),
+            ("sanity_check", "Sanity Check", "Validates feasibility"),
+            ("archivist", "Tidy Archivist", "Maintains context"),
+            ("efficist", "Brutal Efficist", "Demands efficiency"),
+            ("accomplisher", "Eager Accomplisher", "Drives completion"),
+            ("reflector", "Technical Reflector", "Technical analysis"),
+        ]
+        for slot, role, desc in members:
+            click.echo(f"    {slot:<14} {role:<22} {desc}")
+
+
+@council.command("run")
+@click.option(
+    "--question",
+    "-q",
+    required=True,
+    help="The question for the council to deliberate.",
+)
+@click.option(
+    "--context",
+    "-c",
+    default="",
+    help="Additional context for the deliberation.",
+)
+@click.option(
+    "--max-rounds",
+    default=2,
+    type=int,
+    help="Maximum deliberation rounds (default: 2 for speed).",
+)
+@click.option(
+    "--consensus-threshold",
+    default=0.67,
+    type=float,
+    help="Proportion required for consensus.",
+)
+@click.option(
+    "--llm-base-url",
+    default=None,
+    help="OpenAI-compatible base URL for the LLM.",
+)
+@click.option(
+    "--llm-model",
+    default=None,
+    help="Model name to use.",
+)
+@click.option(
+    "--llm-api-key",
+    default=None,
+    help="API key if required.",
+)
+@click.option(
+    "--build/--no-build",
+    default=True,
+    help="Build the flow-runner image before running.",
+)
+@click.option(
+    "--sync/--no-sync",
+    default=True,
+    help="Sync dependencies inside the runner.",
+)
+def council_run(
+    question: str,
+    context: str,
+    max_rounds: int,
+    consensus_threshold: float,
+    llm_base_url: str | None,
+    llm_model: str | None,
+    llm_api_key: str | None,
+    build: bool,
+    sync: bool,
+) -> None:
+    """Run a council deliberation flow.
+
+    Executes the council_deliberation.py flow with the specified parameters.
+    The council will deliberate on the question until consensus is reached
+    or max rounds are exhausted.
+    """
+    repo_root = _find_repo_root()
+    flow_path = repo_root / "examples" / "flows" / "council_deliberation.py"
+
+    if not flow_path.exists():
+        raise click.ClickException(f"Council flow not found at {flow_path}")
+
+    flow_args = ["--question", question]
+    if context:
+        flow_args.extend(["--context", context])
+    flow_args.extend(["--max-rounds", str(max_rounds)])
+    flow_args.extend(["--consensus-threshold", str(consensus_threshold)])
+
+    if llm_base_url:
+        flow_args.extend(["--llm-base-url", llm_base_url])
+    if llm_model:
+        flow_args.extend(["--llm-model", llm_model])
+    if llm_api_key:
+        flow_args.extend(["--llm-api-key", llm_api_key])
+
+    click.echo(click.style("Running council deliberation...", fg="green"))
+    click.echo(f"  Question: {question}")
+    if context:
+        click.echo(f"  Context: {context}")
+    click.echo(f"  Max rounds: {max_rounds}")
+    click.echo(f"  Consensus: {consensus_threshold:.0%}")
+    click.echo()
+
+    _run_flow_docker(
+        repo_root=repo_root,
+        flow_path=flow_path,
+        flow_args=flow_args,
+        mcp_url=_default_mcp_url(),
+        metaflow_user=_default_metaflow_user(),
+        build=build,
+        sync=sync,
+    )
+
+
+@council.command("members")
+def council_members() -> None:
+    """List council member roles and their responsibilities."""
+    click.echo(f"\n{click.style('Council Member Roles', fg='green', bold=True)}\n")
+
+    members = [
+        (
+            "arbiter",
+            "Council Manager",
+            "COORDINATOR",
+            "Facilitates discussion, synthesizes viewpoints, makes final decisions",
+        ),
+        (
+            "storyteller",
+            "Relatable Storyteller",
+            "SPECIALIST",
+            "Frames technical issues as human stories, uses analogies",
+        ),
+        (
+            "dreamer",
+            "Infinite Dreamer",
+            "SPECIALIST",
+            "Explores possibilities without constraint, blue-sky thinking",
+        ),
+        (
+            "strategist",
+            "Pragmatic Strategist",
+            "PLANNER",
+            "Focuses on practical implementation, resources, timelines",
+        ),
+        (
+            "sanity_check",
+            "Sanity Check",
+            "REVIEWER",
+            "Devil's advocate, finds edge cases, risks, and problems",
+        ),
+        (
+            "archivist",
+            "Tidy Archivist",
+            "SPECIALIST",
+            "References past decisions, maintains institutional memory",
+        ),
+        (
+            "efficist",
+            "Brutal Efficist",
+            "CRITIC",
+            "Cuts through complexity, demands efficiency, eliminates waste",
+        ),
+        (
+            "accomplisher",
+            "Eager Accomplisher",
+            "EXECUTOR",
+            "Drives toward action, breaks blockers, focuses on shipping",
+        ),
+        (
+            "reflector",
+            "Technical Reflector",
+            "SPECIALIST",
+            "Deep technical analysis, architecture, long-term implications",
+        ),
+    ]
+
+    for slot, name, role, desc in members:
+        click.echo(f"  {click.style(slot, fg='cyan', bold=True):<20}")
+        click.echo(f"    Name: {name}")
+        click.echo(f"    Role: {role}")
+        click.echo(f"    {desc}")
+        click.echo()
 
 
 @cli.command()

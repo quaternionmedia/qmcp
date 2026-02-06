@@ -112,6 +112,86 @@ class RingConfig(SQLModel):
     pass_full_context: bool = Field(default=False)
 
 
+class CouncilConfig(SQLModel):
+    """Configuration for Council topology.
+
+    A council topology where an arbiter presides over a plurality/majority
+    seeking council of diverse agent perspectives. The council deliberates
+    on issues with each member contributing their unique viewpoint until
+    consensus or majority is reached.
+
+    Required Slots:
+        - arbiter: Council manager who facilitates and makes final decisions
+        - storyteller: Relatable storyteller who frames issues in narrative form
+        - dreamer: Infinite dreamer who explores possibilities without constraint
+        - strategist: Pragmatic strategist focused on practical implementation
+        - sanity_check: Sanity checker who validates feasibility and catches issues
+        - archivist: Tidy archivist who maintains context and references history
+        - efficist: Brutal efficist who cuts through complexity for efficiency
+        - accomplisher: Eager accomplisher who drives toward completion
+        - reflector: Technical reflector who provides deep technical analysis
+    """
+
+    max_rounds: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum deliberation rounds before arbiter decides",
+    )
+    consensus_threshold: float = Field(
+        default=0.67,
+        ge=0.5,
+        le=1.0,
+        description="Proportion of council required for consensus (0.5=majority, 0.67=supermajority, 1.0=unanimous)",
+    )
+    consensus_method: ConsensusMethod = Field(
+        default=ConsensusMethod.QUORUM,
+        description="Method for reaching consensus",
+    )
+    allow_early_consensus: bool = Field(
+        default=True,
+        description="Allow termination before max_rounds if consensus reached",
+    )
+    require_all_voices: bool = Field(
+        default=True,
+        description="Require all council members to contribute each round",
+    )
+    arbiter_can_override: bool = Field(
+        default=True,
+        description="Arbiter can make final decision if no consensus after max_rounds",
+    )
+    deliberation_style: str = Field(
+        default="round_robin",
+        description="How members contribute: round_robin, open_floor, or structured",
+    )
+    speaking_order: list[str] = Field(
+        default_factory=lambda: [
+            "storyteller",
+            "dreamer",
+            "strategist",
+            "sanity_check",
+            "archivist",
+            "efficist",
+            "accomplisher",
+            "reflector",
+        ],
+        description="Order in which council members speak (arbiter always last)",
+    )
+    min_contribution_length: int = Field(
+        default=100,
+        ge=0,
+        description="Minimum character length for each contribution",
+    )
+    track_position_changes: bool = Field(
+        default=True,
+        description="Track when members change their positions across rounds",
+    )
+    synthesis_after_each_round: bool = Field(
+        default=True,
+        description="Arbiter provides synthesis summary after each round",
+    )
+
+
 class CheckpointConfig(SQLModel):
     """Configuration for execution checkpoints."""
 
@@ -143,6 +223,7 @@ __all__ = [
     "MeshConfig",
     "StarConfig",
     "RingConfig",
+    "CouncilConfig",
     "CheckpointConfig",
     "MetricsConfig",
 ]

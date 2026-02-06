@@ -31,6 +31,7 @@ from qmcp.agentframework.models import (
     ChainOfCommandConfig,
     CompoundConfig,
     ConsensusMethod,
+    CouncilConfig,
     CrossCheckConfig,
     DebateConfig,
     DelegationConfig,
@@ -39,6 +40,7 @@ from qmcp.agentframework.models import (
     ExecutionStatus,
     Message,
     MessageType,
+    Models,
     PipelineConfig,
     Result,
     Topology,
@@ -60,6 +62,7 @@ from qmcp.agentframework.topologies import (
     BaseTopology,
     ChainOfCommandTopology,
     CompoundTopology,
+    CouncilTopology,
     CrossCheckTopology,
     DebateTopology,
     DelegationTopology,
@@ -81,6 +84,8 @@ __all__ = [
     "MessageType",
     "ConsensusMethod",
     "AggregationMethod",
+    # Model Registry
+    "Models",
     # Config models
     "AgentCapability",
     "AgentConfig",
@@ -91,6 +96,7 @@ __all__ = [
     "EnsembleConfig",
     "PipelineConfig",
     "CompoundConfig",
+    "CouncilConfig",
     # Table models
     "AgentType",
     "AgentInstance",
@@ -127,6 +133,7 @@ __all__ = [
     "EnsembleTopology",
     "PipelineTopology",
     "CompoundTopology",
+    "CouncilTopology",
     # Runners
     "RunConfig",
     "RunResult",

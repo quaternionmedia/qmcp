@@ -31,6 +31,7 @@ from .topology import (
     ChainOfCommandConfig,
     CheckpointConfig,
     CompoundConfig,
+    CouncilConfig,
     CrossCheckConfig,
     DebateConfig,
     DelegationConfig,
@@ -73,6 +74,7 @@ __all__ = [
     "MeshConfig",
     "StarConfig",
     "RingConfig",
+    "CouncilConfig",
     "CheckpointConfig",
     "MetricsConfig",
 ]

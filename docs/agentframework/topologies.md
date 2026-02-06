@@ -243,6 +243,146 @@ class DelegationConfig(SQLModel):
 - Load distribution
 - Expertise matching
 
+### Council
+
+Deliberative plurality-seeking topology where an arbiter presides over a council of diverse agent perspectives. Each council member brings a unique viewpoint, and decisions are reached through structured deliberation until consensus or majority is achieved.
+
+**Required Slots:**
+- `arbiter` - Council Manager: Facilitates discussion, synthesizes positions, makes final decisions
+- `storyteller` - Relatable Storyteller: Frames issues in narrative form, makes abstract concepts tangible
+- `dreamer` - Infinite Dreamer: Explores possibilities without constraint, generates creative alternatives
+- `strategist` - Pragmatic Strategist: Focuses on practical implementation, resource constraints
+- `sanity_check` - Sanity Check: Validates feasibility, catches edge cases and potential issues
+- `archivist` - Tidy Archivist: Maintains context, references history, ensures consistency
+- `efficist` - Brutal Efficist: Cuts through complexity, demands efficiency, eliminates waste
+- `accomplisher` - Eager Accomplisher: Drives toward completion, breaks down blockers
+- `reflector` - Technical Reflector: Provides deep technical analysis, considers implications
+
+**Configuration:**
+```python
+class CouncilConfig(SQLModel):
+    max_rounds: int = 5
+    consensus_threshold: float = 0.67  # 0.5=majority, 0.67=supermajority, 1.0=unanimous
+    consensus_method: ConsensusMethod = "quorum"
+    allow_early_consensus: bool = True
+    require_all_voices: bool = True
+    arbiter_can_override: bool = True
+    deliberation_style: str = "round_robin"  # round_robin, open_floor, structured
+    speaking_order: list[str] = [
+        "storyteller", "dreamer", "strategist", "sanity_check",
+        "archivist", "efficist", "accomplisher", "reflector"
+    ]
+    min_contribution_length: int = 100
+    track_position_changes: bool = True
+    synthesis_after_each_round: bool = True
+```
+
+**Flow:**
+```
+                              ┌─────────────────────────────────────────────────┐
+                              │              COUNCIL CHAMBER                    │
+                              │                                                 │
+┌───────┐                     │  ┌────────────┐     ┌────────────┐             │
+│ Input │────────────────────▶│  │ Storyteller│────▶│  Dreamer   │             │
+└───────┘                     │  └────────────┘     └─────┬──────┘             │
+                              │                          │                     │
+                              │  ┌────────────┐     ┌────▼──────┐             │
+                              │  │ Reflector  │◀────│ Strategist│             │
+                              │  └─────┬──────┘     └────────────┘             │
+                              │        │                                       │
+                              │  ┌─────▼──────┐     ┌────────────┐             │
+                              │  │Accomplisher│────▶│Sanity Check│             │
+                              │  └────────────┘     └─────┬──────┘             │
+                              │                          │                     │
+                              │  ┌────────────┐     ┌────▼──────┐             │
+                              │  │  Efficist  │◀────│  Archivist│             │
+                              │  └─────┬──────┘     └────────────┘             │
+                              │        │                                       │
+                              └────────┼───────────────────────────────────────┘
+                                       │
+                                       ▼
+                              ┌─────────────────┐
+                              │     ARBITER     │
+                              │ (Council Manager)│
+                              │                 │
+                              │  • Synthesizes  │
+                              │  • Checks vote  │
+                              │  • Decides if   │
+                              │    no consensus │
+                              └────────┬────────┘
+                                       │
+                                       ▼
+                              ┌─────────────────┐
+                              │    DECISION     │
+                              │  (or next round)│
+                              └─────────────────┘
+```
+
+**Agent Role Descriptions:**
+
+| Role | Persona | Contribution Style |
+|------|---------|-------------------|
+| **Council Manager** (Arbiter) | Impartial facilitator | Synthesizes, mediates, decides |
+| **Relatable Storyteller** | Narrative translator | Frames in human terms, uses analogies |
+| **Infinite Dreamer** | Unconstrained idealist | "What if we could...", blue-sky thinking |
+| **Pragmatic Strategist** | Implementation realist | "Here's how we actually do it..." |
+| **Sanity Check** | Devil's advocate | "But have we considered...", edge cases |
+| **Tidy Archivist** | Institutional memory | "Previously we decided...", consistency |
+| **Brutal Efficist** | Efficiency enforcer | "Cut the fluff", minimal viable path |
+| **Eager Accomplisher** | Action driver | "Let's ship it", unblocks progress |
+| **Technical Reflector** | Deep analyzer | Technical implications, architecture |
+
+**Use Cases:**
+- Complex architectural decisions requiring multiple perspectives
+- Product planning where creativity and pragmatism must balance
+- Risk assessment needing diverse viewpoints
+- Strategic planning with competing priorities
+- Code review requiring both technical and practical considerations
+- Documentation decisions balancing completeness vs. usability
+
+**Quick Example:**
+```python
+from qmcp.agentframework import (
+    Topology, TopologyType, CouncilConfig,
+)
+from qmcp.agentframework.topologies import TopologyRegistry, ExecutionContext
+
+# Create council topology
+council = Topology(
+    name="architecture_council",
+    description="Council for architectural decisions",
+    topology_type=TopologyType.COUNCIL,
+    config=CouncilConfig(
+        max_rounds=5,
+        consensus_threshold=0.67,  # Supermajority
+        arbiter_can_override=True,
+    ).model_dump(),
+)
+
+# Run council deliberation
+topo = TopologyRegistry.create(council, agents, session)
+result = await topo.run(ExecutionContext(
+    input_data={"question": "Should we migrate from REST to GraphQL?"}
+))
+```
+
+**Full Implementation:**
+
+See [`examples/flows/council_deliberation.py`](../../examples/flows/council_deliberation.py) for a complete working example with:
+- All 9 council member personas with detailed system prompts
+- Multi-round deliberation with consensus tracking
+- Position tracking and synthesis after each round
+- Final decision rendering with rationale and recommendations
+
+```bash
+# Run with a local LLM
+uv run python examples/flows/council_deliberation.py run \
+    --question "Should we migrate from REST to GraphQL?" \
+    --context "E-commerce platform with 50+ microservices" \
+    --llm-base-url "http://localhost:11434/v1" \
+    --llm-model "llama3.1"
+```
+
 ## Topology Registry
 
 ```python

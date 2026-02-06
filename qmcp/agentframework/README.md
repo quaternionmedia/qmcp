@@ -153,6 +153,7 @@ qmcp/agentframework/
 | `CROSS_CHECK` | Independent validation | Quality verification |
 | `DELEGATION` | Capability-based routing | Dynamic task assignment |
 | `COMPOUND` | Nested topologies | Complex workflows |
+| `COUNCIL` | Deliberative plurality | Consensus-seeking through diverse perspectives |
 
 ## What's Implemented
 

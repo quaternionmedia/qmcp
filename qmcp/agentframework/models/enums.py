@@ -35,6 +35,7 @@ class TopologyType(str, Enum):
     MESH = "mesh"
     STAR = "star"
     RING = "ring"
+    COUNCIL = "council"
 
 
 class ExecutionStatus(str, Enum):
