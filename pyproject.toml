@@ -10,7 +10,7 @@ dependencies = [
     "fastapi[standard]>=0.115.0",
     "httpx>=0.27.0",
     "pydantic-settings>=2.0.0",
-    "pytest>=9.0.2",
+    "pytest>=9.0.3",
     "sqlmodel>=0.0.31",
     "structlog>=25.1.0",
     "uvicorn>=0.30.0",
@@ -21,7 +21,7 @@ qmcp = "qmcp.cli:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.24.0",
     "ruff>=0.8.0",
 ]
