@@ -279,9 +279,49 @@ This document outlines the phased implementation plan for building a production-
 
 ---
 
+## Phase 8: Composable Cookbook & MetaflowRunner ✅ COMPLETE
+
+**Goal**: Extract duplicated flow patterns into `qmcp.cookbook` as composable, first-class modules and wire the MetaflowRunner to execute flows.
+
+### Deliverables
+
+1. **Cookbook Package**
+   ```
+   qmcp/
+   └── cookbook/
+       ├── __init__.py          # Re-exports for convenience
+       ├── agent_builders.py    # LocalLLMConfig, build_local_agent, build_qmcp_agent
+       ├── persistence.py       # FlowPersistence context manager + SQLModel entities
+       └── mcp_tools.py         # MCPToolInvoker + tool input models
+   ```
+
+2. **MetaflowRunner** (`qmcp/agentframework/runners.py`)
+   - Resolves topology type → flow script via `_TOPOLOGY_FLOW_MAP`
+   - Executes flows via subprocess with timeout handling
+   - Injects `--mcp-url` and `METAFLOW_USER` automatically
+   - Returns `RunResult` with execution status, output, and timing
+
+3. **Flow Refactoring**
+   - All 4 flows (`local_agent_chain`, `local_qc_gauntlet`, `local_release_notes`, `council_deliberation`) import from `qmcp.cookbook`
+   - Deleted `local_dev_db.py` and `local_mcp.py` (no shims)
+   - Council flow now uses `FlowPersistence` for deliberation record tracking
+
+4. **Tests**
+   - `tests/test_cookbook.py` — agent builders, persistence lifecycle, MCP invoker
+   - `tests/test_metaflow_runner.py` — registry, flow resolution, command building, async run
+
+### Acceptance Criteria
+- [x] `from qmcp.cookbook import build_local_agent, FlowPersistence, MCPToolInvoker` works
+- [x] All flows import from `qmcp.cookbook` (no local helper references)
+- [x] MetaflowRunner resolves topologies and launches flows
+- [x] Cookbook modules auto-available in Docker runner (copied with `qmcp/`)
+- [x] New tests pass
+
+---
+
 ## Current Sprint: ALL PHASES COMPLETE ✅
 
-All 7 phases are complete. QMCP is a production-ready MCP server with PydanticAI integration:
+All 8 phases are complete. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
 
 **Phase Summary:**
 | Phase | Description | Tests |
@@ -293,18 +333,24 @@ All 7 phases are complete. QMCP is a production-ready MCP server with PydanticAI
 | 5. Hardening | Observability + metrics | 18 |
 | 6. Agent Framework | Schemas + mixins | 47 |
 | 7. PydanticAI | Agent runtime integration | 15 |
-| **Total** | | **137+** |
+| 8. Cookbook & Runner | Composable modules + MetaflowRunner | 30+ |
+| **Total** | | **167+** |
 
 **Production Features:**
 - Structured JSON logging (structlog)
 - Request tracing with correlation IDs
 - Prometheus-compatible `/metrics` endpoint
 - PydanticAI agent execution with QMCP audit trail
+- Composable `qmcp.cookbook` modules for flow building
+- MetaflowRunner for topology-to-flow execution
 - Comprehensive test coverage
 
 **Next Steps (Future Work):**
+- Topology runtime execution (Pipeline, Council, etc.) with PydanticAI built-in
+- CI/CD pipeline (GitHub Actions)
+- HumanInLoopMixin HITL API integration
+- AsyncRunner implementation
 - Add authentication/authorization
 - Webhook notifications for HITL
 - Redis/PostgreSQL backend options
 - Kubernetes deployment manifests
-- Implement agent topology execution and runner orchestration

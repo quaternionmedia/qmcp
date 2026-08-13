@@ -6,12 +6,12 @@ This submodule contains all SQLModel table definitions organized by domain:
 - executions: Execution, Result, Checkpoint
 - messages: Message
 - resources: ResourceAllocation
-- audit: AuditLog, MetricRecord, ToolInvocation
+- audit: AuditLog, MetricRecord, AgentToolInvocation
 - workflows: WorkflowTemplate
 """
 
 from .agents import AgentInstance, AgentSkill, AgentType
-from .audit import AuditLog, MetricRecord, ToolInvocation
+from .audit import AuditLog, MetricRecord, AgentToolInvocation
 from .executions import Checkpoint, Execution, Result
 from .messages import Message
 from .resources import ResourceAllocation
@@ -37,7 +37,7 @@ __all__ = [
     # Audit
     "AuditLog",
     "MetricRecord",
-    "ToolInvocation",
+    "AgentToolInvocation",
     # Workflows
     "WorkflowTemplate",
 ]

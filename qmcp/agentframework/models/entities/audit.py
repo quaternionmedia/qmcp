@@ -46,14 +46,19 @@ class MetricRecord(SQLModel, table=True):
     recorded_at: datetime = Field(default_factory=utc_now)
 
 
-class ToolInvocation(SQLModel, table=True):
-    """Records of tool invocations by agents."""
+class AgentToolInvocation(SQLModel, table=True):
+    """Records of tool invocations by agents within an execution context.
 
-    __tablename__ = "tool_invocations"
+    Distinct from the server-level ``tool_invocations`` table in ``qmcp.db.models``
+    which logs all MCP tool calls.  This table is scoped to the agent framework
+    and links invocations to executions and agent instances.
+    """
+
+    __tablename__ = "agent_tool_invocations"
 
     id: UUID | None = Field(default_factory=uuid4, primary_key=True)
-    execution_id: UUID = Field(foreign_key="executions.id")
-    agent_instance_id: UUID = Field(foreign_key="agent_instances.id")
+    execution_id: UUID | None = Field(default=None, foreign_key="executions.id")
+    agent_instance_id: UUID | None = Field(default=None, foreign_key="agent_instances.id")
     tool_name: str = Field(max_length=64)
     input_data: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
     output_data: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
@@ -66,5 +71,5 @@ class ToolInvocation(SQLModel, table=True):
 __all__ = [
     "AuditLog",
     "MetricRecord",
-    "ToolInvocation",
+    "AgentToolInvocation",
 ]

@@ -16,12 +16,10 @@ FLOW_MODULES = [
     ("local_agent_chain.py", ["metaflow", "pydantic_ai"]),
     ("local_qc_gauntlet.py", ["metaflow", "pydantic_ai"]),
     ("local_release_notes.py", ["metaflow", "pydantic_ai"]),
-]
-
-HELPER_MODULES = [
-    ("local_dev_db.py", []),
-    ("local_mcp.py", []),
-    ("local_llm.py", ["pydantic_ai"]),
+    ("council_deliberation.py", ["metaflow", "pydantic_ai"]),
+    ("qc_release.py", ["metaflow", "pydantic_ai"]),
+    ("plan_council.py", ["metaflow", "pydantic_ai"]),
+    ("change_impact.py", ["metaflow", "pydantic_ai"]),
 ]
 
 
@@ -51,18 +49,12 @@ def test_flow_modules_importable(monkeypatch, tmp_path: Path, filename: str, dep
     runpy.run_path(str(FLOW_DIR / filename), run_name="__qmcp_test__")
 
 
-@pytest.mark.parametrize("filename,deps", HELPER_MODULES)
-def test_flow_helper_modules_importable(
-    monkeypatch,
-    tmp_path: Path,
-    filename: str,
-    deps: list[str],
-) -> None:
-    missing = _missing_deps(deps)
-    if missing:
-        pytest.skip(f"Missing optional dependencies: {', '.join(missing)}")
-
-    _configure_metaflow_env(monkeypatch, tmp_path)
-    monkeypatch.syspath_prepend(str(FLOW_DIR))
-    module_name = Path(filename).stem
-    importlib.import_module(module_name)
+def test_cookbook_package_importable() -> None:
+    """Verify qmcp.cookbook package imports successfully."""
+    from qmcp.cookbook import (
+        LocalLLMConfig,
+        build_local_agent,
+        FlowPersistence,
+        MCPToolInvoker,
+    )
+    assert callable(build_local_agent)

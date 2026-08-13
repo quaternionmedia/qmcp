@@ -161,6 +161,25 @@ def _recipe_specs(repo_root: Path) -> dict[str, RecipeSpec]:
             flow_rel="examples/flows/council_deliberation.py",
             required_flags=("--question",),
         ),
+        # Compound recipes
+        "qc-release": RecipeSpec(
+            name="qc-release",
+            description="QC gauntlet + release notes compound pipeline",
+            flow_rel="examples/flows/qc_release.py",
+            required_flags=("--change-summary",),
+        ),
+        "plan-council": RecipeSpec(
+            name="plan-council",
+            description="Plan + council deliberation + refinement",
+            flow_rel="examples/flows/plan_council.py",
+            required_flags=("--goal",),
+        ),
+        "change-impact": RecipeSpec(
+            name="change-impact",
+            description="Full change impact analysis pipeline",
+            flow_rel="examples/flows/change_impact.py",
+            required_flags=("--change-summary",),
+        ),
     }
 
 

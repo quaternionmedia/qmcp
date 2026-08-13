@@ -1,4 +1,8 @@
-"""Local SQLModel storage for dev-cycle Metaflow flows."""
+"""Flow persistence for QMCP Metaflow workflows.
+
+Provides SQLModel entities and a context manager for tracking flow runs,
+agent invocations, artifacts, and MCP tool calls in a local SQLite database.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +21,11 @@ def utc_now() -> datetime:
 def new_id() -> str:
     """Generate a UUID string."""
     return str(uuid4())
+
+
+# ---------------------------------------------------------------------------
+# SQLModel entities
+# ---------------------------------------------------------------------------
 
 
 class FlowRun(SQLModel, table=True):
@@ -75,6 +84,11 @@ class MCPInvocation(SQLModel, table=True):
     correlation_id: str | None = Field(default=None, index=True)
     payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utc_now)
+
+
+# ---------------------------------------------------------------------------
+# Low-level helpers (preserved from original local_dev_db.py)
+# ---------------------------------------------------------------------------
 
 
 def get_engine(db_path: str):
@@ -179,3 +193,137 @@ def save_mcp_invocation(
     session.commit()
     session.refresh(record)
     return record
+
+
+# ---------------------------------------------------------------------------
+# FlowPersistence context manager
+# ---------------------------------------------------------------------------
+
+
+class FlowPersistence:
+    """Context manager that wraps flow-run lifecycle persistence.
+
+    Reduces per-step boilerplate by managing the database engine, flow run
+    creation, and automatic finalization.
+
+    Usage::
+
+        with FlowPersistence(db_path, "MyFlow", run_id, meta) as fp:
+            fp.agent_run("planner", "create plan", output_dict)
+            fp.artifact("plan", plan_dict)
+            fp.mcp_invocation("executor", inv_id, payload)
+    """
+
+    def __init__(
+        self,
+        db_path: str,
+        flow_name: str,
+        run_id: str,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        self.db_path = db_path
+        self.flow_name = flow_name
+        self.run_id = run_id
+        self.meta = meta or {}
+        self._engine = None
+        self._flow_run: FlowRun | None = None
+
+    def __enter__(self) -> FlowPersistence:
+        self._engine = init_db(self.db_path)
+        with Session(self._engine) as session:
+            self._flow_run = save_flow_run(
+                session,
+                flow_name=self.flow_name,
+                run_id=self.run_id,
+                meta=self.meta,
+            )
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self._engine is not None and self._flow_run is not None:
+            with Session(self._engine) as session:
+                mark_flow_finished(session, self._flow_run.id)
+
+    @property
+    def flow_run_id(self) -> str:
+        """ID of the current flow run."""
+        if self._flow_run is None:
+            raise RuntimeError("FlowPersistence not entered as context manager")
+        return self._flow_run.id
+
+    @property
+    def engine(self):
+        """The SQLModel engine (available after __enter__)."""
+        if self._engine is None:
+            raise RuntimeError("FlowPersistence not entered as context manager")
+        return self._engine
+
+    def agent_run(
+        self,
+        agent_name: str,
+        input_summary: str,
+        output: dict[str, Any],
+    ) -> AgentRun:
+        """Persist an agent invocation."""
+        with Session(self.engine) as session:
+            return save_agent_run(
+                session,
+                flow_run_id=self.flow_run_id,
+                agent_name=agent_name,
+                input_summary=input_summary,
+                output=output,
+            )
+
+    def artifact(self, kind: str, content: dict[str, Any]) -> Artifact:
+        """Persist a materialized artifact."""
+        with Session(self.engine) as session:
+            return save_artifact(
+                session,
+                flow_run_id=self.flow_run_id,
+                kind=kind,
+                content=content,
+            )
+
+    def checklist_items(self, items: list[dict[str, Any]]) -> None:
+        """Persist QC checklist rows."""
+        with Session(self.engine) as session:
+            save_checklist_items(session, flow_run_id=self.flow_run_id, items=items)
+
+    def mcp_invocation(
+        self,
+        tool_name: str,
+        invocation_id: str,
+        payload: dict[str, Any],
+        correlation_id: str | None = None,
+    ) -> MCPInvocation:
+        """Persist an MCP tool invocation."""
+        with Session(self.engine) as session:
+            return save_mcp_invocation(
+                session,
+                flow_run_id=self.flow_run_id,
+                tool_name=tool_name,
+                invocation_id=invocation_id,
+                payload=payload,
+                correlation_id=correlation_id,
+            )
+
+
+__all__ = [
+    # Entities
+    "FlowRun",
+    "AgentRun",
+    "Artifact",
+    "ChecklistItem",
+    "MCPInvocation",
+    # Helpers
+    "init_db",
+    "get_engine",
+    "save_flow_run",
+    "mark_flow_finished",
+    "save_agent_run",
+    "save_artifact",
+    "save_checklist_items",
+    "save_mcp_invocation",
+    # Context manager
+    "FlowPersistence",
+]
