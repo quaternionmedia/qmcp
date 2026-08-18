@@ -1377,6 +1377,55 @@ def dashboard(database: Path | None, project: str | None, recent: int,
     click.echo(render(view))
 
 
+@cli.command("deltas")
+@click.option("--project", default=None, help="owner/repo these belong to")
+@click.option("--pipeline", default="change_impact", show_default=True,
+              help="which cookbook pipeline's steps to emit")
+def deltas(project: str | None, pipeline: str) -> None:
+    """Emit this project's units of work as delta payloads.
+
+    A workflow step and a delta are one unit of work seen from two ends --
+    `qmcp/cookbook/delta.py` is the correspondence. This writes the payloads to
+    stdout; `dossier deltas ingest` is the other half. Nothing here reaches
+    dossier: what crosses is a schema, not an import.
+    """
+    import importlib
+    import json as _json
+
+    from qmcp.addresses import format_address
+    from qmcp.cookbook.delta import to_delta
+    from qmcp.dashboard import DEFAULT_PROJECT
+
+    owner_repo = project or DEFAULT_PROJECT
+    try:
+        module = importlib.import_module(f"qmcp.cookbook.{pipeline}")
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            f"{pipeline}: no such cookbook pipeline ({exc}). Its steps must be "
+            f"importable without a flow runtime -- see qmcp/cookbook/change_impact.py."
+        ) from exc
+
+    found = [obj for name, obj in vars(module).items() if name.endswith("_PIPELINE")]
+    if not found:
+        raise SystemExit(f"{pipeline}: declares no *_PIPELINE to read steps from.")
+
+    owner, _, repo = owner_repo.partition("/")
+    payloads = []
+    for step in found[0].steps:
+        payload = to_delta(step, None, project=owner_repo)
+        # The address is what lets dossier name the same row. `to_delta` carries
+        # the project and the name; this states the address explicitly so the
+        # ingesting side never has to reassemble it.
+        payload["links"].append({
+            "link_type": "address",
+            "target_id": None,
+            "target_name": format_address(owner, repo, "delta", step.name),
+        })
+        payloads.append(payload)
+
+    click.echo(_json.dumps(payloads, indent=2))
+
+
 def main() -> None:
     """Entry point for the CLI."""
     cli()

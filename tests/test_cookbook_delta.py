@@ -14,6 +14,8 @@ schema.
 
 from __future__ import annotations
 
+import json
+
 from pydantic import BaseModel
 
 from qmcp.cookbook.delta import (
@@ -234,3 +236,71 @@ def test_the_seam_does_not_import_dossier():
         if line.strip().startswith(("import ", "from "))
     )
     assert "dossier" not in code
+
+
+# --- what the `qmcp deltas` command emits ------------------------------------
+
+
+class TestDeltaEmission:
+    """The payloads dossier ingests. Emitted from the committed pipeline, so a
+    step renamed here changes what the other system is told, deliberately."""
+
+    def payloads(self):
+        from click.testing import CliRunner
+
+        from qmcp.cli import cli
+
+        result = CliRunner().invoke(cli, ["deltas"])
+        assert result.exit_code == 0, result.output
+        return json.loads(result.output)
+
+    def test_one_payload_per_step_of_the_pipeline(self):
+        from qmcp.cookbook.change_impact import CHANGE_IMPACT_PIPELINE
+
+        assert len(self.payloads()) == len(CHANGE_IMPACT_PIPELINE.steps)
+
+    def test_every_payload_carries_an_address_link(self):
+        """The address is what lets dossier name the same row. Without it the
+        ingesting side has to reassemble one and the two can disagree."""
+        for payload in self.payloads():
+            addresses = [l["target_name"] for l in payload["links"]
+                         if l["link_type"] == "address"]
+            assert len(addresses) == 1
+
+    def test_the_addresses_parse_and_are_deltas(self):
+        from qmcp.addresses import parse
+
+        for payload in self.payloads():
+            address = next(l["target_name"] for l in payload["links"]
+                           if l["link_type"] == "address")
+            found = parse(address)
+            assert found is not None and found.kind == "delta"
+
+    def test_the_address_names_the_same_delta_as_the_row(self):
+        """A payload whose address and row disagree is one that ingests as a
+        different delta than it claims to be."""
+        from qmcp.addresses import parse
+
+        for payload in self.payloads():
+            address = next(l["target_name"] for l in payload["links"]
+                           if l["link_type"] == "address")
+            assert parse(address).id == payload["delta"]["name"]
+
+    def test_the_rows_hold_only_project_delta_columns(self):
+        columns = {"name", "title", "description", "phase", "delta_type", "priority"}
+        for payload in self.payloads():
+            assert set(payload["delta"]) == columns
+
+    def test_an_unrun_step_is_emitted_as_planning(self):
+        """Emission reads declarations, not executions. Anything further along
+        would assert work this command cannot see."""
+        assert all(p["delta"]["phase"] == "planning" for p in self.payloads())
+
+    def test_an_unknown_pipeline_is_refused_rather_than_emitting_nothing(self):
+        from click.testing import CliRunner
+
+        from qmcp.cli import cli
+
+        result = CliRunner().invoke(cli, ["deltas", "--pipeline", "nosuch"])
+        assert result.exit_code != 0
+        assert "no such cookbook pipeline" in result.output
