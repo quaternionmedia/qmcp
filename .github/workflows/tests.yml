@@ -1,0 +1,52 @@
+name: Tests
+
+# WHY THIS EXISTS. Until it did, nothing ran this repository's test suite on a
+# runner. Five checks reported on every pull request -- record lint, submodule
+# refs, the slot, a secret scan -- and not one of them executed a test. A green
+# pull request meant "the governance checks passed", and a reader reasonably
+# took it to mean the code worked.
+#
+# The suite covers the server, the agent framework, the cookbook, the database
+# backup and migration mechanisms, and the local demos. All of it ran on one
+# machine and nowhere else.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One run per branch. A second push supersedes the first on a pull request,
+# because nobody reads the result of a run whose commit has been replaced.
+# On main the run IS the record that the commit was checked, so it is never
+# cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The governance submodule carries the shared conformance vectors
+          # that tests/test_addresses.py is held to. Without it that test skips
+          # and says why, which is a weaker result than this workflow should
+          # settle for.
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install through the lock
+        # `uv sync`, not `uv pip install`. An unpinned install resolves a
+        # different stack: this repository has a recorded instance where it
+        # dragged starlette forward and broke 52 tests, which was a property of
+        # installing outside the lock rather than of the dependencies.
+        run: uv sync --all-extras
+
+      - name: Run the suite
+        run: uv run pytest -q
