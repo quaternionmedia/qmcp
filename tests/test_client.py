@@ -354,3 +354,36 @@ def mcp_client(client):
             return response.json()
 
     return TestMCPClient(client)
+
+
+class TestClientPackageExports:
+    """What `qmcp.client` lets a caller name.
+
+    A caller handling a failure has to be able to import the error it is
+    handling. `examples/flows/approved_deploy.py` imports
+    `HumanRequestExpiredError` from this package, and for a while the package
+    exported only `MCPClient` -- so that import was broken, on every platform,
+    and invisible on this one because the flow cannot be imported at all where
+    `import metaflow` fails on `import fcntl`. The first CI run on Linux found
+    it in sixteen seconds.
+    """
+
+    def test_every_error_the_client_raises_is_importable_from_the_package(self):
+        import inspect
+
+        from qmcp.client import mcp_client
+
+        raised = {
+            name for name, obj in inspect.getmembers(mcp_client, inspect.isclass)
+            if issubclass(obj, Exception) and obj.__module__ == mcp_client.__name__
+        }
+        import qmcp.client as package
+
+        missing = sorted(name for name in raised if not hasattr(package, name))
+        assert not missing, f"raised but not exported from qmcp.client: {missing}"
+
+    def test_the_declared_exports_all_resolve(self):
+        import qmcp.client as package
+
+        for name in package.__all__:
+            assert hasattr(package, name), f"__all__ names {name}, which is absent"
