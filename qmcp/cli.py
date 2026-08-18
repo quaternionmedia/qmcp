@@ -1348,6 +1348,35 @@ def db_stamp(revision: str) -> None:
     raise SystemExit(_alembic("stamp", revision))
 
 
+@cli.command("dashboard")
+@click.option("--database", type=click.Path(path_type=Path), default=None,
+              help="read this database instead of the configured one")
+@click.option("--project", default=None,
+              help="owner/repo this server's rows belong to")
+@click.option("--recent", default=10, show_default=True, help="rows to list")
+@click.option("--json", "as_json", is_flag=True, help="emit the view as data")
+def dashboard(database: Path | None, project: str | None, recent: int,
+              as_json: bool) -> None:
+    """qmcp's own view of what it has run.
+
+    Reads the database directly, not the HTTP API: a dashboard that needed the
+    server up could not tell you why the server is down.
+
+    Put it beside dossier's -- `dossier dashboard` in another pane. The two show
+    different halves of one dataset, joined by the address on every row here.
+    """
+    import json as _json
+
+    from qmcp.dashboard import DEFAULT_PROJECT, build, render, to_dict
+
+    target = database or _configured_database()
+    view = build(target, project or DEFAULT_PROJECT, recent)
+    if as_json:
+        click.echo(_json.dumps(to_dict(view), indent=2))
+        return
+    click.echo(render(view))
+
+
 def main() -> None:
     """Entry point for the CLI."""
     cli()
