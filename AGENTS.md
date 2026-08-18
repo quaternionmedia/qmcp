@@ -107,15 +107,61 @@ what was actually verified.
 ## Setting up, and running the suite
 
 ```
-uv sync --extra dev
+uv sync --all-extras
 uv run pytest -q
 ```
 
-**`mcp` is imported but not declared.** `qmcp_mcp.py` imports it, so
-`tests/test_qmcp_mcp.py` does too, and collection aborts with exit 2 before a
-single test runs. Until it is declared in `pyproject.toml`, "the suite passes"
-is a claim nobody can check in a clean environment -- see conflict C5 in
-`governance/qm/adr/DRAFT-constitution-adoption-scope.md`.
+**Install through the lock.** `uv sync`, never `uv pip install <package>`. An
+unpinned install resolves a different stack: this repository has a recorded
+instance where it dragged `starlette` forward and broke 52 tests, which was a
+property of installing outside the lock rather than of the dependencies.
+
+**The suite runs on a runner now**, in `.github/workflows/tests.yml`. Until it
+did, five checks reported on every pull request and not one of them executed a
+test -- so a green pull request meant the governance checks passed, and a
+reader reasonably took it to mean the code worked. **The runner sees things
+this platform cannot**: `import metaflow` fails on Windows at `import fcntl`,
+so every flow test skips here and runs there. The first CI run found a broken
+import in `examples/flows/approved_deploy.py` that no local run could reach.
+
+**For a dev server you leave running, start it as a module:**
+
+```
+uv run python -m qmcp serve
+```
+
+not `uv run qmcp serve`. The console script is `Scripts/qmcp.exe`, and Windows
+locks a running executable, so any `uv sync` that reinstalls the package fails
+until the server is stopped.
+
+## The tag is the human gate, and nothing else is
+
+**There are exactly two human gates in this organisation.** Ratification, for
+what the constitution says, and **the version tag, for what this project
+ships**. A pull request is neither. Per
+`governance/qm/records/DRAFT-version-tags-are-claims.md`:
+
+- **A version tag is a human act, never an automated or an assistant one.**
+  Assistants prepare releases; a human cuts the tag.
+- **A `v*` tag asserts three things**, all of which must hold at the tagged
+  commit: a human **reviewed** the change set; a human **manually tested** it
+  against its real runtime; and its **deterministic automated validation
+  passed**.
+- **Only deterministic tests count as that validation.** A test that retries,
+  depends on timing, or skips when a fixture is absent contributes nothing.
+  **A skipped test is an absent test that has announced itself** -- better
+  than silence, and still not evidence. This matters here more than in most
+  repositories: the flow tests skip on Windows and the shared address vectors
+  skip until the governance pin carries them, and neither absence may be
+  counted toward a tag.
+- **Everything untagged carries no release claim.** `main`, a pull request and
+  a local build are drafts. They may be perfectly good; they assert nothing,
+  and nobody outside this project may read them as a release.
+
+`.github/workflows/tag-claims.yml` checks what a pushed tag *says* -- that it is
+annotated and carries `Reviewed-by`, `Manually-tested`, `Automated-gate` and
+`Not-covered`. **It cannot check that any of it happened.** It reads an
+annotation a human wrote, after the tag already exists. The gate is the person.
 
 ## Two commands that damage another session's work
 
