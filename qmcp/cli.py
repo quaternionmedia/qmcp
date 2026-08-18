@@ -161,6 +161,25 @@ def _recipe_specs(repo_root: Path) -> dict[str, RecipeSpec]:
             flow_rel="examples/flows/council_deliberation.py",
             required_flags=("--question",),
         ),
+        # Compound recipes
+        "qc-release": RecipeSpec(
+            name="qc-release",
+            description="QC gauntlet + release notes compound pipeline",
+            flow_rel="examples/flows/qc_release.py",
+            required_flags=("--change-summary",),
+        ),
+        "plan-council": RecipeSpec(
+            name="plan-council",
+            description="Plan + council deliberation + refinement",
+            flow_rel="examples/flows/plan_council.py",
+            required_flags=("--goal",),
+        ),
+        "change-impact": RecipeSpec(
+            name="change-impact",
+            description="Full change impact analysis pipeline",
+            flow_rel="examples/flows/change_impact.py",
+            required_flags=("--change-summary",),
+        ),
     }
 
 
@@ -314,7 +333,18 @@ def cli() -> None:
 @click.option("--port", "-p", default=None, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
 def serve(host: str | None, port: int | None, reload: bool) -> None:
-    """Start the MCP server."""
+    """Start the MCP server.
+
+    FOR A DEV SERVER LEFT RUNNING, START IT AS A MODULE:
+
+        uv run python -m qmcp serve
+
+    not `uv run qmcp serve`. The console script is `Scripts/qmcp.exe`, and
+    Windows locks a running executable -- so any `uv sync` that reinstalls the
+    package fails with "The process cannot access the file because it is being
+    used by another process" until the server is stopped. Running the module
+    never opens that file, and `uv sync` works with the server up.
+    """
     _run_server(host, port, reload)
 
 
@@ -1136,6 +1166,215 @@ def test(verbose: bool, coverage: bool, clean: bool, test_path: str | None) -> N
 
     # Exit with pytest's exit code
     sys.exit(result.returncode)
+
+
+@cli.group()
+def db() -> None:
+    """Database backup, verification and restore.
+
+    Nothing here migrates. `qmcp db upgrade` is alembic's, and a backup is not
+    a migration: restoring an old file restores an old schema.
+    """
+    pass
+
+
+def _configured_database() -> Path:
+    """The database file the settings point at, or exit saying why not."""
+    from qmcp.db.paths import database_file
+
+    settings = get_settings()
+    found = database_file(settings.database_url)
+    if found is None:
+        raise SystemExit(
+            f"{settings.database_url}: names no file on disk, so there is "
+            f"nothing to copy. A memory or server database is backed up by "
+            f"whatever runs it."
+        )
+    return found
+
+
+def _show(checked) -> None:
+    click.echo(f"  integrity  {checked.integrity}")
+    for name, count in sorted(checked.tables.items()):
+        click.echo(f"  {name:<24} {count} row(s)")
+
+
+@db.command("backup")
+@click.option("--source", type=click.Path(path_type=Path), default=None,
+              help="database to copy (default: the configured one)")
+@click.option("--to", "destination", type=click.Path(path_type=Path), default=None,
+              help="write here instead of the timestamped default")
+def db_backup(source: Path | None, destination: Path | None) -> None:
+    """Take a verified copy of the database, with the server still running."""
+    from qmcp.db.backup import compare, take
+
+    origin = source or _configured_database()
+    click.echo(f"source      {origin}")
+    target, checked = take(origin, destination)
+    click.echo(f"backup      {target}")
+    _show(checked)
+
+    problems = compare(origin, target)
+    for problem in problems:
+        click.echo(click.style(f"  ! {problem}", fg="red"))
+    if problems:
+        raise SystemExit(f"{len(problems)} difference(s) between source and copy.")
+    click.echo(click.style("verified: same tables, same row counts.", fg="green"))
+    click.echo("This does NOT mean the schema is current -- a backup preserves "
+               "whatever shape it copied.")
+
+
+@db.command("backups")
+@click.option("--source", type=click.Path(path_type=Path), default=None)
+def db_backups(source: Path | None) -> None:
+    """List backups of this database, newest first."""
+    from qmcp.db.backup import listing
+
+    origin = source or _configured_database()
+    found = listing(origin)
+    if not found:
+        click.echo(f"No backups of {origin.name}. `qmcp db backup` takes one.")
+        return
+    click.echo(f"{len(found)} backup(s) of {origin.name}, newest first:")
+    for path in found:
+        click.echo(f"  {path.name:<40} {path.stat().st_size:>10} bytes")
+
+
+@db.command("verify")
+@click.argument("path", type=click.Path(path_type=Path), required=False)
+def db_verify(path: Path | None) -> None:
+    """Open a database and report what was established about it."""
+    from qmcp.db.backup import verify
+
+    target = path or _configured_database()
+    checked = verify(target)
+    click.echo(f"file        {target}")
+    _show(checked)
+    if not checked.ok:
+        raise SystemExit(f"{target}: does not verify ({checked.reason or checked.integrity}).")
+    click.echo(click.style("verified.", fg="green"))
+    click.echo("An intact database can still hold a schema the code has moved "
+               "past -- `qmcp db current` reads that.")
+
+
+@db.command("restore")
+@click.argument("backup", type=click.Path(exists=True, path_type=Path))
+@click.option("--to", "destination", type=click.Path(path_type=Path), default=None)
+@click.confirmation_option(prompt="Replace the database with this backup?")
+def db_restore(backup: Path, destination: Path | None) -> None:
+    """Put a backup back. What is there now is backed up first, always."""
+    from qmcp.db.backup import restore
+
+    target = destination or _configured_database()
+    displaced, checked = restore(backup, target)
+    if displaced:
+        click.echo(f"displaced   {displaced}   (the state that was there)")
+    click.echo(f"restored    {target}")
+    _show(checked)
+    click.echo(click.style("restored.", fg="green"))
+
+@db.command("drift")
+@click.argument("path", type=click.Path(path_type=Path), required=False)
+def db_drift(path: Path | None) -> None:
+    """Does this database have the shape the code expects?
+
+    The question nothing asked before a request did. An intact database and a
+    current one are different facts.
+    """
+    from qmcp.db.schema import drift
+
+    target = path or _configured_database()
+    found = drift(target)
+    click.echo(f"database    {target}")
+    if found.clean:
+        click.echo(click.style("no drift: every model table and column is there.", fg="green"))
+        click.echo("This compares names, not types or constraints -- see "
+                   "qmcp/db/schema.py for what it cannot see.")
+        return
+    for line in found.lines():
+        click.echo(click.style(f"  ! {line}", fg="red"))
+    raise SystemExit(
+        f"{len(found.lines())} difference(s). `qmcp db upgrade` applies pending "
+        f"migrations; a difference that survives one is a missing migration."
+    )
+
+
+def _alembic(*args: str) -> int:
+    """Run alembic in-process, so its exit status is its own."""
+    from alembic.config import main as alembic_main
+
+    try:
+        alembic_main(argv=list(args), prog="qmcp db")
+    except SystemExit as exit_code:
+        return int(exit_code.code or 0)
+    return 0
+
+
+@db.command("current")
+def db_current() -> None:
+    """The revision this database is stamped at."""
+    raise SystemExit(_alembic("current", "--verbose"))
+
+
+@db.command("history")
+def db_history() -> None:
+    """The migration chain."""
+    raise SystemExit(_alembic("history", "--indicate-current"))
+
+
+@db.command("upgrade")
+@click.argument("revision", default="head")
+def db_upgrade(revision: str) -> None:
+    """Apply pending migrations.
+
+    Take a backup first. `qmcp db backup` does it with the server running, and
+    a migration that fails part-way leaves the database changed and its
+    revision unmoved -- which has happened here.
+    """
+    raise SystemExit(_alembic("upgrade", revision))
+
+
+@db.command("stamp")
+@click.argument("revision", default="head")
+@click.confirmation_option(
+    prompt="Stamping asserts the database already has that shape, without checking. Continue?"
+)
+def db_stamp(revision: str) -> None:
+    """Record a revision without running it.
+
+    An assertion, not an operation: it claims the schema is already there.
+    `qmcp db drift` is what checks the claim.
+    """
+    raise SystemExit(_alembic("stamp", revision))
+
+
+@cli.command("dashboard")
+@click.option("--database", type=click.Path(path_type=Path), default=None,
+              help="read this database instead of the configured one")
+@click.option("--project", default=None,
+              help="owner/repo this server's rows belong to")
+@click.option("--recent", default=10, show_default=True, help="rows to list")
+@click.option("--json", "as_json", is_flag=True, help="emit the view as data")
+def dashboard(database: Path | None, project: str | None, recent: int,
+              as_json: bool) -> None:
+    """qmcp's own view of what it has run.
+
+    Reads the database directly, not the HTTP API: a dashboard that needed the
+    server up could not tell you why the server is down.
+
+    Put it beside dossier's -- `dossier dashboard` in another pane. The two show
+    different halves of one dataset, joined by the address on every row here.
+    """
+    import json as _json
+
+    from qmcp.dashboard import DEFAULT_PROJECT, build, render, to_dict
+
+    target = database or _configured_database()
+    view = build(target, project or DEFAULT_PROJECT, recent)
+    if as_json:
+        click.echo(_json.dumps(to_dict(view), indent=2))
+        return
+    click.echo(render(view))
 
 
 def main() -> None:

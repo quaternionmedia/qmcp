@@ -35,6 +35,54 @@ class Topology(SQLModel, table=True):
     def validate_name(cls, value: str) -> str:
         return validate_identifier(value)
 
+    def get_typed_config(self) -> Any:
+        """Return the topology config parsed into its typed config model.
+
+        Resolves the topology type to the corresponding config class and
+        validates ``self.config`` through it.
+
+        Returns:
+            An instance of the appropriate config class (e.g. ``DebateConfig``).
+
+        Raises:
+            ValueError: If no config class is registered for this topology type.
+        """
+        from ..configs.topology import (
+            ChainOfCommandConfig,
+            CompoundConfig,
+            CouncilConfig,
+            CrossCheckConfig,
+            DebateConfig,
+            DelegationConfig,
+            EnsembleConfig,
+            MeshConfig,
+            PipelineConfig,
+            RingConfig,
+            StarConfig,
+        )
+        from ..enums import TopologyType
+
+        _config_map = {
+            TopologyType.DEBATE: DebateConfig,
+            TopologyType.CHAIN_OF_COMMAND: ChainOfCommandConfig,
+            TopologyType.DELEGATION: DelegationConfig,
+            TopologyType.CROSS_CHECK: CrossCheckConfig,
+            TopologyType.ENSEMBLE: EnsembleConfig,
+            TopologyType.PIPELINE: PipelineConfig,
+            TopologyType.COMPOUND: CompoundConfig,
+            TopologyType.MESH: MeshConfig,
+            TopologyType.STAR: StarConfig,
+            TopologyType.RING: RingConfig,
+            TopologyType.COUNCIL: CouncilConfig,
+        }
+
+        config_cls = _config_map.get(self.topology_type)
+        if config_cls is None:
+            raise ValueError(
+                f"No config class registered for topology type {self.topology_type!r}"
+            )
+        return config_cls.model_validate(self.config)
+
 
 class TopologyMembership(SQLModel, table=True):
     """Links agents to topologies."""

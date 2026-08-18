@@ -1,5 +1,7 @@
 """Council deliberation flow for multi-perspective decision making.
 
+Uses ``qmcp.cookbook`` modules for agent building and persistence.
+
 A council topology where an arbiter presides over a plurality/majority seeking
 council of diverse agent perspectives. Each member contributes their unique
 viewpoint until consensus or majority is reached.
@@ -38,13 +40,14 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import os
 from enum import Enum
 from typing import Any
 
 from metaflow import FlowSpec, Parameter, current, step
 from pydantic import BaseModel, Field
+
+from qmcp.cookbook import FlowPersistence, LocalLLMConfig, build_local_agent
 
 
 # =============================================================================
@@ -102,7 +105,6 @@ Style: Rigorous, use "Technically..." framing.""",
 # Output Models (simplified for local LLM compatibility)
 # =============================================================================
 
-# Valid positions - use strings for better local LLM compatibility
 VALID_POSITIONS = ["strongly_for", "for", "neutral", "against", "strongly_against"]
 
 
@@ -183,6 +185,11 @@ class CouncilDeliberationFlow(FlowSpec):
         type=float,
         default=0.67,
     )
+    db_path = Parameter(
+        "db-path",
+        help="SQLite path for deliberation records",
+        default=os.getenv("FLOW_DB_PATH", ".qmcp_devflows.db"),
+    )
     llm_base_url = Parameter(
         "llm-base-url",
         help="OpenAI-compatible base URL (default: local Ollama)",
@@ -211,41 +218,19 @@ class CouncilDeliberationFlow(FlowSpec):
         default=int(os.getenv("LLM_MAX_TOKENS", "512")),
     )
     # MCP URL parameter for compatibility with Docker runner infrastructure
-    # (not used by this flow, but accepted for CLI compatibility)
     mcp_url = Parameter(
         "mcp-url",
         help="MCP server URL (not used by council flow, for CLI compatibility)",
         default=os.getenv("MCP_URL", "http://localhost:3333"),
     )
 
-    def _build_agent(self, system_prompt: str, output_type: type[BaseModel]):
-        """Build a PydanticAI agent with the given configuration."""
-        from openai import AsyncOpenAI
-        from pydantic_ai import Agent
-        from pydantic_ai.models.openai import OpenAIChatModel
-        from pydantic_ai.providers.openai import OpenAIProvider
-        from pydantic_ai.settings import ModelSettings
-
-        # Create custom OpenAI client for local LLM
-        client = AsyncOpenAI(
+    def _llm_config(self) -> LocalLLMConfig:
+        return LocalLLMConfig(
+            model=self.llm_model,
             base_url=self.llm_base_url,
             api_key=self.llm_api_key,
-        )
-        provider = OpenAIProvider(openai_client=client)
-        model = OpenAIChatModel(self.llm_model, provider=provider)
-
-        # Add JSON instruction to help local LLMs
-        json_instruction = "\n\nIMPORTANT: Respond ONLY with valid JSON. No explanation or text before/after."
-
-        return Agent(
-            model=model,
-            system_prompt=system_prompt + json_instruction,
-            output_type=output_type,
-            retries=3,  # More retries for local LLMs
-            model_settings=ModelSettings(
-                temperature=self.llm_temperature,
-                max_tokens=self.llm_max_tokens,
-            ),
+            temperature=self.llm_temperature,
+            max_tokens=self.llm_max_tokens,
         )
 
     def _get_council_contribution(
@@ -257,14 +242,13 @@ class CouncilDeliberationFlow(FlowSpec):
         round_number: int,
     ) -> CouncilContribution:
         """Get a contribution from a council member."""
-        agent = self._build_agent(
+        agent = build_local_agent(
+            config=self._llm_config(),
             system_prompt=COUNCIL_PROMPTS[role],
             output_type=CouncilContribution,
         )
 
-        prompt_parts = [
-            f"QUESTION FOR COUNCIL: {question}",
-        ]
+        prompt_parts = [f"QUESTION FOR COUNCIL: {question}"]
 
         if context:
             prompt_parts.append(f"\nCONTEXT: {context}")
@@ -272,7 +256,6 @@ class CouncilDeliberationFlow(FlowSpec):
         prompt_parts.append(f"\nThis is round {round_number} of deliberation.")
 
         if previous_contributions:
-            # Only show last 3 positions for speed
             prompt_parts.append("\nOTHER POSITIONS:")
             for contrib in previous_contributions[-3:]:
                 prompt_parts.append(f"- {contrib['role'].upper()}: {contrib['position']}")
@@ -294,7 +277,8 @@ class CouncilDeliberationFlow(FlowSpec):
         contributions: list[CouncilContribution],
     ) -> RoundSynthesis:
         """Arbiter synthesizes the round's contributions."""
-        agent = self._build_agent(
+        agent = build_local_agent(
+            config=self._llm_config(),
             system_prompt=COUNCIL_PROMPTS[CouncilRole.ARBITER],
             output_type=RoundSynthesis,
         )
@@ -304,7 +288,6 @@ class CouncilDeliberationFlow(FlowSpec):
             f"\nROUND {round_number} CONTRIBUTIONS:",
         ]
 
-        # Compact format for speed
         for contrib in contributions:
             prompt_parts.append(f"- {contrib.role.upper()}: {contrib.position}")
 
@@ -325,14 +308,13 @@ class CouncilDeliberationFlow(FlowSpec):
         all_rounds: list[dict[str, Any]],
     ) -> CouncilDecision:
         """Arbiter makes the final decision based on all deliberation."""
-        agent = self._build_agent(
+        agent = build_local_agent(
+            config=self._llm_config(),
             system_prompt=COUNCIL_PROMPTS[CouncilRole.ARBITER],
             output_type=CouncilDecision,
         )
 
-        prompt_parts = [
-            f"QUESTION: {question}",
-        ]
+        prompt_parts = [f"QUESTION: {question}"]
 
         if context:
             prompt_parts.append(f"CONTEXT: {context}")
@@ -369,6 +351,19 @@ class CouncilDeliberationFlow(FlowSpec):
     def start(self):
         """Initialize the council deliberation."""
         self.run_id = current.run_id
+        self.fp = FlowPersistence(
+            db_path=self.db_path,
+            flow_name=self.__class__.__name__,
+            run_id=self.run_id,
+            meta={
+                "question": self.question,
+                "context": self.context,
+                "max_rounds": self.max_rounds,
+                "consensus_threshold": self.consensus_threshold,
+                "llm_model": self.llm_model,
+            },
+        ).__enter__()
+
         print(f"Council Deliberation: {self.run_id}")
         print(f"Question: {self.question}")
         print(f"Max rounds: {self.max_rounds}")
@@ -401,7 +396,6 @@ class CouncilDeliberationFlow(FlowSpec):
             print(f"ROUND {self.current_round}")
             print("=" * 60)
 
-            # Gather contributions from each council member
             contributions: list[CouncilContribution] = []
             contribution_dicts: list[dict[str, Any]] = []
 
@@ -418,10 +412,15 @@ class CouncilDeliberationFlow(FlowSpec):
                 contributions.append(contrib)
                 contribution_dicts.append(contrib.model_dump())
 
+                self.fp.agent_run(
+                    role.value,
+                    f"Round {self.current_round} contribution",
+                    contrib.model_dump(),
+                )
+
                 print(f"  Position: {contrib.position}")
                 print(f"  {contrib.reasoning[:100]}...")
 
-            # Arbiter synthesizes the round
             print(f"\nArbiter synthesizing round {self.current_round}...")
             synthesis = self._synthesize_round(
                 question=self.question,
@@ -436,11 +435,12 @@ class CouncilDeliberationFlow(FlowSpec):
             }
             self.all_rounds.append(round_data)
 
+            self.fp.artifact(f"round_{self.current_round}", round_data)
+
             print(f"\nRound {self.current_round} Summary:")
             print(f"  Consensus level: {synthesis.consensus_level:.0%}")
             print(f"  Majority position: {synthesis.majority_position}")
 
-            # Check if consensus reached
             if synthesis.consensus_level >= self.consensus_threshold:
                 self.consensus_reached = True
                 print(f"\nConsensus reached at {synthesis.consensus_level:.0%}!")
@@ -464,6 +464,9 @@ class CouncilDeliberationFlow(FlowSpec):
         )
         self.decision.consensus_reached = self.consensus_reached
 
+        self.fp.agent_run("arbiter_decision", "Final decision", self.decision.model_dump())
+        self.fp.artifact("decision", self.decision.model_dump())
+
         print(f"\nPosition: {self.decision.final_position}")
         print(f"Confidence: {self.decision.confidence:.0%}")
         print(f"Consensus: {'Yes' if self.decision.consensus_reached else 'No'}")
@@ -474,11 +477,12 @@ class CouncilDeliberationFlow(FlowSpec):
     @step
     def end(self):
         """Output the complete deliberation record."""
+        self.fp.__exit__(None, None, None)
+
         print(f"\n{'='*60}")
         print("COUNCIL DELIBERATION COMPLETE")
         print("=" * 60)
 
-        # Full decision output
         print(f"\nQuestion: {self.decision.question}")
         print(f"Rounds: {self.decision.rounds_taken}")
         print(f"Final Position: {self.decision.final_position}")
@@ -501,7 +505,6 @@ class CouncilDeliberationFlow(FlowSpec):
             for view in self.decision.dissenting_views:
                 print(f"  - {view}")
 
-        # Save full deliberation record
         self.deliberation_record = {
             "question": self.question,
             "context": self.context,

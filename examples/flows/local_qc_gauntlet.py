@@ -1,5 +1,8 @@
 """Local QC gauntlet flow that chains multiple LLM agents.
 
+Uses ``qmcp.cookbook`` modules for agent building, persistence, and MCP
+tool invocation.
+
 Usage:
     uv sync --extra flows
     uv run qmcp serve
@@ -16,26 +19,11 @@ from __future__ import annotations
 import json
 import os
 
-from local_dev_db import (
-    init_db,
-    mark_flow_finished,
-    save_agent_run,
-    save_artifact,
-    save_checklist_items,
-    save_flow_run,
-    save_mcp_invocation,
-)
-from local_llm import LocalLLMConfig, build_agent
-from local_mcp import (
-    ExecutorInput,
-    ReviewerInput,
-    check_health,
-    invoke_tool,
-    require_invocation_id,
-)
 from metaflow import FlowSpec, Parameter, current, step
 from pydantic import BaseModel, Field
-from sqlmodel import Session
+
+from qmcp.cookbook import FlowPersistence, LocalLLMConfig, MCPToolInvoker, build_local_agent
+from qmcp.cookbook.mcp_tools import ExecutorInput, ReviewerInput
 
 
 class QCItem(BaseModel):
@@ -129,274 +117,157 @@ class LocalQCGauntletFlow(FlowSpec):
         default=os.getenv("LLM_API_KEY", "local"),
     )
 
+    def _llm_config(self) -> LocalLLMConfig:
+        return LocalLLMConfig(
+            model=self.llm_model,
+            base_url=self.llm_base_url,
+            api_key=self.llm_api_key,
+        )
+
     @step
     def start(self):
         self.run_id = current.run_id
-        engine = init_db(self.db_path)
-        with Session(engine) as session:
-            flow_run = save_flow_run(
-                session,
-                flow_name=self.__class__.__name__,
-                run_id=self.run_id,
-                meta={
-                    "change_summary": self.change_summary,
-                    "target_area": self.target_area,
-                    "constraints": self.constraints,
-                    "llm_model": self.llm_model,
-                    "use_mcp": self.use_mcp,
-                    "mcp_url": self.mcp_url,
-                },
-            )
-            self.flow_run_id = flow_run.id
-            if self.use_mcp:
-                health = check_health(self.mcp_url)
-                save_artifact(
-                    session,
-                    flow_run_id=self.flow_run_id,
-                    kind="mcp_health",
-                    content=health,
-                )
+        self.fp = FlowPersistence(
+            db_path=self.db_path,
+            flow_name=self.__class__.__name__,
+            run_id=self.run_id,
+            meta={
+                "change_summary": self.change_summary,
+                "target_area": self.target_area,
+                "constraints": self.constraints,
+                "llm_model": self.llm_model,
+                "use_mcp": self.use_mcp,
+                "mcp_url": self.mcp_url,
+            },
+        ).__enter__()
 
-        self.mcp_invocations = []
+        self.mcp_invocations: list[dict] = []
+
+        if self.use_mcp:
+            invoker = MCPToolInvoker(self.mcp_url, persistence=self.fp)
+            invoker.health()
 
         self.next(self.draft_checklist)
 
     @step
     def draft_checklist(self):
-        config = LocalLLMConfig(
-            model=self.llm_model,
-            base_url=self.llm_base_url,
-            api_key=self.llm_api_key,
-        )
-        checklist_agent = build_agent(
-            config=config,
+        checklist_agent = build_local_agent(
+            config=self._llm_config(),
             system_prompt="You create QA/QC checklists for local dev cycles.",
-            result_type=QCChecklist,
+            output_type=QCChecklist,
         )
 
-        prompt = "\n".join(
-            [
-                f"Change summary: {self.change_summary}",
-                f"Target area: {self.target_area}",
-                f"Constraints: {self.constraints}",
-                "Draft a QC checklist with commands and expected results when possible.",
-            ]
-        )
+        prompt = "\n".join([
+            f"Change summary: {self.change_summary}",
+            f"Target area: {self.target_area}",
+            f"Constraints: {self.constraints}",
+            "Draft a QC checklist with commands and expected results when possible.",
+        ])
         result = checklist_agent.run_sync(prompt)
-        self.checklist_output = result.data.model_dump()
+        self.checklist_output = result.output.model_dump()
 
-        engine = init_db(self.db_path)
-        with Session(engine) as session:
-            save_agent_run(
-                session,
-                flow_run_id=self.flow_run_id,
-                agent_name="qc_checklist",
-                input_summary=prompt,
-                output=self.checklist_output,
-            )
-            save_artifact(
-                session,
-                flow_run_id=self.flow_run_id,
-                kind="qc_checklist",
-                content=self.checklist_output,
-            )
-
-            item_rows = [item.model_dump() for item in result.data.items]
-            save_checklist_items(session, self.flow_run_id, item_rows)
+        self.fp.agent_run("qc_checklist", prompt, self.checklist_output)
+        self.fp.artifact("qc_checklist", self.checklist_output)
+        self.fp.checklist_items([item.model_dump() for item in result.output.items])
 
         if self.use_mcp:
+            invoker = MCPToolInvoker(self.mcp_url, persistence=self.fp)
             reviewer_input = ReviewerInput(
                 result=self.checklist_output,
                 criteria=["coverage", "risk", "runtime"],
             )
-            mcp_result = invoke_tool(
-                self.mcp_url,
-                tool_name="reviewer",
-                payload=reviewer_input,
+            mcp_result = invoker.invoke(
+                "reviewer", reviewer_input,
                 correlation_id=f"qc-{self.run_id}",
+                artifact_kind="mcp_checklist_review",
             )
-            if mcp_result.error:
-                raise RuntimeError(f"MCP reviewer failed: {mcp_result.error}")
-            invocation_id = require_invocation_id(mcp_result)
-            self.mcp_checklist_review = mcp_result.model_dump()
-            self.mcp_invocations.append({"tool": "reviewer", "invocation_id": invocation_id})
-
-            engine = init_db(self.db_path)
-            with Session(engine) as session:
-                save_mcp_invocation(
-                    session,
-                    flow_run_id=self.flow_run_id,
-                    tool_name="reviewer",
-                    invocation_id=invocation_id,
-                    payload=reviewer_input.model_dump(),
-                    correlation_id=f"qc-{self.run_id}",
-                )
-                save_artifact(
-                    session,
-                    flow_run_id=self.flow_run_id,
-                    kind="mcp_checklist_review",
-                    content=self.mcp_checklist_review,
-                )
+            self.mcp_invocations.append({
+                "tool": "reviewer",
+                "invocation_id": mcp_result.invocation_id,
+            })
 
         self.next(self.expand_tasks)
 
     @step
     def expand_tasks(self):
-        config = LocalLLMConfig(
-            model=self.llm_model,
-            base_url=self.llm_base_url,
-            api_key=self.llm_api_key,
-        )
-        task_agent = build_agent(
-            config=config,
+        task_agent = build_local_agent(
+            config=self._llm_config(),
             system_prompt="You expand QC checklists into runnable task plans.",
-            result_type=QCTaskPlan,
+            output_type=QCTaskPlan,
         )
 
-        prompt = "\n".join(
-            [
-                "Expand the QC checklist into runnable tasks.",
-                f"Checklist JSON:\n{json.dumps(self.checklist_output, indent=2)}",
-            ]
-        )
+        prompt = "\n".join([
+            "Expand the QC checklist into runnable tasks.",
+            f"Checklist JSON:\n{json.dumps(self.checklist_output, indent=2)}",
+        ])
         result = task_agent.run_sync(prompt)
-        self.task_plan_output = result.data.model_dump()
+        self.task_plan_output = result.output.model_dump()
 
-        engine = init_db(self.db_path)
-        with Session(engine) as session:
-            save_agent_run(
-                session,
-                flow_run_id=self.flow_run_id,
-                agent_name="qc_tasks",
-                input_summary="Expand checklist into tasks.",
-                output=self.task_plan_output,
-            )
-            save_artifact(
-                session,
-                flow_run_id=self.flow_run_id,
-                kind="qc_task_plan",
-                content=self.task_plan_output,
-            )
+        self.fp.agent_run("qc_tasks", "Expand checklist into tasks.", self.task_plan_output)
+        self.fp.artifact("qc_task_plan", self.task_plan_output)
 
         if self.use_mcp:
-            plan_steps = []
-            for idx, task in enumerate(self.task_plan_output["tasks"], start=1):
-                plan_steps.append({"step": idx, "action": task["check"]})
+            invoker = MCPToolInvoker(self.mcp_url, persistence=self.fp)
+            plan_steps = [
+                {"step": idx, "action": task["check"]}
+                for idx, task in enumerate(self.task_plan_output["tasks"], start=1)
+            ]
             executor_input = ExecutorInput(
                 plan={"goal": "QC task plan", "steps": plan_steps},
                 dry_run=True,
             )
-            mcp_result = invoke_tool(
-                self.mcp_url,
-                tool_name="executor",
-                payload=executor_input,
+            mcp_result = invoker.invoke(
+                "executor", executor_input,
                 correlation_id=f"qc-{self.run_id}",
+                artifact_kind="mcp_task_execution",
             )
-            if mcp_result.error:
-                raise RuntimeError(f"MCP executor failed: {mcp_result.error}")
-            invocation_id = require_invocation_id(mcp_result)
-            self.mcp_task_execution = mcp_result.model_dump()
-            self.mcp_invocations.append({"tool": "executor", "invocation_id": invocation_id})
-
-            engine = init_db(self.db_path)
-            with Session(engine) as session:
-                save_mcp_invocation(
-                    session,
-                    flow_run_id=self.flow_run_id,
-                    tool_name="executor",
-                    invocation_id=invocation_id,
-                    payload=executor_input.model_dump(),
-                    correlation_id=f"qc-{self.run_id}",
-                )
-                save_artifact(
-                    session,
-                    flow_run_id=self.flow_run_id,
-                    kind="mcp_task_execution",
-                    content=self.mcp_task_execution,
-                )
+            self.mcp_invocations.append({
+                "tool": "executor",
+                "invocation_id": mcp_result.invocation_id,
+            })
 
         self.next(self.gate)
 
     @step
     def gate(self):
-        config = LocalLLMConfig(
-            model=self.llm_model,
-            base_url=self.llm_base_url,
-            api_key=self.llm_api_key,
-        )
-        gate_agent = build_agent(
-            config=config,
+        gate_agent = build_local_agent(
+            config=self._llm_config(),
             system_prompt="You define stop-ship criteria for QC.",
-            result_type=QCGate,
+            output_type=QCGate,
         )
 
-        prompt = "\n".join(
-            [
-                "Define must-pass checks and stop-ship conditions.",
-                f"Checklist JSON:\n{json.dumps(self.checklist_output, indent=2)}",
-                f"Task plan JSON:\n{json.dumps(self.task_plan_output, indent=2)}",
-            ]
-        )
+        prompt = "\n".join([
+            "Define must-pass checks and stop-ship conditions.",
+            f"Checklist JSON:\n{json.dumps(self.checklist_output, indent=2)}",
+            f"Task plan JSON:\n{json.dumps(self.task_plan_output, indent=2)}",
+        ])
         result = gate_agent.run_sync(prompt)
-        self.gate_output = result.data.model_dump()
+        self.gate_output = result.output.model_dump()
 
-        engine = init_db(self.db_path)
-        with Session(engine) as session:
-            save_agent_run(
-                session,
-                flow_run_id=self.flow_run_id,
-                agent_name="qc_gate",
-                input_summary="Define stop-ship criteria.",
-                output=self.gate_output,
-            )
-            save_artifact(
-                session,
-                flow_run_id=self.flow_run_id,
-                kind="qc_gate",
-                content=self.gate_output,
-            )
+        self.fp.agent_run("qc_gate", "Define stop-ship criteria.", self.gate_output)
+        self.fp.artifact("qc_gate", self.gate_output)
 
         if self.use_mcp:
+            invoker = MCPToolInvoker(self.mcp_url, persistence=self.fp)
             reviewer_input = ReviewerInput(
                 result=self.gate_output,
                 criteria=["stop_ship", "risk_flags"],
             )
-            mcp_result = invoke_tool(
-                self.mcp_url,
-                tool_name="reviewer",
-                payload=reviewer_input,
+            mcp_result = invoker.invoke(
+                "reviewer", reviewer_input,
                 correlation_id=f"qc-{self.run_id}",
+                artifact_kind="mcp_gate_review",
             )
-            if mcp_result.error:
-                raise RuntimeError(f"MCP reviewer failed: {mcp_result.error}")
-            invocation_id = require_invocation_id(mcp_result)
-            self.mcp_gate_review = mcp_result.model_dump()
-            self.mcp_invocations.append({"tool": "reviewer", "invocation_id": invocation_id})
-
-            engine = init_db(self.db_path)
-            with Session(engine) as session:
-                save_mcp_invocation(
-                    session,
-                    flow_run_id=self.flow_run_id,
-                    tool_name="reviewer",
-                    invocation_id=invocation_id,
-                    payload=reviewer_input.model_dump(),
-                    correlation_id=f"qc-{self.run_id}",
-                )
-                save_artifact(
-                    session,
-                    flow_run_id=self.flow_run_id,
-                    kind="mcp_gate_review",
-                    content=self.mcp_gate_review,
-                )
+            self.mcp_invocations.append({
+                "tool": "reviewer",
+                "invocation_id": mcp_result.invocation_id,
+            })
 
         self.next(self.end)
 
     @step
     def end(self):
-        engine = init_db(self.db_path)
-        with Session(engine) as session:
-            mark_flow_finished(session, self.flow_run_id)
+        self.fp.__exit__(None, None, None)
 
         print("Checklist items:", len(self.checklist_output["items"]))
         print("Task plan tasks:", len(self.task_plan_output["tasks"]))

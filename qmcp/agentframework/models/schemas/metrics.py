@@ -59,8 +59,8 @@ class ToolInvocationRead(SQLModel):
     """Schema for reading tool invocation data."""
 
     id: UUID
-    execution_id: UUID
-    agent_instance_id: UUID
+    execution_id: UUID | None
+    agent_instance_id: UUID | None
     tool_name: str
     input_data: dict[str, Any]
     output_data: dict[str, Any] | None

@@ -35,6 +35,10 @@ class TestAgentRole:
             "specialist",
             "coordinator",
             "observer",
+            "validator",
+            "transformer",
+            "aggregator",
+            "router",
         }
         actual_roles = {role.value for role in AgentRole}
         assert expected_roles == actual_roles

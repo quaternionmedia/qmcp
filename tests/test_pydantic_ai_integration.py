@@ -1,5 +1,7 @@
 """Tests for PydanticAI integration module."""
 
+import os
+
 import pytest
 
 from qmcp.agentframework.models import (
@@ -9,6 +11,24 @@ from qmcp.agentframework.models import (
     ModelTier,
     Models,
 )
+
+
+def _pydantic_ai_installed() -> bool:
+    try:
+        from qmcp.integrations.pydantic_ai.agents import PYDANTIC_AI_AVAILABLE
+        return PYDANTIC_AI_AVAILABLE
+    except Exception:
+        return False
+
+
+def _anthropic_ready() -> bool:
+    """True only when pydantic-ai is installed AND a local/mock API key is present.
+
+    Tests that instantiate an Anthropic provider (which validates the key at
+    construction time) are skipped unless ANTHROPIC_API_KEY is set, to avoid
+    requiring an external API in CI or on-device runs.
+    """
+    return _pydantic_ai_installed() and bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 class TestModelConversion:
@@ -101,8 +121,8 @@ class TestAgentCreation:
         assert isinstance(PYDANTIC_AI_AVAILABLE, bool)
 
     @pytest.mark.skipif(
-        not __import__("qmcp.integrations.pydantic_ai.agents", fromlist=["PYDANTIC_AI_AVAILABLE"]).PYDANTIC_AI_AVAILABLE,
-        reason="pydantic-ai not installed",
+        not _anthropic_ready(),
+        reason="pydantic-ai not installed or ANTHROPIC_API_KEY not set",
     )
     def test_create_agent_basic(self):
         """Test creating an agent with basic configuration."""
@@ -116,8 +136,8 @@ class TestAgentCreation:
         assert agent is not None
 
     @pytest.mark.skipif(
-        not __import__("qmcp.integrations.pydantic_ai.agents", fromlist=["PYDANTIC_AI_AVAILABLE"]).PYDANTIC_AI_AVAILABLE,
-        reason="pydantic-ai not installed",
+        not _anthropic_ready(),
+        reason="pydantic-ai not installed or ANTHROPIC_API_KEY not set",
     )
     def test_agent_builder(self):
         """Test the fluent builder API."""
@@ -137,7 +157,7 @@ class TestQMCPToolset:
     """Tests for QMCPToolset (basic initialization tests)."""
 
     @pytest.mark.skipif(
-        not __import__("qmcp.integrations.pydantic_ai.agents", fromlist=["PYDANTIC_AI_AVAILABLE"]).PYDANTIC_AI_AVAILABLE,
+        not _pydantic_ai_installed(),
         reason="pydantic-ai not installed",
     )
     def test_toolset_initialization(self):
@@ -153,7 +173,7 @@ class TestQMCPToolset:
         assert toolset.tool_prefix == "test_"
 
     @pytest.mark.skipif(
-        not __import__("qmcp.integrations.pydantic_ai.agents", fromlist=["PYDANTIC_AI_AVAILABLE"]).PYDANTIC_AI_AVAILABLE,
+        not _pydantic_ai_installed(),
         reason="pydantic-ai not installed",
     )
     def test_toolset_strips_trailing_slash(self):

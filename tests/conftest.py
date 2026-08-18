@@ -1,8 +1,16 @@
 """Shared test fixtures for pytest."""
 
+import sys
 import uuid
+from pathlib import Path
 
 import pytest
+
+# Ensure the repo root is on sys.path so root-level modules (e.g. qmcp_mcp)
+# are importable regardless of the working directory pytest is invoked from.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 
 @pytest.fixture

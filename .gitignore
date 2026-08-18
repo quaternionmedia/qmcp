@@ -14,4 +14,8 @@ wheels/
 # Metaflow artifacts
 .metaflow/
 
-.vscode/
+# Excluding the contents rather than the directory: git does not descend
+# into an excluded directory, so a negation under `.vscode/` never fires.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
