@@ -333,7 +333,18 @@ def cli() -> None:
 @click.option("--port", "-p", default=None, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
 def serve(host: str | None, port: int | None, reload: bool) -> None:
-    """Start the MCP server."""
+    """Start the MCP server.
+
+    FOR A DEV SERVER LEFT RUNNING, START IT AS A MODULE:
+
+        uv run python -m qmcp serve
+
+    not `uv run qmcp serve`. The console script is `Scripts/qmcp.exe`, and
+    Windows locks a running executable -- so any `uv sync` that reinstalls the
+    package fails with "The process cannot access the file because it is being
+    used by another process" until the server is stopped. Running the module
+    never opens that file, and `uv sync` works with the server up.
+    """
     _run_server(host, port, reload)
 
 
