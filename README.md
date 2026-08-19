@@ -1,6 +1,12 @@
 # QMCP - Model Context Protocol Server
 
-A spec-aligned **Model Context Protocol (MCP) server** built with FastAPI.
+An AI assistant can only use a tool somebody has exposed to it. qmcp is the
+server that does the exposing: it publishes your tools, runs them when an
+assistant asks, records every invocation, and stops for a human when a step
+needs one.
+
+It speaks the **Model Context Protocol**, so any client that speaks it can use
+these tools without being told about them in advance. Built with FastAPI.
 
 ## Features
 
