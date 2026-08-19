@@ -49,4 +49,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run the suite
-        run: uv run pytest -q
+        # Both paths named: `testpaths` is ignored once pytest is given
+        # a path, so a walkthrough left to configuration alone would
+        # be collected by nobody and stay green forever.
+        run: uv run pytest tests walkthrough -q

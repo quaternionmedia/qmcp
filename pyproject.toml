@@ -72,7 +72,16 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["tests"]
+# `walkthrough` is listed, and every invocation names both paths explicitly.
+# `testpaths` is ignored the moment pytest is given a path argument, so a
+# walkthrough wired only here would be collected by nobody and stay green
+# forever.
+testpaths = ["tests", "walkthrough"]
+
+# Without this the walkthrough pages are collected as nothing: pytest sees a
+# directory of markdown and reports success for zero tests. Naming the path is
+# necessary and not sufficient.
+addopts = "--doctest-glob=*.md"
 markers = [
     "asyncio: marks tests as async (handled by pytest-asyncio)",
     "integration: marks tests that require external services (Ollama, live MCP server, etc.) - skipped by default in CI",
