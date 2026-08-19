@@ -28,6 +28,16 @@ WHAT IT CANNOT SEE.
   * dossier's half of any row. This addresses its own data so the two *can* be
     joined; it does not do the joining, and it holds no opinion about which
     view is right -- that is `records/DRAFT-a-disagreement-is-a-delta.md`.
+
+A COUNT NOBODY COULD TAKE IS `unknown`, NEVER ZERO. When a table this reads is
+absent, the payload carries `{"unknown": "<reason>"}` in place of the number.
+Schema 1 emitted `0`, which made a database missing its tables indistinguishable
+from a harness that had run nothing -- and the consumer stored the zero as fact.
+The docstring on the terminal renderer said the table counts told them apart;
+they do not, because a database holding two unrelated tables reports a count
+like any other. The convention is the corpus's own, stated in
+`harness-status.json`'s reading block: unknown is a value, it says why, and it
+is not zero, not empty and not compliant.
 """
 
 from __future__ import annotations
@@ -41,6 +51,18 @@ from qmcp.addresses import invocation_address
 
 DEFAULT_PROJECT = "quaternionmedia/qmcp"
 RECENT = 10
+SCHEMA = 2
+
+# The tables this reads. Named so the payload can say which one was missing
+# rather than reporting a number nobody took.
+INVOCATIONS = "tool_invocations"
+HUMAN_REQUESTS = "human_requests"
+HUMAN_RESPONSES = "human_responses"
+
+
+def unknown(table: str) -> dict:
+    """A count that could not be taken, and why."""
+    return {"unknown": f"no {table} table in this database"}
 
 
 @dataclass(frozen=True)
@@ -66,16 +88,27 @@ class View:
 
     project: str
     database: Path
-    total: int = 0
+    total: int | None = None
     by_tool: dict[str, int] = field(default_factory=dict)
     by_status: dict[str, int] = field(default_factory=dict)
     recent: list[Invocation] = field(default_factory=list)
-    human_requests: int = 0
-    human_responses: int = 0
+    human_requests: int | None = None
+    human_responses: int | None = None
     tables: int = 0
 
+    # Every table this view wanted and did not find. Empty is the healthy case.
+    missing: tuple[str, ...] = ()
+
     @property
-    def failures(self) -> int:
+    def failures(self) -> int | None:
+        """How many invocations were not successful, or None if none were counted.
+
+        None rather than 0: with no invocations table there is nothing to
+        classify, and reporting no failures would be a clean bill of health
+        issued without an examination.
+        """
+        if self.total is None:
+            return None
         return sum(count for status, count in self.by_status.items()
                    if status.lower() not in ("success", "pending"))
 
@@ -86,15 +119,19 @@ def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
     ).fetchone() is not None
 
 
-def _count(connection: sqlite3.Connection, table: str) -> int:
-    """Row count, or zero when the table is not there.
+def _count(connection: sqlite3.Connection, table: str) -> int | None:
+    """Row count, or None when the table is not there.
 
-    Absent rather than an error: this database has been in states where a table
-    the code expects does not exist, and a dashboard that raised then would be
-    unavailable exactly when it was needed to explain why.
+    Not raising is right and was never the question: this database has been in
+    states where a table the code expects does not exist, and a dashboard that
+    raised then would be unavailable exactly when it was needed to explain why.
+
+    Returning zero was the error. Zero is an answer, and the honest report is
+    that nobody could take the count -- which the caller turns into
+    `{"unknown": ...}` on the way out.
     """
     if not _table_exists(connection, table):
-        return 0
+        return None
     return connection.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
 
 
@@ -113,8 +150,15 @@ def build(database: Path, project: str = DEFAULT_PROJECT,
                 "AND name NOT LIKE 'sqlite_%'"
             )
         ])
-        if not _table_exists(connection, "tool_invocations"):
-            return View(project=project, database=database, tables=tables)
+        missing = tuple(
+            name for name in (INVOCATIONS, HUMAN_REQUESTS, HUMAN_RESPONSES)
+            if not _table_exists(connection, name)
+        )
+        if INVOCATIONS in missing:
+            return View(project=project, database=database, tables=tables,
+                        human_requests=_count(connection, HUMAN_REQUESTS),
+                        human_responses=_count(connection, HUMAN_RESPONSES),
+                        missing=missing)
 
         rows = list(connection.execute(
             "SELECT id, tool_name, status, duration_ms, created_at, error "
@@ -138,27 +182,36 @@ def build(database: Path, project: str = DEFAULT_PROJECT,
                 )
                 for r in rows[:recent]
             ],
-            human_requests=_count(connection, "human_requests"),
-            human_responses=_count(connection, "human_responses"),
+            human_requests=_count(connection, HUMAN_REQUESTS),
+            human_responses=_count(connection, HUMAN_RESPONSES),
             tables=tables,
+            missing=missing,
         )
     finally:
         connection.close()
 
 
 def to_dict(view: View) -> dict:
-    """The view as data, for a renderer that is not this one."""
+    """The view as data, for a renderer that is not this one.
+
+    A count of None becomes `{"unknown": "<reason>"}`. A consumer that treats
+    that as zero is making a claim this side declined to make.
+    """
+    def count(value: int | None, table: str):
+        return unknown(table) if value is None else value
+
     return {
-        "schema": 1,
+        "schema": SCHEMA,
         "project": view.project,
         "database": str(view.database),
         "totals": {
-            "invocations": view.total,
-            "failures": view.failures,
-            "human_requests": view.human_requests,
-            "human_responses": view.human_responses,
+            "invocations": count(view.total, INVOCATIONS),
+            "failures": count(view.failures, INVOCATIONS),
+            "human_requests": count(view.human_requests, HUMAN_REQUESTS),
+            "human_responses": count(view.human_responses, HUMAN_RESPONSES),
             "tables": view.tables,
         },
+        "missing_tables": list(view.missing),
         "by_tool": view.by_tool,
         "by_status": view.by_status,
         "recent": [
@@ -177,24 +230,34 @@ def to_dict(view: View) -> dict:
 
 def render(view: View) -> str:
     """The terminal view. Reads the `View` and queries nothing."""
+    def shown(value: int | None) -> str:
+        return "unknown" if value is None else str(value)
+
     out = [
         f"qmcp  {view.project}",
         f"{view.database}",
         "",
-        f"  invocations   {view.total}"
+        f"  invocations   {shown(view.total)}"
         + (f"   ({view.failures} not successful)" if view.failures else ""),
-        f"  human loop    {view.human_requests} request(s), "
-        f"{view.human_responses} response(s)",
+        f"  human loop    {shown(view.human_requests)} request(s), "
+        f"{shown(view.human_responses)} response(s)",
         f"  tables        {view.tables}",
         "",
     ]
 
-    if not view.total:
+    if view.missing:
+        out += [
+            "  This database is missing " + ", ".join(view.missing) + ".",
+            "  The counts above are unknown rather than zero: nobody took them.",
+            "  A table count does not tell this apart from an idle harness -- a",
+            "  database of unrelated tables counts like any other.",
+            "",
+        ]
+    elif not view.total:
         out += [
             "  Nothing has been invoked against this database.",
-            "  An empty dashboard and a broken one look the same -- the table "
-            "counts above",
-            "  are what tells them apart.",
+            "  Every table this reads is present, so this is an idle harness",
+            "  rather than an unreadable one.",
             "",
         ]
     else:

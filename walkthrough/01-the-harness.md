@@ -29,13 +29,44 @@ never re-parsed, because an identifier may contain slashes:
 `qmcp dashboard` is qmcp's own view of itself. The JSON form is what crosses to
 a control panel:
 
-    >>> from qmcp.dashboard import to_dict
-    >>> sorted(k for k in ("schema", "project", "totals", "recent"))
-    ['project', 'recent', 'schema', 'totals']
+    >>> import sqlite3, tempfile
+    >>> from pathlib import Path
+    >>> from sqlmodel import SQLModel, create_engine
+    >>> from qmcp.db.models import ToolInvocation
+    >>> from qmcp.dashboard import build, to_dict
+
+    >>> root = Path(tempfile.mkdtemp())
+    >>> engine = create_engine(f"sqlite:///{(root / 'a.db').as_posix()}")
+    >>> SQLModel.metadata.create_all(engine)
+    >>> sorted(to_dict(build(root / "a.db")))
+    ['by_status', 'by_tool', 'database', 'missing_tables', 'project', 'recent', 'schema', 'totals']
+
+That list came out of the emitter. It used to be a sorted copy of the keys
+written into this page, which is a sentence about itself: the example passed
+whatever `to_dict` returned.
 
 `totals` are counts over this harness's whole history. `recent` is an excerpt.
 They are different claims and a consumer must not derive one from the other —
 which is why the payload carries both rather than leaving it to be worked out.
+
+## A count nobody took is not a count of zero
+
+When a table this reads is absent, the count is `unknown` with a reason:
+
+    >>> broken = root / "b.db"
+    >>> connection = sqlite3.connect(str(broken))
+    >>> _ = connection.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+    >>> connection.commit(); connection.close()
+
+    >>> to_dict(build(broken))["totals"]["invocations"]
+    {'unknown': 'no tool_invocations table in this database'}
+
+Zero would say somebody counted. The table count does not carry the difference
+either — this database reports one like any other — so a consumer reading zero
+here would record a harness with nothing wrong:
+
+    >>> to_dict(build(broken))["totals"]["tables"]
+    1
 
 ## Units of work cross as deltas
 
