@@ -1511,6 +1511,54 @@ def threads_sources(root: Path | None) -> None:
         click.echo("")
 
 
+@threads.command("import")
+@click.argument("export", type=click.Path(exists=True, path_type=Path))
+@click.option("--root", type=click.Path(path_type=Path), default=None,
+              help="the cache to unpack into instead of the default")
+@click.option("--source", type=click.Choice(["claude", "chatgpt"]), default=None,
+              help="which service wrote it, when the shape cannot say")
+@click.option("--dry-run", is_flag=True, help="report and write nothing")
+def threads_import(export: Path, root: Path | None, source: str | None,
+                   dry_run: bool) -> None:
+    """Unpack an official data export into the cache.
+
+    EXPORT is the ZIP the service produced, or a `conversations.json` already
+    unpacked from one.
+
+    
+    THE API IS NOT A ROUTE TO THIS DATA. Neither Anthropic's nor OpenAI's API
+    exposes the conversation history of claude.ai or chatgpt.com -- they are
+    products for making new model calls, against different storage, with no
+    endpoint that lists your threads. The export is the sanctioned route and
+    requesting it is the account holder's, in the web interface.
+
+    Nothing here reaches the network or spends anything.
+    """
+    from qmcp.threads.importer import positional, render, unpack
+
+    directory = _root(root)
+    try:
+        report = unpack(export, directory, source=source, dry_run=dry_run)
+    except (ValueError, OSError) as exc:
+        raise SystemExit(f"{export.name}: {exc}") from exc
+
+    click.echo(render(report, directory, dry_run))
+
+    fallback = list(positional(report))
+    if fallback:
+        click.echo("")
+        click.echo(f"  {len(fallback)} conversation(s) carried no id and were "
+                   f"named by position.")
+        click.echo("  A later export with one deleted shifts those names, and "
+                   "the index would")
+        click.echo("  read that as many threads diverging at once. Worth "
+                   "knowing before it does.")
+
+    if not dry_run and report.total:
+        click.echo("")
+        click.echo("  Next: uv run qmcp threads index --write")
+
+
 @threads.command("index")
 @click.option("--root", type=click.Path(path_type=Path), default=None)
 @click.option("--write", is_flag=True, help="write the index")
