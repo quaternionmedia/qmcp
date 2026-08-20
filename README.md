@@ -89,6 +89,41 @@ with MCPClient(base_url="http://localhost:3333") as client:
 
 See [docs/client.md](docs/client.md) for full API documentation.
 
+## Validating itself, and the human loop
+
+qmcp can be pointed at its own repository. Each check is a real subprocess,
+recorded as the same invocation row the server writes when a tool is called over
+HTTP — so `qmcp dashboard` reads a self-check back like anything else.
+
+```bash
+# run this repository's own gates, recording each one
+qmcp selfcheck --database run.db
+
+# a failing check raises a question. What is waiting on a person:
+qmcp human list --database run.db
+
+# answer it. This is a person acting, and it is recorded as one:
+qmcp human respond selfcheck-tag-claims defer --database run.db --by "your name"
+```
+
+A failing check becomes a unit of work; a passing one becomes nothing, because a
+green gate is not work. It opens at `brainstorm` — noticing is not deciding —
+and moves to `planning` once somebody answers. It goes no further: re-running a
+check cannot establish that anybody acted on it.
+
+`walkthrough/02-a-run-that-found-something.md` executes the whole thing, with
+real subprocesses.
+
+**The pair.** qmcp is the harness; [dossier](https://github.com/quaternionmedia/dossier)
+is the control panel. Neither imports the other — what crosses is a schema, and
+an address names the same row on both sides:
+
+```bash
+qmcp selfcheck --database run.db --deltas > deltas.json   # units of work
+qmcp dashboard --database run.db --json   > harness.json  # what has run
+# then, in dossier: dossier deltas ingest / dossier harness ingest
+```
+
 ## CLI Commands
 
 ```bash
