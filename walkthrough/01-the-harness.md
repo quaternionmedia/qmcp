@@ -39,7 +39,7 @@ a control panel:
     >>> engine = create_engine(f"sqlite:///{(root / 'a.db').as_posix()}")
     >>> SQLModel.metadata.create_all(engine)
     >>> sorted(to_dict(build(root / "a.db")))
-    ['by_status', 'by_tool', 'database', 'missing_tables', 'project', 'recent', 'schema', 'totals']
+    ['by_status', 'by_tool', 'database', 'missing_tables', 'project', 'recent', 'schema', 'totals', 'waiting']
 
 That list came out of the emitter. It used to be a sorted copy of the keys
 written into this page, which is a sentence about itself: the example passed
@@ -67,6 +67,29 @@ here would record a harness with nothing wrong:
 
     >>> to_dict(build(broken))["totals"]["tables"]
     1
+
+## The human queue crosses as questions, not as a count
+
+`totals` says how many questions are outstanding. `waiting` says which:
+
+    >>> from qmcp.db.models import HumanRequest, HumanRequestStatus
+    >>> from sqlmodel import Session
+    >>> with Session(engine) as session:
+    ...     session.add(HumanRequest(
+    ...         id="approve-the-tag", request_type="decision",
+    ...         prompt="Ship it?", options=["yes", "no"],
+    ...         status=HumanRequestStatus.PENDING))
+    ...     session.commit()
+
+    >>> [row["address"] for row in to_dict(build(root / "a.db"))["waiting"]]
+    ['quaternionmedia/qmcp/ask/approve-the-tag']
+
+    >>> to_dict(build(root / "a.db"))["waiting"][0]["options"]
+    ['yes', 'no']
+
+A count is not something anybody can answer. The address is `ask`, and the id
+is the request's own, so a control panel that already showed this question
+finds the same row next time rather than a second one.
 
 ## Units of work cross as deltas
 

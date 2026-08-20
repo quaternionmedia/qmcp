@@ -35,7 +35,7 @@ from dataclasses import dataclass
 SCHEMA = 1
 
 KINDS: frozenset[str] = frozenset({
-    "branch", "pr", "issue", "ver", "doc", "delta", "invocation",
+    "branch", "pr", "issue", "ver", "doc", "delta", "invocation", "ask",
 })
 
 # Reserved by dossier for entities that are not repository-scoped.
@@ -94,6 +94,19 @@ def format_address(owner: str, repo: str, kind: str, identifier: str = "") -> st
     if kind != REPO and not identifier:
         raise ValueError(f"a {kind} address needs an id")
     return Address(owner, repo, kind, identifier).format()
+
+
+def ask_address(request_id: str, project: str) -> str:
+    """`quaternionmedia/qmcp/ask/<id>` for one question put to a person.
+
+    The id is the request's own and is stable across runs, so a control panel
+    that already showed this question finds the same row rather than a second
+    one.
+    """
+    owner, _, repo = project.partition("/")
+    if not owner or not repo:
+        raise ValueError(f"{project!r}: expected owner/repo")
+    return format_address(owner, repo, "ask", request_id)
 
 
 def invocation_address(invocation_id: str, project: str) -> str:

@@ -29,6 +29,13 @@ WHAT IT CANNOT SEE.
     joined; it does not do the joining, and it holds no opinion about which
     view is right -- that is `records/DRAFT-a-disagreement-is-a-delta.md`.
 
+THE HUMAN QUEUE CROSSES AS ROWS, NOT AS A COUNT. Schema 2 carried
+`human_requests: 1` and nothing else, so a control panel could say that one
+thing was waiting on a person and never which thing -- and a count is not
+something anybody can answer. Each question now crosses addressed, as
+`<owner>/<repo>/ask/<id>`, with its prompt, its options, and its answer if it
+has one.
+
 A COUNT NOBODY COULD TAKE IS `unknown`, NEVER ZERO. When a table this reads is
 absent, the payload carries `{"unknown": "<reason>"}` in place of the number.
 Schema 1 emitted `0`, which made a database missing its tables indistinguishable
@@ -42,12 +49,13 @@ is not zero, not empty and not compliant.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from qmcp.addresses import invocation_address
+from qmcp.addresses import ask_address, invocation_address
 
 DEFAULT_PROJECT = "quaternionmedia/qmcp"
 RECENT = 10
@@ -79,6 +87,32 @@ class Invocation:
 
 
 @dataclass(frozen=True)
+class Waiting:
+    """One question put to a person, and the answer if it has arrived.
+
+    `answered_with` is None while it is outstanding. A row that carries an
+    answer is kept rather than dropped: what was asked and what was said are
+    the audit trail, and a queue that forgets answered questions cannot show
+    anybody why a thing was decided.
+    """
+
+    id: str
+    address: str
+    request_type: str
+    prompt: str
+    options: list[str]
+    status: str
+    created_at: str
+    answered_with: str | None = None
+    answered_by: str | None = None
+    answered_at: str | None = None
+
+    @property
+    def outstanding(self) -> bool:
+        return self.answered_with is None
+
+
+@dataclass(frozen=True)
 class View:
     """Everything the dashboard shows, separated from how it is shown.
 
@@ -94,6 +128,7 @@ class View:
     recent: list[Invocation] = field(default_factory=list)
     human_requests: int | None = None
     human_responses: int | None = None
+    waiting: list[Waiting] = field(default_factory=list)
     tables: int = 0
 
     # Every table this view wanted and did not find. Empty is the healthy case.
@@ -135,6 +170,55 @@ def _count(connection: sqlite3.Connection, table: str) -> int | None:
     return connection.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
 
 
+def _waiting(connection: sqlite3.Connection, project: str,
+             limit: int) -> list[Waiting]:
+    """The human queue, outstanding first, each row addressed.
+
+    Outstanding first because that is the order a person acts in. Answered rows
+    are kept because what was asked and what was said is the audit trail.
+
+    A left join rather than two queries: a request whose response arrived
+    between them would otherwise read as outstanding, which is the wrong
+    answer in the direction that matters.
+    """
+    if not _table_exists(connection, HUMAN_REQUESTS):
+        return []
+    responses = _table_exists(connection, HUMAN_RESPONSES)
+    rows = connection.execute(
+        f"""SELECT r.id, r.request_type, r.prompt, r.options, r.status,
+                   r.created_at,
+                   {'p.response, p.responded_by, p.created_at' if responses
+                    else 'NULL, NULL, NULL'} AS answered
+            FROM "{HUMAN_REQUESTS}" r
+            {f'LEFT JOIN "{HUMAN_RESPONSES}" p ON p.request_id = r.id'
+             if responses else ''}
+            ORDER BY r.created_at"""
+    ).fetchall()
+
+    queue = []
+    for row in rows:
+        raw = row["options"]
+        try:
+            options = json.loads(raw) if isinstance(raw, str) else (raw or [])
+        except json.JSONDecodeError:
+            options = []
+        answered = row[6] if responses else None
+        queue.append(Waiting(
+            id=str(row["id"]),
+            address=ask_address(str(row["id"]), project),
+            request_type=str(row["request_type"]),
+            prompt=str(row["prompt"]),
+            options=list(options or []),
+            status=str(row["status"]),
+            created_at=str(row["created_at"]),
+            answered_with=None if answered is None else str(answered),
+            answered_by=None if not responses or row[7] is None else str(row[7]),
+            answered_at=None if not responses or row[8] is None else str(row[8]),
+        ))
+    queue.sort(key=lambda item: (not item.outstanding, item.created_at))
+    return queue[:limit]
+
+
 def build(database: Path, project: str = DEFAULT_PROJECT,
           recent: int = RECENT) -> View:
     """Read the database and return what the dashboard shows."""
@@ -158,6 +242,7 @@ def build(database: Path, project: str = DEFAULT_PROJECT,
             return View(project=project, database=database, tables=tables,
                         human_requests=_count(connection, HUMAN_REQUESTS),
                         human_responses=_count(connection, HUMAN_RESPONSES),
+                        waiting=_waiting(connection, project, recent),
                         missing=missing)
 
         rows = list(connection.execute(
@@ -184,6 +269,7 @@ def build(database: Path, project: str = DEFAULT_PROJECT,
             ],
             human_requests=_count(connection, HUMAN_REQUESTS),
             human_responses=_count(connection, HUMAN_RESPONSES),
+            waiting=_waiting(connection, project, recent),
             tables=tables,
             missing=missing,
         )
@@ -212,6 +298,21 @@ def to_dict(view: View) -> dict:
             "tables": view.tables,
         },
         "missing_tables": list(view.missing),
+        "waiting": [
+            {
+                "address": item.address,
+                "id": item.id,
+                "request_type": item.request_type,
+                "prompt": item.prompt,
+                "options": list(item.options),
+                "status": item.status,
+                "created_at": item.created_at,
+                "answered_with": item.answered_with,
+                "answered_by": item.answered_by,
+                "answered_at": item.answered_at,
+            }
+            for item in view.waiting
+        ],
         "by_tool": view.by_tool,
         "by_status": view.by_status,
         "recent": [
@@ -240,10 +341,22 @@ def render(view: View) -> str:
         f"  invocations   {shown(view.total)}"
         + (f"   ({view.failures} not successful)" if view.failures else ""),
         f"  human loop    {shown(view.human_requests)} request(s), "
-        f"{shown(view.human_responses)} response(s)",
+        f"{shown(view.human_responses)} response(s)"
+        + (f"   -- {len([w for w in view.waiting if w.outstanding])} outstanding"
+           if view.waiting else ""),
         f"  tables        {view.tables}",
         "",
     ]
+
+    outstanding = [item for item in view.waiting if item.outstanding]
+    if outstanding:
+        out.append("  waiting on a person")
+        for item in outstanding:
+            out.append(f"    {item.address}")
+            out.append(f"      {item.prompt}")
+            if item.options:
+                out.append(f"      options: {', '.join(item.options)}")
+        out.append("")
 
     if view.missing:
         out += [
