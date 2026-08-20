@@ -55,6 +55,18 @@ NOTICED = "brainstorm"
 THREAD_LINK = "thread"
 TURN_LINK = "turn"
 
+# A THREAD IS ITSELF A DELTA, NOT A NEW ADDRESS KIND. That is the cheaper answer
+# and the truer one: a conversation is a unit of work -- it was started for a
+# reason, it runs, and at some point somebody is done with it. Adding a `thread`
+# kind to the org grammar would have made it a different category of thing and
+# then needed a relation invented to tie it to what it produced.
+#
+# As a delta it gets `<owner>/<repo>/delta/<id>` for free, and the decisions it
+# settled are `part-of` it -- a relation the composition vocabulary already has,
+# with a test somebody can apply: closing the whole requires closing this.
+THREAD_TYPE = "thread"
+PART_OF = "part-of"
+
 
 @dataclass(frozen=True)
 class Turn:
@@ -204,6 +216,66 @@ def to_delta(decision: Decision, thread: Thread, *, project: str,
     }
 
 
+def thread_name(thread: Thread) -> str:
+    """The delta name for a thread itself.
+
+    Prefixed, because a thread id and a decision name live in the same
+    namespace once both are deltas, and an id that collided would silently make
+    two different things one row.
+    """
+    return f"thread-{thread.id}"
+
+
+def to_thread_delta(thread: Thread, *, project: str,
+                    perspective: str) -> dict[str, Any]:
+    """The conversation itself, as a delta.
+
+    Its phase is `brainstorm` like anything else a detector noticed. A thread
+    that has been read and acted on is further along, and nothing here can
+    establish that -- `complete` stays a person's, the way it is everywhere
+    else in this corpus.
+    """
+    if not perspective:
+        raise ValueError("a thread delta names the perspective it speaks from")
+
+    return {
+        "schema": 1,
+        "project": project,
+        "perspective": perspective,
+        "delta": {
+            "name": thread_name(thread),
+            "title": thread.title or f"Thread {thread.id}",
+            "description": (thread.url or ""),
+            "phase": NOTICED,
+            "delta_type": THREAD_TYPE,
+            "priority": "medium",
+        },
+        "links": [
+            {"link_type": "address", "target_id": None,
+             "target_name": f"{project}/delta/{thread_name(thread)}"},
+            {"link_type": THREAD_LINK, "target_id": None,
+             "target_name": thread.url or thread.id},
+        ],
+    }
+
+
+def relations_for(thread: Thread, decisions: list[Decision], *,
+                  project: str) -> list[dict[str, str]]:
+    """Each decision is `part-of` the thread that settled it.
+
+    Stated rather than derived. A consumer must not infer containment from two
+    rows sharing a prefix -- `DRAFT-deltas-compose.md` 5 -- so the relation
+    crosses explicitly, in the vocabulary that already has it.
+    """
+    whole = f"{project}/delta/{thread_name(thread)}"
+    return [
+        {"source": f"{project}/delta/{decision.name}",
+         "relation": PART_OF,
+         "target": whole}
+        for decision in decisions
+    ]
+
+
 class ThreadSource(ABC):
     """One assistant's threads, behind a contract that keeps the spending honest.
 
@@ -268,12 +340,25 @@ class ThreadSource(ABC):
     # --- inherited, and the same for every source ---------------------------
 
     def deltas(self, thread: Thread, budget: Budget) -> list[dict[str, Any]]:
-        """This thread's decisions, as payloads a control panel ingests."""
-        return [
+        """The thread, and what it settled, as payloads a control panel ingests.
+
+        The thread comes first and is always emitted. A conversation that
+        settled nothing is still a conversation somebody had, and a source that
+        emitted only decisions would make an inconclusive thread invisible --
+        which is the interesting one to be able to find.
+        """
+        found = self.decisions(thread, budget)
+        return [to_thread_delta(thread, project=self.project,
+                                perspective=self.perspective)] + [
             to_delta(decision, thread, project=self.project,
                      perspective=self.perspective)
-            for decision in self.decisions(thread, budget)
+            for decision in found
         ]
+
+    def relations(self, thread: Thread, budget: Budget) -> list[dict[str, str]]:
+        """How what this thread settled hangs off the thread itself."""
+        return relations_for(thread, self.decisions(thread, budget),
+                             project=self.project)
 
     def describe(self) -> str:
         """What this source is and what it would cost, for a person deciding."""

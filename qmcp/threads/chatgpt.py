@@ -1,79 +1,107 @@
-"""ChatGPT threads. A STUB: it establishes nothing and calls nothing.
+"""ChatGPT threads, read from a local export. Costs nothing and calls nothing.
 
-WHAT IS DECIDED AND WHAT IS NOT. The shape is decided -- this is a
-`ThreadSource`, its `survey` is free, its `fetch` spends against a budget a
-person issued, and its deltas name a perspective. What is not decided is where
-the threads come from, and that is why every method below refuses rather than
-guessing.
+    ~/.qmcp/threads/chatgpt/*.json     one conversation per file
 
-THE OPEN QUESTION, STATED PLAINLY. There are two ways in and they have
-different costs and different records behind them:
+**THE EXPORT SHAPE HERE IS A BEST READING, NOT A VERIFIED ONE**, for the same
+reason as the Claude source: no real export was available on the machine this
+was written on. This one has more room to be wrong, because the format stores
+messages as a `mapping` of nodes with parent pointers rather than a list — a
+tree, of which the conversation you actually read is one path.
 
-  an export file   A conversation export the operator downloaded. Reading it is
-                   free, so `survey` could answer properly and `fetch` would
-                   never spend at all. It is also a snapshot: it is as current
-                   as the day it was exported.
-
-  a live API       Current, and metered. `survey` could not answer for free if
-                   listing is itself billed, so it would return `unknown` with
-                   that as the reason, and a person would decide whether to
-                   spend to find out how much there is to spend on.
-
-**The second needs a credential, and this repository holds none.** Choosing is a
-person's, and until they choose, a stub that says so is more use than one that
-picks.
+**THIS FLATTENS THE TREE AND SAYS SO.** Every node with text is taken, in
+timestamp order. A conversation with regenerated or branched replies therefore
+yields turns that were alternatives to each other rather than a sequence
+somebody read. That is a real inaccuracy; it is preferred to silently choosing
+one path, because choosing would look correct and this looks like what it is.
+The `same-as` relation exists for the day somebody wants to say two branches
+were one strand.
 
 ONE DIFFERENCE FROM THE CLAUDE SOURCE, AND IT IS NOT COSMETIC. Its perspective
-is its own -- `chatgpt/thread`. Two assistants discussing the same work produce
+is its own — `chatgpt/thread`. Two assistants discussing the same work produce
 two sets of deltas, and neither is the other's duplicate: they are two
 perspectives on one strand. `same-as` is how somebody says they are the same
 strand once they have read both, and
 `governance/qm/records/DRAFT-deltas-compose.md` 4 is why neither address is
 retired when they do.
-
-NOTHING HERE IS SCHEDULED AND NOTHING RETRIES. When this is implemented, every
-call goes through the `Budget` it was handed, checked before the call rather
-than after -- `governance/qm/records/DRAFT-no-unattended-spending.md`.
 """
 
 from __future__ import annotations
 
-from qmcp.spend import Budget, unknown
-from qmcp.threads.base import Decision, Survey, Thread, ThreadSource
+from pathlib import Path
+from typing import Any
 
-NOT_BUILT = (
-    "the ChatGPT thread source is a stub. Neither route is chosen: an export "
-    "file (free to read, a snapshot) or the live API (current, metered, and "
-    "needing a credential this repository does not hold)."
-)
+from qmcp.threads.base import Thread, Turn
+from qmcp.threads.cache import LocalCacheSource
 
 
-class ChatGPTThreads(ThreadSource):
-    """Threads from ChatGPT. Implements the contract and does none of the work."""
+class ChatGPTThreads(LocalCacheSource):
+    """Conversations exported from ChatGPT."""
 
     name = "chatgpt"
-
-    # A default that says what this source is rather than what it contains. It
-    # is a claim about level: this source speaks about whole conversations and
-    # what they settled, not about turns.
+    folder = "chatgpt"
     perspective = "chatgpt/thread"
+    project = "quaternionmedia/qmcp"
 
-    def survey(self) -> Survey:
-        """Establishes nothing, and says why rather than returning zero.
+    def parse(self, document: Any, path: Path) -> Thread:
+        if not isinstance(document, dict):
+            raise ValueError("a conversation export is an object")
 
-        `available=0` would claim there are no threads. Nobody looked, and the
-        difference between those is the whole reason `unknown` carries a
-        reason.
-        """
-        return Survey(
-            source=self.name,
-            available=unknown(NOT_BUILT),
-            would_need=unknown(NOT_BUILT),
-            note="Nothing was spent reaching this answer.",
+        identifier = (document.get("conversation_id") or document.get("id")
+                      or path.stem)
+        mapping = document.get("mapping")
+        if mapping is None:
+            raise ValueError("no mapping on this conversation")
+        if not isinstance(mapping, dict):
+            raise ValueError("mapping is not an object")
+
+        collected = []
+        for node_id, node in mapping.items():
+            if not isinstance(node, dict):
+                continue
+            message = node.get("message")
+            if not isinstance(message, dict):
+                continue
+            text = _text_of(message)
+            if not text:
+                continue
+            collected.append((
+                message.get("create_time") or 0.0,
+                Turn(
+                    id=str(message.get("id") or node_id),
+                    role=str((message.get("author") or {}).get("role")
+                             or "unknown"),
+                    at=_maybe_str(message.get("create_time")),
+                    text=text,
+                ),
+            ))
+
+        collected.sort(key=lambda pair: pair[0])
+        return Thread(
+            id=str(identifier),
+            title=_maybe_str(document.get("title")),
+            started_at=_maybe_str(document.get("create_time")),
+            url=f"https://chatgpt.com/c/{identifier}",
+            turns=tuple(turn for _, turn in collected),
         )
 
-    def fetch(self, ids: list[str], budget: Budget) -> list[Thread]:
-        raise NotImplementedError(NOT_BUILT)
 
-    def decisions(self, thread: Thread, budget: Budget) -> list[Decision]:
-        raise NotImplementedError(NOT_BUILT)
+def _maybe_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def _text_of(message: dict) -> str:
+    """The message's text, from the `content.parts` shape.
+
+    A part that is not a string is skipped rather than stringified. Attachments
+    arrive as objects, and one rendered as its repr becomes prose that reads
+    like content and is not.
+    """
+    content = message.get("content")
+    if not isinstance(content, dict):
+        return ""
+    parts = content.get("parts")
+    if isinstance(parts, list):
+        return "\n".join(part for part in parts if isinstance(part, str) and part)
+    if isinstance(parts, str):
+        return parts
+    return ""

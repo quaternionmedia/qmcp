@@ -1,71 +1,111 @@
-"""Claude threads. A STUB: it establishes nothing and calls nothing.
+"""Claude threads, read from a local export. Costs nothing and calls nothing.
 
-WHAT IS DECIDED AND WHAT IS NOT. The shape is decided -- this is a
-`ThreadSource`, its `survey` is free, its `fetch` spends against a budget a
-person issued, and its deltas name a perspective. What is not decided is where
-the threads come from, and that is why every method below refuses rather than
-guessing.
+    ~/.qmcp/threads/claude/*.json      one conversation per file
 
-THE OPEN QUESTION, STATED PLAINLY. There are two ways in and they have
-different costs and different records behind them:
+**THE EXPORT SHAPE HERE IS A BEST READING, NOT A VERIFIED ONE.** No real export
+was available on the machine this was written on, so `parse` accepts the keys
+the format is documented to use and the obvious alternates beside them, and
+raises on anything it cannot read rather than inventing a thread. The first
+person to point it at a real export finds out whether the reading was right,
+and a file that will not parse is reported by name rather than skipped.
 
-  an export file   A conversation export the operator downloaded. Reading it is
-                   free, so `survey` could answer properly and `fetch` would
-                   never spend at all. It is also a snapshot: it is as current
-                   as the day it was exported.
+That is stated here because it is the sort of thing that otherwise gets found
+by a board quietly showing thirty-seven of forty conversations.
 
-  a live API       Current, and metered. `survey` could not answer for free if
-                   listing is itself billed, so it would return `unknown` with
-                   that as the reason, and a person would decide whether to
-                   spend to find out how much there is to spend on.
-
-**The second needs a credential, and this repository holds none.** Choosing is a
-person's, and until they choose, a stub that says so is more use than one that
-picks.
-
-NOTHING HERE IS SCHEDULED AND NOTHING RETRIES. When this is implemented, every
-call goes through the `Budget` it was handed, checked before the call rather
-than after -- `governance/qm/records/DRAFT-no-unattended-spending.md`.
+WHAT IS DELIBERATELY ABSENT. The API. It is a second source behind the same
+contract, and when it arrives it spends against the `Budget` the contract
+already passes. This one never spends, so `survey` reports `would_need: 0` --
+a real zero, meaning there is no paid work to do.
 """
 
 from __future__ import annotations
 
-from qmcp.spend import Budget, unknown
-from qmcp.threads.base import Decision, Survey, Thread, ThreadSource
+from pathlib import Path
+from typing import Any
 
-NOT_BUILT = (
-    "the Claude thread source is a stub. Neither route is chosen: an export "
-    "file (free to read, a snapshot) or the live API (current, metered, and "
-    "needing a credential this repository does not hold)."
-)
+from qmcp.threads.base import Thread, Turn
+from qmcp.threads.cache import LocalCacheSource
 
 
-class ClaudeThreads(ThreadSource):
-    """Threads from Claude. Implements the contract and does none of the work."""
+class ClaudeThreads(LocalCacheSource):
+    """Conversations exported from Claude."""
 
     name = "claude"
+    folder = "claude"
 
-    # A default that says what this source is rather than what it contains. It
-    # is a claim about level: this source speaks about whole conversations and
-    # what they settled, not about turns.
+    # A claim about level: this source speaks about whole conversations and
+    # what they settled, never about turns.
     perspective = "claude/thread"
 
-    def survey(self) -> Survey:
-        """Establishes nothing, and says why rather than returning zero.
+    # Decided rather than defaulted: thread deltas belong to the harness that
+    # pulled them. `plans/qmpm-standardisations.md` 1 still has the open
+    # question of whether a delta may span owners; until it is settled, this is
+    # a home somebody chose.
+    project = "quaternionmedia/qmcp"
 
-        `available=0` would claim there are no threads. Nobody looked, and the
-        difference between those is the whole reason `unknown` carries a
-        reason.
-        """
-        return Survey(
-            source=self.name,
-            available=unknown(NOT_BUILT),
-            would_need=unknown(NOT_BUILT),
-            note="Nothing was spent reaching this answer.",
+    def parse(self, document: Any, path: Path) -> Thread:
+        if not isinstance(document, dict):
+            raise ValueError("a conversation export is an object")
+
+        identifier = _first(document, "uuid", "id", "conversation_id")
+        if not identifier:
+            raise ValueError("no uuid/id on this conversation")
+
+        messages = _first(document, "chat_messages", "messages") or []
+        if not isinstance(messages, list):
+            raise ValueError("chat_messages is not a list")
+
+        turns = tuple(
+            Turn(
+                id=str(_first(message, "uuid", "id") or f"{identifier}-{index}"),
+                role=str(_first(message, "sender", "role") or "unknown"),
+                at=_maybe_str(_first(message, "created_at", "timestamp")),
+                text=_text_of(message),
+            )
+            for index, message in enumerate(messages)
+            if isinstance(message, dict)
         )
 
-    def fetch(self, ids: list[str], budget: Budget) -> list[Thread]:
-        raise NotImplementedError(NOT_BUILT)
+        return Thread(
+            id=str(identifier),
+            title=_maybe_str(_first(document, "name", "title")),
+            started_at=_maybe_str(_first(document, "created_at")),
+            url=f"https://claude.ai/chat/{identifier}",
+            turns=turns,
+        )
 
-    def decisions(self, thread: Thread, budget: Budget) -> list[Decision]:
-        raise NotImplementedError(NOT_BUILT)
+
+def _first(document: dict, *keys: str) -> Any:
+    for key in keys:
+        if key in document and document[key] is not None:
+            return document[key]
+    return None
+
+
+def _maybe_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def _text_of(message: dict) -> str:
+    """The message's text, from whichever shape this export uses.
+
+    Newer exports carry a `content` list of typed blocks; older ones a flat
+    `text`. Both are read, and a block whose type is not text is skipped rather
+    than stringified -- an image rendered as its repr would become searchable
+    prose that says nothing.
+    """
+    text = message.get("text")
+    if isinstance(text, str) and text:
+        return text
+
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") in (None, "text")
+        ]
+        return "\n".join(part for part in parts if part)
+    return ""
