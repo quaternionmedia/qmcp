@@ -2,15 +2,17 @@
 
     ~/.qmcp/threads/claude/*.json      one conversation per file
 
-**THE EXPORT SHAPE HERE IS A BEST READING, NOT A VERIFIED ONE.** No real export
-was available on the machine this was written on, so `parse` accepts the keys
-the format is documented to use and the obvious alternates beside them, and
-raises on anything it cannot read rather than inventing a thread. The first
-person to point it at a real export finds out whether the reading was right,
-and a file that will not parse is reported by name rather than skipped.
+**VERIFIED ONCE, AGAINST ONE REAL EXPORT.** This was written from the documented
+format with no export to hand, and was checked on 2026-08-20 against an actual
+one: 94 conversations, every one detected as Claude, and **no conversation
+carrying messages parsed to zero turns**. Four came through empty and were empty
+in the export too -- untitled, with no `chat_messages` at all.
 
-That is stated here because it is the sort of thing that otherwise gets found
-by a board quietly showing thirty-seven of forty conversations.
+That is one export from one account on one date. It is much stronger than the
+guess it replaces and it is not a guarantee: an exporter that changes its shape
+will be found by a conversation that will not parse, which is reported by name
+rather than skipped. The failure being guarded against is a board quietly
+showing thirty-seven of forty.
 
 WHAT IS DELIBERATELY ABSENT. The API. It is a second source behind the same
 contract, and when it arrives it spends against the `Budget` the contract

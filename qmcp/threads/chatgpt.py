@@ -2,11 +2,12 @@
 
     ~/.qmcp/threads/chatgpt/*.json     one conversation per file
 
-**THE EXPORT SHAPE HERE IS A BEST READING, NOT A VERIFIED ONE**, for the same
-reason as the Claude source: no real export was available on the machine this
-was written on. This one has more room to be wrong, because the format stores
-messages as a `mapping` of nodes with parent pointers rather than a list — a
-tree, of which the conversation you actually read is one path.
+**THE EXPORT SHAPE HERE IS A BEST READING AND IS STILL UNVERIFIED.** The Claude
+source has since been checked against a real export; this one has not, so it
+remains a reading of the documented format -- with more room to be wrong than
+the Claude one had, because this format stores messages as a `mapping` of nodes
+with parent pointers rather than a list: a tree, of which the conversation you
+actually read is one path.
 
 **THIS FLATTENS THE TREE AND SAYS SO.** Every node with text is taken, in
 timestamp order. A conversation with regenerated or branched replies therefore

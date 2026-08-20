@@ -5,10 +5,21 @@
     GET /v1/threads/{source}/{id}         one thread
     GET /v1/threads/{source}/{id}/deltas  what it settled
 
-**READ-ONLY, AND LOCAL.** Nothing here writes to the archive or to the stores it
-reads. The archive holds somebody's conversations, so this binds where the rest
-of this server binds -- loopback -- and `handbook/async-contract.md` 4 is the
-standing rule about that.
+    POST /v1/threads/import               unpack an export, then re-index
+
+**LOCAL, AND ONE WRITE.** Every route but the last only reads. The archive holds
+somebody's conversations, so this binds where the rest of this server binds --
+loopback -- and `handbook/async-contract.md` 4 is the standing rule.
+
+**THE ONE WRITE IS THE HARNESS DOING ITS OWN JOB.** A control panel asking for
+an import is not a control panel authoring the archive: the archive stays one
+record with one author, and the caller is a caller. It writes only into the
+cache, from a file the operator points at, and re-indexes in the same call --
+an import that left the listing stale would look like it had done nothing.
+
+The human act happened before any of this: requesting the export from the
+service. `records/DRAFT-acts-that-are-a-persons-by-constitution.md` clause 3 is
+explicit that everything after it may be automated, and should be.
 
 WHY A SERVICE AT ALL, WHEN `qmcp.threads` IS IMPORTABLE. Because importing it
 means being this process. A dashboard, a second tool, or a person with `curl`
@@ -187,6 +198,31 @@ def deltas_of(root: Path, source: str, identifier: str,
     return None
 
 
+def _reindex(root: Path, sessions: Path | None) -> dict[str, Any]:
+    """Rebuild the index over every source, keeping what earlier ones knew.
+
+    Spends nothing: `index.build` hands each source a budget of zero, so a
+    source that would need a paid call refuses rather than billing whoever
+    asked for an import.
+    """
+    document = index_at(root) or {}
+    previous = {
+        f"{row['source']}/{row['id']}": index_module.Entry.from_dict(row)
+        for row in document.get("threads") or []
+    }
+    entries = index_module.build(sources_for(root, sessions).values())
+    merged, changed = index_module.merge(previous, entries)
+    written = index_module.document(merged)
+    (root / index_module.INDEX_NAME).write_text(
+        json.dumps(written, indent=2) + "\n", encoding="utf-8", newline="\n")
+    return {
+        "threads": written["totals"]["threads"],
+        "diverged": written["totals"]["diverged"],
+        "changed": len(changed),
+        "generated_at": written["generated_at"],
+    }
+
+
 def register(app: Any, root: Path, sessions: Path | None = None) -> None:
     """Attach the read-only routes to a FastAPI app.
 
@@ -221,6 +257,66 @@ def register(app: Any, root: Path, sessions: Path | None = None) -> None:
                      "earlier record of itself is a tool changing its format, "
                      "somebody editing history, or an id being reused. Nothing "
                      "here is repaired."),
+        }
+
+    @app.post("/v1/threads/import")
+    async def import_export(body: dict[str, Any]) -> dict[str, Any]:
+        """Unpack an export the operator points at, then re-index.
+
+        **THE HARNESS DOES THE WRITING, AND THAT IS THE POINT.** A control
+        panel asking for an import is not a control panel authoring the
+        archive: the archive stays one record with one author, and the panel is
+        a caller. What it may not do is write rows itself.
+
+        The human act happened before any of this: requesting the export from
+        the service.
+        `governance/qm/records/DRAFT-acts-that-are-a-persons-by-constitution.md`
+        clause 3 is explicit that everything after it may be automated, and
+        should be.
+
+        Reads a path on this machine, writes only into the cache, and spends
+        nothing.
+        """
+        from qmcp.threads.importer import positional, unpack
+
+        raw = (body or {}).get("path") or ""
+        source = (body or {}).get("source") or None
+        if not raw:
+            raise HTTPException(status_code=400, detail="no path given")
+
+        export = Path(raw).expanduser()
+        if not export.exists():
+            raise HTTPException(status_code=404, detail=f"{export} is not there")
+        if export.is_dir():
+            # An unpacked export is a directory holding conversations.json.
+            # Accepting the folder is what an operator will try first.
+            candidate = export / "conversations.json"
+            if not candidate.is_file():
+                raise HTTPException(
+                    status_code=400,
+                    detail=(f"{export} holds no conversations.json. Point at "
+                            f"the export archive or the file itself."))
+            export = candidate
+
+        try:
+            report = unpack(export, root, source=source)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        # Re-index in the same call. An import that left the listing stale
+        # would look like it had done nothing, and the caller would have no way
+        # to tell that from an export with nothing new in it.
+        indexed = _reindex(root, sessions)
+
+        return {
+            "source": report.source,
+            "written": len(report.written),
+            "identical": len(report.identical),
+            "replaced": len(report.replaced),
+            "unreadable": [{"what": name, "why": why}
+                           for name, why in report.unreadable],
+            "positional": len(list(positional(report))),
+            "indexed": indexed,
         }
 
     @app.get("/v1/threads/{source}/{identifier}")
