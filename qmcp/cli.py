@@ -1488,11 +1488,23 @@ def threads() -> None:
     """
 
 
-def _sources(root):
+def _sources(root, sessions=None):
+    """Every thread source, each pointed at the store it actually reads.
+
+    Two roots, not one. The web exports live in a cache this project unpacks
+    into; Claude Code sessions live in a store somebody else owns and this only
+    reads. Passing one root to both would send the session reader looking in an
+    export cache and report zero sessions, which reads like an empty machine.
+    """
     from qmcp.threads.chatgpt import ChatGPTThreads
     from qmcp.threads.claude import ClaudeThreads
+    from qmcp.threads.claudecode import SESSION_ROOT, ClaudeCodeThreads
 
-    return [ClaudeThreads(root=root), ChatGPTThreads(root=root)]
+    return [
+        ClaudeThreads(root=root),
+        ChatGPTThreads(root=root),
+        ClaudeCodeThreads(root=Path(sessions) if sessions else SESSION_ROOT),
+    ]
 
 
 def _root(root):
@@ -1504,9 +1516,11 @@ def _root(root):
 @threads.command("sources")
 @click.option("--root", type=click.Path(path_type=Path), default=None,
               help="the export cache to read instead of the default")
-def threads_sources(root: Path | None) -> None:
+@click.option("--sessions", type=click.Path(path_type=Path), default=None,
+              help="the Claude Code session store to read instead of the default")
+def threads_sources(root: Path | None, sessions: Path | None) -> None:
     """What is cached, per assistant, and what pulling it would cost."""
-    for source in _sources(_root(root)):
+    for source in _sources(_root(root), sessions):
         click.echo(source.describe())
         click.echo("")
 
@@ -1561,10 +1575,13 @@ def threads_import(export: Path, root: Path | None, source: str | None,
 
 @threads.command("index")
 @click.option("--root", type=click.Path(path_type=Path), default=None)
+@click.option("--sessions", type=click.Path(path_type=Path), default=None,
+              help="the Claude Code session store to read instead of the default")
 @click.option("--write", is_flag=True, help="write the index")
 @click.option("--check", "check", is_flag=True,
               help="re-derive from the files and report drift; writes nothing")
-def threads_index(root: Path | None, write: bool, check: bool) -> None:
+def threads_index(root: Path | None, sessions: Path | None, write: bool,
+                  check: bool) -> None:
     """Index the cache, keeping what earlier indexes knew.
 
     Nothing is overwritten. A conversation somebody kept talking in produces a
@@ -1578,7 +1595,7 @@ def threads_index(root: Path | None, write: bool, check: bool) -> None:
 
     directory = _root(root)
     path = directory / index_module.INDEX_NAME
-    sources = _sources(directory)
+    sources = _sources(directory, sessions)
 
     entries = index_module.build(sources)
     unreadable = {

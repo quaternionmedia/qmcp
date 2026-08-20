@@ -58,6 +58,12 @@ class LocalCacheSource(ThreadSource):
     #: Subdirectory under the cache root, so two assistants' exports do not mix.
     folder: str = ""
 
+    #: What a reader must know about how current this is. An export is a
+    #: snapshot; a live store is not, and a source reading one should not
+    #: inherit a sentence about the other.
+    caveat: str = ("An export is a snapshot: as current as the day it was "
+                   "downloaded.")
+
     def __init__(self, root: Path | None = None, **kw) -> None:
         super().__init__(**kw)
         self.root = Path(root) if root is not None else DEFAULT_ROOT
@@ -110,8 +116,7 @@ class LocalCacheSource(ThreadSource):
         # cost of being right is disk, and the cost of being wrong is a board
         # quietly short three conversations.
         threads = self.fetch([], Budget())
-        note = (f"{len(threads)} thread(s) in {self.directory}. An export is a "
-                f"snapshot: as current as the day it was downloaded.")
+        note = f"{len(threads)} thread(s) in {self.directory}. {self.caveat}"
         if self.unreadable:
             note += (f" {len(self.unreadable)} file(s) could not be read and "
                      f"are not counted: "
@@ -177,14 +182,6 @@ class LocalCacheSource(ThreadSource):
                         ))
                         break
         return found
-
-    def describe(self) -> str:
-        text = super().describe()
-        if self.unreadable:
-            text += (f"\n    {len(self.unreadable)} file(s) could not be read "
-                     f"and are not in that count.")
-        return text
-
 
 def slug(title: str, thread_id: str, index: int) -> str:
     """A delta name from a decision's title.
