@@ -60,6 +60,24 @@ TURN_TYPES = ("user", "assistant")
 BRANCH_LINK = "branch"
 PR_LINK = "pr"
 
+# A SUBAGENT FILE CARRIES ITS PARENT'S `sessionId`, AND THAT IS THE TRAP.
+# Most files under this root are sidechains -- a subagent's own turns, written
+# beside the session that launched it. Keying a thread on `sessionId` alone
+# collapsed them: many files became one id, each overwriting the last, and the
+# index read every overwrite as the thread diverging. Seven "divergences" on a
+# first index, none of them real.
+#
+# A false divergence is worse than a missed one. The archive keeps divergences
+# precisely so somebody looks at them, and a reader who finds the first seven
+# are noise stops looking at the eighth.
+#
+# So a sidechain is its own thread, addressed by both ids, and related `part-of`
+# the session that launched it. Which is also the honest reading: from the
+# session's perspective a subagent run is a step; from the subagent's own
+# perspective it is a conversation. `DRAFT-granularity-is-a-perspective.md`
+# says that question was always missing its subject.
+AGENT_PREFIX = "agent"
+
 
 class ClaudeCodeThreads(LocalCacheSource):
     """Sessions from Claude Code, read from their own store.
@@ -177,10 +195,25 @@ class ClaudeCodeThreads(LocalCacheSource):
         return payloads
 
     def relations(self, thread: Thread, budget: Budget) -> list[dict[str, str]]:
-        from qmcp.threads.base import relations_for
+        from qmcp.threads.base import PART_OF, relations_for, thread_name
 
-        return relations_for(thread, self.decisions(thread, budget),
-                             project=self.project_of(thread))
+        project = self.project_of(thread)
+        found = relations_for(thread, self.decisions(thread, budget),
+                              project=project)
+
+        # A subagent's conversation is `part-of` the session that launched it.
+        # Stated rather than derived from the shared id prefix -- a consumer
+        # must not infer containment from two rows looking alike.
+        context = getattr(self, "context", {}).get(thread.id, {})
+        parent = context.get("parent")
+        if parent:
+            found.append({
+                "source": f"{project}/delta/{thread_name(thread)}",
+                "relation": PART_OF,
+                "target": (f"{project}/delta/"
+                           f"{thread_name(Thread(id=parent))}"),
+            })
+        return found
 
     def _joins(self, thread: Thread, project: str) -> list[dict[str, Any]]:
         """Branches and pull requests this session touched, as addresses.
@@ -223,6 +256,17 @@ def _records(path: Path) -> list[dict]:
     return found
 
 
+def thread_id(session_id: str | None, agent_id: str | None,
+              fallback: str) -> str:
+    """What identifies one file's conversation.
+
+    A sidechain's id carries both, because its `sessionId` is its parent's and
+    on its own would collide with every other subagent of the same session.
+    """
+    base = session_id or fallback
+    return f"{base}/{AGENT_PREFIX}-{agent_id}" if agent_id else base
+
+
 def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
     """One session file as a thread, plus what it knows about its work."""
     turns: list[Turn] = []
@@ -231,11 +275,15 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
     pulls: set[tuple[str, int]] = set()
     title: str | None = None
     identifier: str | None = None
+    agent: str | None = None
+    sidechain = False
     started: str | None = None
 
     for record in records:
         kind = record.get("type")
         identifier = identifier or record.get("sessionId")
+        agent = agent or record.get("agentId")
+        sidechain = sidechain or bool(record.get("isSidechain"))
 
         if record.get("gitBranch"):
             branches.add(str(record["gitBranch"]))
@@ -266,12 +314,20 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
         return None, {}
 
     return Thread(
-        id=str(identifier or path.stem),
+        id=thread_id(identifier, agent, path.stem),
         title=title,
         started_at=_maybe_str(started),
         url=None,
         turns=tuple(turns),
-    ), {"branches": branches, "repositories": repositories, "pulls": pulls}
+    ), {
+        "branches": branches,
+        "repositories": repositories,
+        "pulls": pulls,
+        # What this file was a sidechain of, so the subagent's thread can be
+        # related to the session that launched it rather than floating loose.
+        "parent": str(identifier) if agent and identifier else None,
+        "sidechain": sidechain or bool(agent),
+    }
 
 
 def _maybe_str(value: Any) -> str | None:

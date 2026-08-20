@@ -224,3 +224,71 @@ def test_this_source_writes_nothing_into_the_store_it_reads(tmp_path):
     text = Path(module.__file__).read_text(encoding="utf-8")
     for writer in ("write_text(", "open(\"w\"", "'w'", "mkdir("):
         assert writer not in text.replace('errors="replace"', ""), writer
+
+
+# --- sidechains, and the collision that made seven false divergences ---------
+
+
+def test_a_subagent_file_is_its_own_thread(tmp_path):
+    """A SUBAGENT FILE CARRIES ITS PARENT'S sessionId, AND THAT WAS THE TRAP.
+
+    Keying on `sessionId` alone collapsed many files into one id, each
+    overwriting the last, and the index read every overwrite as the thread
+    diverging. Seven "divergences" on a first index of a real machine, none of
+    them real -- and a false divergence is worse than a missed one, because a
+    reader who finds the first seven are noise stops looking at the eighth.
+
+    Mutation: drop the agentId from the identity and this fails.
+    """
+    session(tmp_path, [turn(uuid="u-1", session_id="s-1")], name="main.jsonl")
+    session(tmp_path, [dict(turn(uuid="u-2", session_id="s-1"),
+                            agentId="a-9", isSidechain=True)],
+            name="agent.jsonl")
+    threads = ClaudeCodeThreads(root=tmp_path).fetch([], Budget())
+    assert len({t.id for t in threads}) == 2, "two files, two threads"
+    assert any(t.id == "s-1/agent-a-9" for t in threads)
+
+
+def test_two_subagents_of_one_session_do_not_collide(tmp_path):
+    """Forty-six files shared one sessionId on the machine this was found on."""
+    session(tmp_path, [turn(uuid="u-1", session_id="s-1")], name="main.jsonl")
+    for agent in ("a-1", "a-2", "a-3"):
+        session(tmp_path, [dict(turn(uuid=f"u-{agent}", session_id="s-1"),
+                                agentId=agent, isSidechain=True)],
+                name=f"{agent}.jsonl")
+    threads = ClaudeCodeThreads(root=tmp_path).fetch([], Budget())
+    assert len({t.id for t in threads}) == 4
+
+
+def test_a_subagent_is_part_of_the_session_that_launched_it(tmp_path):
+    """Stated rather than derived from the shared id prefix: a consumer must
+    not infer containment from two rows looking alike."""
+    session(tmp_path, [dict(turn(uuid="u-2", session_id="s-1"),
+                            agentId="a-9", isSidechain=True)],
+            name="agent.jsonl")
+    source = ClaudeCodeThreads(root=tmp_path)
+    thread = source.fetch([], Budget())[0]
+    relations = source.relations(thread, Budget())
+    assert any(r["relation"] == "part-of"
+               and r["target"].endswith("/delta/thread-s-1")
+               for r in relations)
+
+
+def test_a_session_with_no_subagent_is_related_to_nothing(tmp_path):
+    """Mutation: relate every thread to a parent and this fails, which is a
+    board asserting a hierarchy that is not there."""
+    session(tmp_path, [turn(uuid="u-1", session_id="s-1")])
+    source = ClaudeCodeThreads(root=tmp_path)
+    thread = source.fetch([], Budget())[0]
+    assert source.relations(thread, Budget()) == []
+
+
+def test_a_file_with_no_session_id_falls_back_to_its_name(tmp_path):
+    """Two files with neither id would otherwise be one thread."""
+    for name in ("one.jsonl", "two.jsonl"):
+        session(tmp_path, [{"type": "user", "uuid": f"u-{name}",
+                            "message": {"content": [{"type": "text",
+                                                     "text": "hi"}]}}],
+                name=name)
+    threads = ClaudeCodeThreads(root=tmp_path).fetch([], Budget())
+    assert len({t.id for t in threads}) == 2

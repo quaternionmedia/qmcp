@@ -1641,6 +1641,55 @@ def threads_index(root: Path | None, sessions: Path | None, write: bool,
     click.echo("Nothing was written. Pass --write to keep it.")
 
 
+@threads.command("dashboard")
+@click.option("--root", type=click.Path(path_type=Path), default=None)
+@click.option("--out", type=click.Path(path_type=Path), default=None,
+              help="write a self-contained page here instead of a summary")
+def threads_dashboard(root: Path | None, out: Path | None) -> None:
+    """The archive as one page, rendered locally.
+
+    Reads the index and runs nothing. If a figure is wrong it is wrong in the
+    index, and `qmcp threads index --check` re-derives that from the files.
+
+    
+    THE PAGE IS SOMEBODY'S CONVERSATIONS. It carries titles, session ids and
+    repository names, it is self-contained so it needs no network to open, and
+    it should not be given one. Do not publish it.
+    """
+    import json as _json
+
+    from qmcp.threads import index as index_module
+    from qmcp.threads.dashboard import render
+
+    path = _root(root) / index_module.INDEX_NAME
+    if not path.is_file():
+        raise SystemExit(
+            f"no index at {path}. `uv run qmcp threads index --write` builds "
+            f"one. An absent index is an absent answer rather than an empty "
+            f"archive."
+        )
+    document = _json.loads(path.read_text(encoding="utf-8"))
+
+    if out is None:
+        totals = document.get("totals", {})
+        rows = document.get("threads") or []
+        diverged = [r for r in rows
+                    if any(c["kind"] == "diverged" for c in r.get("history") or [])]
+        click.echo(f"  {totals.get('threads', len(rows))} thread(s) archived, "
+                   f"indexed {document.get('generated_at')}")
+        click.echo(f"  {len(diverged)} disagree with an earlier record")
+        click.echo("")
+        click.echo("  --out threads.html writes the page.")
+        return
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render(document), encoding="utf-8", newline="\n")
+    click.echo(f"  Wrote {out}")
+    click.echo("  Local, self-contained, and not to be published: it carries "
+               "conversation")
+    click.echo("  titles and repository names from this machine's archive.")
+
+
 @threads.command("list")
 @click.option("--root", type=click.Path(path_type=Path), default=None)
 @click.option("--diverged", is_flag=True,
