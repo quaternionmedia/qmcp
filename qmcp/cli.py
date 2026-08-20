@@ -1477,6 +1477,144 @@ def human_respond(request_id: str, response: str, database: Path | None,
     click.echo("  the same as the work being done.")
 
 
+@cli.group("threads")
+def threads() -> None:
+    """Conversations with an assistant, as units of work.
+
+    Reads a local export. Nothing here calls a paid service or needs a
+    credential -- `governance/qm/records/DRAFT-no-unattended-spending.md` is
+    why, and an API source will be a second source behind the same contract
+    rather than a change to this one.
+    """
+
+
+def _sources(root):
+    from qmcp.threads.chatgpt import ChatGPTThreads
+    from qmcp.threads.claude import ClaudeThreads
+
+    return [ClaudeThreads(root=root), ChatGPTThreads(root=root)]
+
+
+def _root(root):
+    from qmcp.threads.cache import DEFAULT_ROOT
+
+    return Path(root) if root else DEFAULT_ROOT
+
+
+@threads.command("sources")
+@click.option("--root", type=click.Path(path_type=Path), default=None,
+              help="the export cache to read instead of the default")
+def threads_sources(root: Path | None) -> None:
+    """What is cached, per assistant, and what pulling it would cost."""
+    for source in _sources(_root(root)):
+        click.echo(source.describe())
+        click.echo("")
+
+
+@threads.command("index")
+@click.option("--root", type=click.Path(path_type=Path), default=None)
+@click.option("--write", is_flag=True, help="write the index")
+@click.option("--check", "check", is_flag=True,
+              help="re-derive from the files and report drift; writes nothing")
+def threads_index(root: Path | None, write: bool, check: bool) -> None:
+    """Index the cache, keeping what earlier indexes knew.
+
+    Nothing is overwritten. A conversation somebody kept talking in produces a
+    later version of the same strand, and whether it *grew* or *diverged* is
+    recorded rather than resolved -- an export that disagrees with an earlier
+    record of itself is a finding, and the prior digest is the only evidence.
+    """
+    import json as _json
+
+    from qmcp.threads import index as index_module
+
+    directory = _root(root)
+    path = directory / index_module.INDEX_NAME
+    sources = _sources(directory)
+
+    entries = index_module.build(sources)
+    unreadable = {
+        source.name: [item.path for item in source.unreadable]
+        for source in sources if getattr(source, "unreadable", None)
+    }
+
+    if check:
+        if not path.is_file():
+            raise SystemExit(
+                f"no index at {path}. `--check` compares a written index "
+                f"against the files; there is nothing to compare."
+            )
+        found = _json.loads(path.read_text(encoding="utf-8"))
+        problems = index_module.drift(found, entries)
+        if problems:
+            click.echo(f"{len(problems)} disagreement(s) between the index and "
+                       f"the files:")
+            for problem in problems:
+                click.echo(f"  {problem}")
+            raise SystemExit(1)
+        click.echo("The index still describes the files it was built from.")
+        click.echo("Only the cache layer is compared. The archive layer is "
+                   "history and cannot be re-derived from the files, which is "
+                   "what makes it worth keeping.")
+        return
+
+    merged, changed = index_module.merge(index_module.load(path), entries)
+    document = index_module.document(merged, unreadable)
+
+    if write:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json.dumps(document, indent=2) + "\n",
+                        encoding="utf-8", newline="\n")
+        click.echo(index_module.render(document, changed))
+        click.echo("")
+        click.echo(f"Written to {path}. It describes this machine's cache and "
+                   f"is not committed anywhere.")
+        return
+
+    click.echo(index_module.render(document, changed))
+    click.echo("")
+    click.echo("Nothing was written. Pass --write to keep it.")
+
+
+@threads.command("list")
+@click.option("--root", type=click.Path(path_type=Path), default=None)
+@click.option("--diverged", is_flag=True,
+              help="only threads whose export disagrees with an earlier one")
+def threads_list(root: Path | None, diverged: bool) -> None:
+    """What the index holds. Reads the index, not the files."""
+    import json as _json
+
+    from qmcp.threads import index as index_module
+
+    path = _root(root) / index_module.INDEX_NAME
+    if not path.is_file():
+        raise SystemExit(
+            f"no index at {path}. `uv run qmcp threads index --write` builds "
+            f"one; nothing here reads the files, so an absent index is an "
+            f"absent answer rather than an empty one."
+        )
+
+    found = _json.loads(path.read_text(encoding="utf-8"))
+    rows = found.get("threads") or []
+    if diverged:
+        rows = [row for row in rows
+                if any(c["kind"] == "diverged" for c in row["history"])]
+
+    if not rows:
+        click.echo("No thread matches." if diverged else "The index is empty.")
+        return
+
+    for row in rows:
+        mark = "[!]" if any(c["kind"] == "diverged" for c in row["history"]) else "   "
+        click.echo(f"  {mark} {row['source']}/{row['id']}  "
+                   f"{row['turns']} turn(s)  {row['digest']}")
+        if row.get("title"):
+            click.echo(f"       {row['title']}")
+    click.echo("")
+    click.echo(f"{len(rows)} thread(s), from an index generated "
+               f"{found['generated_at']}. An export is a snapshot.")
+
+
 @cli.command("selfcheck")
 @click.option("--database", type=click.Path(path_type=Path), default=None,
               help="record the invocations here instead of the configured database")
