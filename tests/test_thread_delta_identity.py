@@ -49,10 +49,46 @@ def test_an_unknown_source_gets_no_address_rather_than_a_guessed_one():
     """A made-up address is worse than an absent one: it looks like something a
     reader can go and find.
 
+    Every field is present and None, rather than the keys being absent: a
+    consumer reading `row["phase"]` should get "nobody knows" rather than a
+    KeyError, which is the same convention the harness payload uses for a count
+    nobody took.
+
     Mutation: fall back to a default project and this fails.
     """
     assert as_delta_row("no-such-assistant", "x") == {
-        "address": None, "perspective": None}
+        "address": None, "perspective": None,
+        "phase": None, "delta_type": None}
+
+
+def test_the_phase_is_the_one_the_delta_builder_sets():
+    """Not restated here. `to_thread_delta` decides that a thread enters at
+    `brainstorm` -- a conversation somebody has read and acted on is further
+    along, and nothing automatic can establish that.
+
+    Mutation: hard-code "brainstorm" in `as_delta_row` and this fails when the
+    builder moves, which is the whole point of reading it from the builder.
+    """
+    thread = Thread(id="abc123")
+    claude = source_classes()["claude"]
+    built = to_thread_delta(thread, project=claude.project,
+                            perspective=claude.perspective)
+
+    published = as_delta_row("claude", thread.id)
+    assert published["phase"] == built["delta"]["phase"]
+    assert published["delta_type"] == built["delta"]["delta_type"]
+
+
+def test_the_listing_carries_the_phase_for_every_row():
+    document = {
+        "schema": 2, "generated_at": "x", "totals": {},
+        "threads": [{"source": "claude", "id": "one", "title": "One",
+                     "turns": 3, "digest": "d", "first_seen": "",
+                     "last_seen": "", "history": []}],
+    }
+    row = summarise(document)["threads"][0]
+    assert row["phase"] == "brainstorm"
+    assert row["delta_type"] == "thread"
 
 
 def test_deriving_an_address_reads_nothing_from_disk(tmp_path, monkeypatch):

@@ -82,29 +82,46 @@ def as_delta_row(source: str, identifier: str) -> dict[str, Any]:
     address is worse than an absent one: it looks like something a reader can
     go and find.
     """
-    from qmcp.threads.base import thread_name
+    from qmcp.threads.base import to_thread_delta
 
     found = source_classes().get(source)
     if found is None:
-        return {"address": None, "perspective": None}
-    name = thread_name(_Named(identifier))
+        return {"address": None, "perspective": None,
+                "phase": None, "delta_type": None}
+
+    # Built rather than assembled from parts. `to_thread_delta` is what decides
+    # the name, the address, the phase and the type; restating any of them here
+    # would be a second copy of a decision this module does not own, and a
+    # consumer would then read whichever copy was edited last.
+    built = to_thread_delta(_Named(identifier), project=found.project,
+                            perspective=found.perspective)
+    address = next(
+        (link["target_name"] for link in built["links"]
+         if link["link_type"] == "address"), None)
     return {
-        "address": f"{found.project}/delta/{name}",
-        "perspective": found.perspective,
+        "address": address,
+        "perspective": built["perspective"],
+        "phase": built["delta"]["phase"],
+        "delta_type": built["delta"]["delta_type"],
     }
 
 
 class _Named:
-    """Just the `id` `thread_name` reads.
+    """Just the fields `to_thread_delta` reads off a thread.
 
     Constructing a real `Thread` would mean reading the store, which is the
-    cost this whole path exists to avoid.
+    cost this whole path exists to avoid. `title` and `url` are absent here on
+    purpose: the listing already carries the title from the index, and a title
+    invented from the id would be a worse one than the real one sitting beside
+    it.
     """
 
-    __slots__ = ("id",)
+    __slots__ = ("id", "title", "url")
 
     def __init__(self, identifier: str) -> None:
         self.id = identifier
+        self.title = None
+        self.url = None
 
 
 def sources_for(root: Path, sessions: Path | None = None) -> dict[str, Any]:
