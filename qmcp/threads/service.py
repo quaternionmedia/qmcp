@@ -51,6 +51,62 @@ from qmcp.threads import index as index_module
 SOURCES = ("claude", "chatgpt", "claude-code")
 
 
+def source_classes() -> dict[str, Any]:
+    """Every source class, with no store behind it.
+
+    `sources_for` needs a root because it is going to *read*. Whether a thread
+    is a delta, what project it belongs to and what level it speaks at are
+    class attributes, so a caller asking only those does not need a filesystem
+    -- and a listing that had to construct readers to state an address would be
+    a listing that fails when the store is not where it was last time.
+    """
+    from qmcp.threads.chatgpt import ChatGPTThreads
+    from qmcp.threads.claude import ClaudeThreads
+    from qmcp.threads.claudecode import ClaudeCodeThreads
+
+    return {"claude": ClaudeThreads, "chatgpt": ChatGPTThreads,
+            "claude-code": ClaudeCodeThreads}
+
+
+def as_delta_row(source: str, identifier: str) -> dict[str, Any]:
+    """One thread's delta identity: its address and the level it speaks at.
+
+    **DERIVED HERE BECAUSE THE NAMING RULE LIVES HERE.** `base.thread_name` is
+    what `to_thread_delta` uses to name the delta, and a consumer that wanted
+    an address had two options: ask for it, or reimplement `thread-{id}` and
+    the project it hangs under. The second is a second copy of a naming rule,
+    and the failure mode of that is two systems that agree until somebody
+    changes the prefix.
+
+    An unknown source gets `None` for both rather than a guess. A made-up
+    address is worse than an absent one: it looks like something a reader can
+    go and find.
+    """
+    from qmcp.threads.base import thread_name
+
+    found = source_classes().get(source)
+    if found is None:
+        return {"address": None, "perspective": None}
+    name = thread_name(_Named(identifier))
+    return {
+        "address": f"{found.project}/delta/{name}",
+        "perspective": found.perspective,
+    }
+
+
+class _Named:
+    """Just the `id` `thread_name` reads.
+
+    Constructing a real `Thread` would mean reading the store, which is the
+    cost this whole path exists to avoid.
+    """
+
+    __slots__ = ("id",)
+
+    def __init__(self, identifier: str) -> None:
+        self.id = identifier
+
+
 def sources_for(root: Path, sessions: Path | None = None) -> dict[str, Any]:
     """Every source, each pointed at the store it reads.
 
@@ -105,6 +161,10 @@ def summarise(document: dict[str, Any]) -> dict[str, Any]:
             "diverged": any(change["kind"] == index_module.DIVERGED
                             for change in row.get("history") or []),
             "changes": len(row.get("history") or []),
+            # A thread is a delta, so a listing of threads carries the address
+            # that delta has. Cheap: both come from class attributes and the
+            # naming rule, with nothing read from the store.
+            **as_delta_row(row["source"], row["id"]),
         })
     return {
         "schema": document.get("schema"),
