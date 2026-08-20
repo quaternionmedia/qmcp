@@ -248,11 +248,22 @@ unfamiliar string stops guarding the first time somebody names an interface.
 
 ## 7. Look at it
 
-    uv run qmcp threads dashboard --out threads.html
+**In the control panel, and only there.**
 
-Self-contained, so it opens with no network — and it should not be given one.
-It carries conversation titles, session ids and repository names off one
-machine's archive, and the page says so in its own footer.
+    uv run python -m qmcp serve        # here, on loopback
+    uv run dossier dashboard           # there, the Threads tab
+
+This project rendered a second view of the archive — a self-contained HTML page
+— and it was removed rather than kept. Two views of one dataset are two
+definitions of what a figure means, and they drift the first time one is fixed.
+
+The panel reads this harness over HTTP and imports nothing from it. When the
+harness is not running it says so, with the command that starts it, rather than
+showing an empty table — because an empty table would say the archive is empty
+when the truth is that nobody answered.
+
+The commands beside this one stay: a command line is for machines and for
+debugging, which is what `qmcp threads list` and `--check` are.
 
 ## The whole thing, as commands
 
@@ -260,8 +271,8 @@ machine's archive, and the page says so in its own footer.
     uv run qmcp threads import ~/Downloads/claude-export.zip
     uv run qmcp threads index --write
     uv run qmcp threads list --diverged
-    uv run qmcp threads dashboard --out threads.html
-    uv run python -m qmcp serve            # then GET /v1/threads
+    uv run python -m qmcp serve            # serves /v1/threads on loopback
+    uv run dossier dashboard               # the Threads tab reads it
 
 Requesting the export is the one step nothing automates:
 `governance/qm/records/DRAFT-acts-that-are-a-persons-by-constitution.md` is why,
