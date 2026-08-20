@@ -28,6 +28,8 @@ from qmcp.db.models import HumanRequestStatus, InvocationStatus
 from qmcp.logging import configure_logging, get_logger
 from qmcp.metrics import metrics, record_hitl_request, record_tool_invocation
 from qmcp.middleware import RequestTracingMiddleware
+from qmcp.threads.cache import DEFAULT_ROOT as THREAD_CACHE
+from qmcp.threads.service import register as register_threads
 from qmcp.schemas.mcp import (
     HumanRequestCreate,
     HumanRequestListResponse,
@@ -79,6 +81,22 @@ async def lifespan(app: FastAPI):
     logger.info("server_shutdown")
 
 
+# Loopback, by name and by address. `localhost` resolves to one of these on a
+# sane machine and to whatever the hosts file says on somebody else's, which is
+# why the addresses are listed rather than trusted to resolution.
+LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost", ""})
+
+
+def is_loopback(host: str | None) -> bool:
+    """Whether this host is only reachable from this machine.
+
+    Anything not recognised is treated as remote. A guard that fails open on an
+    unfamiliar string is one that stops guarding the first time somebody
+    configures an interface by name.
+    """
+    return (host or "").strip().lower() in LOOPBACK
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = get_settings()
@@ -93,6 +111,28 @@ def create_app() -> FastAPI:
 
     # Add request tracing middleware
     app.add_middleware(RequestTracingMiddleware)
+
+    # The thread archive, read-only, and ONLY WHEN THIS IS BOUND TO LOOPBACK.
+    #
+    # The archive holds somebody's conversations. Every other route here
+    # publishes tools or invocations this server itself produced; these publish
+    # a person's own conversation history, which is a different thing to put on
+    # a socket.
+    #
+    # `qmcp cookbook serve` exists and offers `--host 0.0.0.0` so a Docker
+    # container can reach the server. That is the case this guard is for: the
+    # routes are not registered at all off loopback, so there is nothing to
+    # reach rather than something that refuses. A 403 would still have told a
+    # caller the archive is there.
+    if is_loopback(settings.host):
+        register_threads(app, THREAD_CACHE)
+    else:
+        logger.info(
+            "thread_archive_not_served",
+            host=settings.host,
+            reason=("bound off loopback; the archive holds personal "
+                    "conversations and is served only to this machine"),
+        )
 
     # Health check
     @app.get("/health")
