@@ -84,6 +84,24 @@ class Arrow:
     label: str = ""
     kind: str = FLOW
 
+    weight: float | None = None
+    """How strong this edge is, 0 to 1, or `None` for unmeasured.
+
+    **`None` IS NOT ZERO AND A WINDOW MUST NOT DRAW IT AS ONE.** A hairline for
+    an unmeasured edge asserts weakness nobody established; a hairline for a
+    measured 0.01 reports one. The two need different renderings, which is why
+    this is optional rather than defaulted to a number.
+
+    A shape's own arrows carry `None`: "stage to stage" in a pipeline has no
+    strength, it is just the shape. Weight appears when a view is built over
+    real relations -- a thread to the projects it is about, a delta to the
+    repositories it touches -- where the number was measured from something.
+    """
+
+    basis: str = ""
+    """What the weight was read from, so the line is arguable rather than
+    authoritative. Empty when there is no weight."""
+
 
 @dataclass(frozen=True)
 class View:
@@ -284,5 +302,105 @@ def as_payload(view: View) -> dict[str, Any]:
         "boxes": [{"id": b.id, "label": b.label, "kind": b.kind,
                    "note": b.note, "count": b.count} for b in view.boxes],
         "arrows": [{"from": a.frm, "to": a.to, "label": a.label,
-                    "kind": a.kind} for a in view.arrows],
+                    "kind": a.kind, "weight": a.weight, "basis": a.basis}
+                   for a in view.arrows],
     }
+
+
+def from_relations(subject: str, relations: list[dict[str, Any]],
+                   caption: str = "") -> View:
+    """A view of one thing and what it is related to, with the edges weighted.
+
+    **THIS IS WHERE WEIGHT COMES FROM, AND IT IS NEVER INVENTED HERE.** Each
+    relation carries a `weight` and the `evidence` it was read from --
+    `qmcp.threads.consolidate` measures both. This arranges them into boxes and
+    arrows and changes neither.
+
+    A relation with no weight produces an arrow with `weight=None`, which every
+    window must draw differently from a weak one. Filling it in with a default
+    would turn "nobody measured this" into "this is negligible", and the two
+    are opposite claims about the same edge.
+    """
+    boxes = [Box("subject", subject, INPUT)]
+    arrows = []
+    for index, relation in enumerate(relations):
+        target = str(relation.get("target") or f"?{index}")
+        # The tail of an address is what fits on a line; the whole address is
+        # the note, so nothing is lost to abbreviation.
+        label = target.rsplit("/", 1)[-1]
+        box_id = f"r{index}"
+        weight = relation.get("weight")
+        evidence = (relation.get("evidence") or [{}])[0]
+        boxes.append(Box(box_id, label, WORKER, note=target))
+        arrows.append(Arrow(
+            "subject", box_id,
+            label=str(relation.get("relation") or ""),
+            weight=None if weight is None else float(weight),
+            basis=str(evidence.get("basis") or ""),
+        ))
+    return View(topology=subject, level=FLOWS, boxes=tuple(boxes),
+                arrows=tuple(arrows),
+                caption=caption or f"{len(relations)} relation(s), weighted")
+
+
+# --- which visual channel carries which data axis ------------------------------
+#
+# **A CHANNEL IS DECLARED HERE OR THE TWO WINDOWS WILL DISAGREE.** If each
+# renderer picks its own mapping, thickness means strength in one and recency in
+# the other, and two people looking at one flow read opposite things from the
+# same line. The mapping is part of the description.
+#
+# **AND `unknown` IS ITS OWN AXIS, NOT THE BOTTOM OF STRENGTH.** This is the
+# rule the whole encoding turns on. An unmeasured edge is not a weak edge: one
+# is an absence of evidence and the other is evidence of absence. Putting them
+# on one scale makes "nobody looked" render as "we looked and it is negligible",
+# which is a claim nobody made. So `measured` gets a *different channel* from
+# `strength` -- style and colour rather than width -- and a window that runs out
+# of channels drops one and says so rather than folding two axes into one.
+
+
+@dataclass(frozen=True)
+class Channel:
+    """One visual channel, and the single data axis it carries."""
+
+    channel: str
+    axis: str
+    scale: str
+    """`continuous` or `categorical`. A categorical axis on a continuous
+    channel invents an ordering; the reverse throws a magnitude away."""
+
+    values: tuple[str, ...] = ()
+    note: str = ""
+
+
+ENCODING: tuple[Channel, ...] = (
+    Channel(
+        channel="line_weight", axis="strength", scale="continuous",
+        note="0 to 1, and only where a weight was measured. A line has no "
+             "width for an unmeasured edge -- it is drawn by style instead"),
+    Channel(
+        channel="line_style", axis="measured", scale="categorical",
+        values=("measured", "unmeasured"),
+        note="the axis that must never be folded into strength. Unmeasured is "
+             "not weak; it is unlooked-at, and a reader has to be able to tell"),
+    Channel(
+        channel="line_colour", axis="relation_kind", scale="categorical",
+        values=(FLOW, FEEDBACK, REFUSAL),
+        note="what the edge is, which is not how strong it is. A refusal is "
+             "drawn a refusal however heavily travelled the path it forbids"),
+    Channel(
+        channel="node_shape", axis="box_kind", scale="categorical",
+        values=(INPUT, WORKER, GATE, STORE, OUTPUT),
+        note="a gate is a gate at any size"),
+)
+
+
+def encoding_payload() -> list[dict[str, Any]]:
+    """The mapping, for a window to read before it draws anything."""
+    return [{"channel": c.channel, "axis": c.axis, "scale": c.scale,
+             "values": list(c.values), "note": c.note} for c in ENCODING]
+
+
+def channels_for(axis: str) -> list[str]:
+    """Every channel declared to carry one axis."""
+    return [c.channel for c in ENCODING if c.axis == axis]

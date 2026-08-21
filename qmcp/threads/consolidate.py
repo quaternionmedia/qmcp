@@ -118,6 +118,49 @@ class Mention:
             return None
         return self.turn_count / self.of_turns
 
+    @property
+    def strength(self) -> float | None:
+        """How strongly this thread is about this project, 0 to 1.
+
+        **A CLAIM, DERIVED FROM MEASURED PARTS, AND THE PARTS TRAVEL WITH IT.**
+        `share`, `total` and `in_title` are counted; this is a reading of them,
+        and a renderer drawing a thick line is drawing this reading rather than
+        a fact. Every component stays on the `Mention` so somebody can disagree
+        with the combination without losing the evidence.
+
+        The rule, stated rather than tuned:
+
+          * `share` is the base -- the fraction of the conversation that names
+            the project, which is the measure the absolute turn threshold was
+            missing.
+          * a project in the **title** is at least 0.5, because a title is a
+            person's own summary of what the conversation was about and
+            outranks any proportion.
+          * `share` is capped at 1.0 rather than allowed to exceed it.
+
+        `None` when nothing can be measured -- and **`None` is not zero**. A
+        thread whose length is unknown is not a weak correlation; it is an
+        unmeasured one, and a window that drew it as a hairline would be
+        asserting weakness nobody established.
+        """
+        share = self.share
+        if share is None:
+            return 0.5 if self.in_title else None
+        if self.in_title:
+            return max(0.5, min(1.0, share))
+        return min(1.0, share)
+
+    @property
+    def basis(self) -> str:
+        """What the strength was read from, in words a person can argue with."""
+        if self.share is None:
+            return "named in the title; the thread's length is unknown"                 if self.in_title else "nothing measurable"
+        parts = [f"{self.turn_count} of {self.of_turns} turns "
+                 f"({self.share:.1%})", f"{self.total} mention(s)"]
+        if self.in_title:
+            parts.append("and in the title")
+        return ", ".join(parts)
+
 
 @dataclass(frozen=True)
 class Reading:
@@ -275,9 +318,16 @@ def relations_for(thread: Thread, reading: Reading, *,
             "relation": relation,
             "target": f"{owner_repo}/delta/the-work",
             "stated_by": f"qmcp threads consolidate: {reading.rule}",
+            # THE WEIGHT AND ITS PARTS TRAVEL TOGETHER. A consumer drawing a
+            # thick line is drawing a reading; sending the number without what
+            # it was read from would make that reading unarguable.
+            "weight": next((m.strength for m in reading.evidence
+                            if m.project == project), None),
             "evidence": [
                 {"project": m.project, "turns": m.turn_count,
-                 "mentions": m.total, "in_title": m.in_title}
+                 "of_turns": m.of_turns, "share": m.share,
+                 "mentions": m.total, "in_title": m.in_title,
+                 "strength": m.strength, "basis": m.basis}
                 for m in reading.evidence if m.project == project
             ],
         })
