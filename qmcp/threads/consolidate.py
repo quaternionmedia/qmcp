@@ -91,9 +91,32 @@ class Mention:
 
     in_title: bool = False
 
+    of_turns: int = 0
+    """How many turns the thread has. Carried so `share` is computable from
+    the evidence alone, without the reader needing the thread beside it."""
+
     @property
     def turn_count(self) -> int:
         return len(self.turns)
+
+    @property
+    def share(self) -> float | None:
+        """The fraction of the conversation that names this project.
+
+        **THE MEASURE THE ABSOLUTE THRESHOLD WAS MISSING, FOUND BY ASKING A
+        REAL QUESTION.** Pointed at `codecartographer`, the rule "named in at
+        least 2 turns" admitted a 5,153-turn session that named it in 18 (0.3%)
+        and a 1,885-turn session that named it twice (0.1%) -- alongside a
+        63-turn session that named it in 8 (12.7%), which is plainly about it.
+        Two turns is a lot of evidence in a short thread and none at all in a
+        long one.
+
+        `None` when the thread's length is unknown: a share computed against a
+        zero would be a number this made up.
+        """
+        if not self.of_turns:
+            return None
+        return self.turn_count / self.of_turns
 
 
 @dataclass(frozen=True)
@@ -176,12 +199,14 @@ def mentions(thread: Thread, names: Iterable[str]) -> tuple[Mention, ...]:
         in_title = bool(pattern.search(title))
         if total or in_title:
             found.append(Mention(project=name, turns=tuple(turns),
-                                 total=total, in_title=in_title))
+                                 total=total, in_title=in_title,
+                                 of_turns=len(thread.turns)))
     return tuple(sorted(found, key=lambda m: (-m.turn_count, m.project)))
 
 
 def about(thread: Thread, names: Iterable[str],
-          min_turns: int = DEFAULT_MIN_TURNS) -> Reading:
+          min_turns: int = DEFAULT_MIN_TURNS,
+          min_share: float | None = None) -> Reading:
     """Which projects this thread is about, and why.
 
     THE TITLE COUNTS FOR MORE THAN A MENTION. A repository named in the title is
@@ -191,13 +216,26 @@ def about(thread: Thread, names: Iterable[str],
     """
     known = list(names)
     evidence = mentions(thread, known)
-    chosen = tuple(
-        m.project for m in evidence
-        if m.in_title or m.turn_count >= min_turns
-    )
+
+    def counts(m: Mention) -> bool:
+        if m.in_title:
+            return True
+        if m.turn_count < min_turns:
+            return False
+        # `min_share` is off by default, so existing readings keep their
+        # meaning. Turning it on is a decision somebody makes, and the reason
+        # is in `Mention.share`: two turns is strong evidence in an eighteen
+        # turn thread and negligible in an eighteen hundred turn one.
+        if min_share is not None and (m.share or 0) < min_share:
+            return False
+        return True
+
+    chosen = tuple(m.project for m in evidence if counts(m))
     surveys = (len(chosen) >= MIN_SURVEY_PROJECTS
                and len(chosen) >= len(known) * ROSTER_SHARE)
     rule = f"named in the title, or in at least {min_turns} turns"
+    if min_share is not None:
+        rule += f", and in at least {min_share:.0%} of them"
     if surveys:
         rule += (f"; and it named {len(chosen)} of {len(known)} repositories, "
                  f"which reads as a survey of the workspace rather than work "

@@ -310,3 +310,60 @@ def test_a_survey_produces_no_relations():
     conversation = thread(body, body, id="sweep")
     found = about(conversation, wide)
     assert relations_for(conversation, found, project_of=wide) == []
+
+
+# --- how much of a conversation counts as being about something ---------------
+
+
+def test_a_share_is_measured_even_when_no_rule_uses_it():
+    """Evidence first. `share` is recorded whether or not any claim reads it,
+    which is what lets somebody argue the rule rather than the data."""
+    conversation = thread(*(["dossier here"] + ["unrelated"] * 9))
+    found = mentions(conversation, NAMES)
+    assert found[0].turn_count == 1
+    assert found[0].of_turns == 10
+    assert found[0].share == pytest.approx(0.1)
+
+
+def test_a_share_is_none_rather_than_zero_when_the_length_is_unknown():
+    """A share computed against a zero would be a number this made up."""
+    from qmcp.threads.consolidate import Mention
+
+    assert Mention("x", ("t0",), 1, of_turns=0).share is None
+
+
+def test_a_passing_mention_in_a_long_thread_can_be_excluded_by_share():
+    """THE ONE THE REAL ARCHIVE FOUND.
+
+    Pointed at `codecartographer`, "named in at least 2 turns" admitted a
+    5,153-turn session naming it in 18 (0.3%) beside a 63-turn session naming
+    it in 8 (12.7%). Two turns is a lot of evidence in a short thread and none
+    at all in a long one. Fourteen threads "about" it were four.
+
+    Mutation: ignore `min_share` and this fails.
+    """
+    long_thread = thread(*(["dossier"] * 2 + ["unrelated"] * 998), id="long")
+    short_thread = thread(*(["dossier"] * 2 + ["unrelated"] * 8), id="short")
+
+    assert about(long_thread, NAMES).projects == ("dossier",)
+    assert about(long_thread, NAMES, min_share=0.05).is_unknown
+    assert about(short_thread, NAMES, min_share=0.05).projects == ("dossier",)
+
+
+def test_the_share_rule_is_off_by_default_so_earlier_readings_still_mean_what_they_said():
+    """Turning it on changes every count taken before it. That is a decision
+    somebody makes, not a default that quietly rewrites history."""
+    long_thread = thread(*(["dossier"] * 2 + ["unrelated"] * 998))
+    assert about(long_thread, NAMES).projects == ("dossier",)
+
+
+def test_the_rule_says_when_a_share_was_applied():
+    found = about(thread("dossier", "dossier"), NAMES, min_share=0.05)
+    assert "5%" in found.rule
+
+
+def test_a_title_still_wins_over_any_share():
+    """A person's own summary of the conversation outranks a proportion."""
+    long_thread = thread(*(["dossier"] + ["unrelated"] * 999),
+                         title="Dossier rewrite")
+    assert about(long_thread, NAMES, min_share=0.5).projects == ("dossier",)
