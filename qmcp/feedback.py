@@ -198,14 +198,19 @@ def gate_findings(harness: Path) -> list[Finding]:
             for line in failed]
 
 
-@topology
 class FeedbackTopology(BaseTopology):
     """The improvement loop, as a pipeline the manager knows about.
 
-    Registered so it is discoverable beside the other seven, and implemented so
-    that at least one of them does something. The `run` here takes paths rather
-    than agents: no agent is dispatched, which is a fact about this loop worth
-    it being awkward to hide.
+    **DELIBERATELY NOT REGISTERED, AND THAT IS A FINDING RATHER THAN A
+    PREFERENCE.** `TopologyRegistry` is keyed by `TopologyType` and `register`
+    replaces silently, so a second class claiming `PIPELINE` does not collide --
+    it wins or loses by import order. This class did claim it, and
+    `TopologyRegistry.get(PIPELINE)` then returned the stub or this depending on
+    whether anything had imported `qmcp.feedback` yet. A test asking whether the
+    registered pipeline actually overrides `run` is what found it.
+
+    So this is a concrete pipeline that runs, and it does not pretend to be the
+    generic one. `qmcp.orchestration` says the same thing in the plane.
     """
 
     topology_type = TopologyType.PIPELINE
