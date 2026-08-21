@@ -11,6 +11,7 @@ import json
 import pytest
 
 from qmcp.agentframework.models.enums import TopologyType
+from qmcp import topology_view as tv
 from qmcp.orchestration import REFUSED
 from qmcp.topology_view import (
     BLACK_BOX,
@@ -237,3 +238,55 @@ def test_a_shape_arrow_has_no_weight_because_a_shape_has_no_strength():
 
     for arrow in view_of(TopologyType.PIPELINE, FLOWS).arrows:
         assert arrow.weight is None
+
+def test_several_relations_to_one_address_share_one_box():
+    """THE ONE THE TRIO DEMO FOUND, ON REAL DATA.
+
+    An address is what says two readings are about the same thing --
+    `records/DRAFT-a-route-is-an-address.md`. Keying boxes by position drew
+    three threads' readings of one delta as three nodes with the same label and
+    the same note, which reads as three deltas that happen to share a name. The
+    fixture in the demo could not show it: no two of its relations pointed
+    anywhere near each other, and only the archive had the repetition.
+
+    Mutation: key the box on the loop index and this fails.
+    """
+    same = "quaternionmedia/codecartographer/delta/the-work"
+    view = tv.from_relations("codecartographer", [
+        {"target": same, "relation": "crosses", "weight": 0.06,
+         "evidence": [{"basis": "mentions"}]},
+        {"target": same, "relation": "part-of", "weight": 0.17,
+         "evidence": [{"basis": "mentions"}]},
+        {"target": same, "relation": "crosses", "weight": 0.13,
+         "evidence": [{"basis": "mentions"}]},
+    ])
+
+    workers = [b for b in view.boxes if b.id != "subject"]
+    assert len(workers) == 1, "one address, one box"
+    assert workers[0].note == same
+
+    # **AND THE ARROWS ARE NOT MERGED.** Three threads finding this relation is
+    # three observations, each with its own weight. Collapsing them would invent
+    # an aggregate nobody measured.
+    assert len(view.arrows) == 3
+    assert sorted(a.weight for a in view.arrows) == [0.06, 0.13, 0.17]
+    assert {a.to for a in view.arrows} == {workers[0].id}
+
+
+def test_two_addresses_sharing_a_tail_stay_two_boxes():
+    """The label is abbreviated; the identity is not. Two different deltas
+    called `the-work` under two projects are two things.
+
+    Mutation: key the box on the label instead of the address and this fails.
+    """
+    view = tv.from_relations("subject", [
+        {"target": "owner/one/delta/the-work", "relation": "crosses",
+         "weight": 0.5, "evidence": [{"basis": "mentions"}]},
+        {"target": "owner/two/delta/the-work", "relation": "crosses",
+         "weight": 0.5, "evidence": [{"basis": "mentions"}]},
+    ])
+    workers = [b for b in view.boxes if b.id != "subject"]
+    assert len(workers) == 2
+    assert {b.note for b in workers} == {"owner/one/delta/the-work",
+                                         "owner/two/delta/the-work"}
+

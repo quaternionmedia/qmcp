@@ -320,18 +320,35 @@ def from_relations(subject: str, relations: list[dict[str, Any]],
     window must draw differently from a weak one. Filling it in with a default
     would turn "nobody measured this" into "this is negligible", and the two
     are opposite claims about the same edge.
+
+    **ONE BOX PER ADDRESS, NOT ONE PER RELATION.** Several relations reaching the
+    same address are several pieces of evidence about one thing, and the address
+    is what says they are one thing -- `records/DRAFT-a-route-is-an-address.md`.
+    Keying boxes by position instead drew a real archive's three readings of one
+    delta as three separate nodes carrying the same label and the same note,
+    which reads as three deltas that happen to share a name. Found by
+    `protocols/trio_demo.py` on the thread archive; the fixture could not show it
+    because no two of its relations pointed anywhere near each other.
+
+    The arrows are *not* merged. Three threads each finding this relation is
+    three observations, each with its own weight and its own basis, and
+    collapsing them into one would invent an aggregate nobody measured.
     """
     boxes = [Box("subject", subject, INPUT)]
     arrows = []
+    box_of: dict[str, str] = {}
     for index, relation in enumerate(relations):
         target = str(relation.get("target") or f"?{index}")
-        # The tail of an address is what fits on a line; the whole address is
-        # the note, so nothing is lost to abbreviation.
-        label = target.rsplit("/", 1)[-1]
-        box_id = f"r{index}"
+        box_id = box_of.get(target)
+        if box_id is None:
+            # The tail of an address is what fits on a line; the whole address
+            # is the note, so nothing is lost to abbreviation.
+            box_id = f"r{len(box_of)}"
+            box_of[target] = box_id
+            boxes.append(Box(box_id, target.rsplit("/", 1)[-1], WORKER,
+                             note=target))
         weight = relation.get("weight")
         evidence = (relation.get("evidence") or [{}])[0]
-        boxes.append(Box(box_id, label, WORKER, note=target))
         arrows.append(Arrow(
             "subject", box_id,
             label=str(relation.get("relation") or ""),
