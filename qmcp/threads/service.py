@@ -336,6 +336,30 @@ def register(app: Any, root: Path, sessions: Path | None = None) -> None:
                      "here is repaired."),
         }
 
+    @app.post("/v1/threads/reindex")
+    async def reindex_only(body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Rebuild the index from what is already in the store. Imports nothing.
+
+        **THE REFRESH THAT IS NOT AN IMPORT.** `/v1/threads/import` re-indexes
+        as well, which is right for an import and wrong as the only way to get
+        a fresh reading: it makes "refresh the cache" require a path to an
+        export somebody may not have any more, and it re-unpacks megabytes to
+        answer a question about what is already unpacked.
+
+        `_reindex` was already a function and already spent nothing --
+        `index.build` hands every source a budget of zero, so a source that
+        would need a paid call refuses rather than billing whoever pressed
+        refresh. Only the route was missing.
+        """
+        indexed = _reindex(root, sessions)
+        return {
+            "reindexed": True,
+            "indexed": indexed,
+            "reading": ("the index is rebuilt from the local store. Nothing "
+                        "was fetched and nothing was paid for; a conversation "
+                        "that is not on this machine is not here afterwards."),
+        }
+
     @app.post("/v1/threads/import")
     async def import_export(body: dict[str, Any]) -> dict[str, Any]:
         """Unpack an export the operator points at, then re-index.
