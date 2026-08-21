@@ -2,11 +2,15 @@
 
     ~/.qmcp/threads/chatgpt/*.json     one conversation per file
 
-**THE EXPORT SHAPE HERE IS A BEST READING AND IS STILL UNVERIFIED.** The Claude
-source has since been checked against a real export; this one has not, so it
-remains a reading of the documented format -- with more room to be wrong than
-the Claude one had, because this format stores messages as a `mapping` of nodes
-with parent pointers rather than a list: a tree, of which the conversation you
+**VERIFIED ONCE, AGAINST ONE REAL EXPORT.** Written from the documented format
+with none to hand, and checked on 2026-08-21 against an actual one: 34
+conversations, all 34 parsed, and **no conversation carrying messages that
+parsed to zero turns**. 354 turns, 116 from the person and 238 from the
+assistant, which is the ratio a real archive has and a broken reading does not.
+
+That is one export from one account on one date, and this format has more room
+to be wrong than the Claude one: it stores messages as a `mapping` of nodes with
+parent pointers rather than a list -- a tree, of which the conversation you
 actually read is one path.
 
 **THIS FLATTENS THE TREE AND SAYS SO.** Every node with text is taken, in
