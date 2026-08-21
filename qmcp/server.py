@@ -30,6 +30,8 @@ from qmcp.metrics import metrics, record_hitl_request, record_tool_invocation
 from qmcp.middleware import RequestTracingMiddleware
 from qmcp.threads.cache import DEFAULT_ROOT as THREAD_CACHE
 from qmcp.threads.service import register as register_threads
+from qmcp.topology_service import register as register_topology
+from qmcp.topology_service import register_readings as register_topology_readings
 from qmcp.schemas.mcp import (
     HumanRequestCreate,
     HumanRequestListResponse,
@@ -124,8 +126,13 @@ def create_app() -> FastAPI:
     # routes are not registered at all off loopback, so there is nothing to
     # reach rather than something that refuses. A 403 would still have told a
     # caller the archive is there.
+    # The topology *shapes* name nobody and are served wherever this is bound.
+    # The *readings* are derived from the archive and follow it exactly.
+    register_topology(app)
+
     if is_loopback(settings.host):
         register_threads(app, THREAD_CACHE)
+        register_topology_readings(app, THREAD_CACHE)
     else:
         logger.info(
             "thread_archive_not_served",
