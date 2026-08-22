@@ -307,6 +307,24 @@ def as_payload(view: View) -> dict[str, Any]:
     }
 
 
+def _subject_address(subject: str, relations: list[dict[str, Any]]) -> str:
+    """`<owner>/<subject>`, with the owner read off the relations.
+
+    Returns "" when no relation names an owner, which is a real answer: the
+    subject is a name somebody typed and nothing here can say whose it is.
+    A guessed owner would send a reader to another account's repository.
+    """
+    if "/" in subject:
+        return subject
+    owners = {
+        str(relation.get("target") or "").split("/", 1)[0]
+        for relation in relations
+        if "/" in str(relation.get("target") or "")
+    }
+    owners.discard("")
+    return f"{owners.pop()}/{subject}" if len(owners) == 1 else ""
+
+
 def from_relations(subject: str, relations: list[dict[str, Any]],
                    caption: str = "") -> View:
     """A view of one thing and what it is related to, with the edges weighted.
@@ -334,7 +352,13 @@ def from_relations(subject: str, relations: list[dict[str, Any]],
     three observations, each with its own weight and its own basis, and
     collapsing them into one would invent an aggregate nobody measured.
     """
-    boxes = [Box("subject", subject, INPUT)]
+    # **THE SUBJECT CARRIES ITS OWN ADDRESS.** It had none, so the one box
+    # naming the project a reader asked about was the only box they could not
+    # follow -- every relation target was navigable and the subject was not.
+    # `owner_of` is taken from the relations rather than assumed: they are
+    # addresses this survey already resolved.
+    subject_address = _subject_address(subject, relations)
+    boxes = [Box("subject", subject, INPUT, note=subject_address)]
     arrows = []
     box_of: dict[str, str] = {}
     for index, relation in enumerate(relations):
