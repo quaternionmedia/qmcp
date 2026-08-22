@@ -55,9 +55,13 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from qmcp import identity
 from qmcp.addresses import ask_address, invocation_address
 
-DEFAULT_PROJECT = "quaternionmedia/qmcp"
+# **DERIVED, NOT TYPED IN.** This named the repository directly, so a fork's
+# dashboard reported somebody else's project as its own. `qmcp.identity` reads
+# the git remote; see the reasoning there.
+DEFAULT_PROJECT = identity.this_project()
 RECENT = 10
 SCHEMA = 2
 

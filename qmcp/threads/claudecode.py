@@ -42,6 +42,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from qmcp import identity
 from qmcp.spend import Budget
 from qmcp.threads.base import THREAD_LINK, Thread, Turn
 from qmcp.threads.cache import LocalCacheSource
@@ -92,7 +93,9 @@ class ClaudeCodeThreads(LocalCacheSource):
 
     # A fallback only. Most sessions name their own repository, and `project_of`
     # prefers what the session says.
-    project = "quaternionmedia/qmcp"
+    # Derived from the checkout; see `qmcp.identity`. Seven modules held this
+    # literal between them.
+    project = identity.this_project()
 
     # Not an export. These are written as the work happens, so the snapshot
     # caveat the cache class carries would be false here.

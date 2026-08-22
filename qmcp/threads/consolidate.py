@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from qmcp import identity
 from qmcp.threads.base import Thread, thread_name
 
 # The relation names, from the corpus. Restated as constants rather than typed
@@ -195,7 +196,7 @@ class Reading:
         return PART_OF if len(self.projects) == 1 else CROSSES
 
 
-def roster(corpus: Path) -> dict[str, str]:
+def roster(corpus: Path, owner: str | None = None) -> dict[str, str]:
     """Repository short name -> `<owner>/<name>`, from the corpus's own roster.
 
     Read from `governance/qm`, which this repository already embeds. Asking the
@@ -207,12 +208,19 @@ def roster(corpus: Path) -> dict[str, str]:
 
     document = yaml.safe_load(
         (corpus / "ci" / "workspace.yaml").read_text(encoding="utf-8"))
+    # **THE OWNER IS DERIVED, NOT TYPED IN.** `workspace.yaml` declares bare
+    # repository names -- it is the corpus's roster and says nothing about
+    # whose account they are on -- so this had `quaternionmedia` written into
+    # it. Every relation the archive states therefore carried this
+    # organisation's owner whoever was running the survey, and an address's
+    # owner is what says two readings are about one thing.
+    account = owner or identity.owner()
     found: dict[str, str] = {}
     for entry in document.get("repositories") or []:
         name = entry.get("name")
         if not name:
             continue
-        found[name] = f"quaternionmedia/{name}"
+        found[name] = f"{account}/{name}"
     return found
 
 
@@ -306,7 +314,9 @@ def relations_for(thread: Thread, reading: Reading, *,
     if relation is None:
         return []
 
-    source = f"quaternionmedia/qmcp/delta/{thread_name(thread)}"
+    # The harness that pulled the thread owns the delta, and which harness that
+    # is comes from the checkout rather than from a literal.
+    source = f"{identity.this_project()}/delta/{thread_name(thread)}"
     out: list[dict[str, Any]] = []
     for project in reading.projects:
         owner_repo = project_of.get(project)

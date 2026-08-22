@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from qmcp.threads.base import Thread, Turn
+from qmcp import identity
 from qmcp.threads.cache import LocalCacheSource
 
 
@@ -45,7 +46,10 @@ class ChatGPTThreads(LocalCacheSource):
     name = "chatgpt"
     folder = "chatgpt"
     perspective = "chatgpt/thread"
-    project = "quaternionmedia/qmcp"
+    # Derived from the checkout rather than named here: four modules held this
+    # literal, and a fork of this harness emitted deltas belonging to another
+    # organisation. `qmcp.identity` has the reasoning.
+    project = identity.this_project()
 
     def parse(self, document: Any, path: Path) -> Thread:
         if not isinstance(document, dict):
