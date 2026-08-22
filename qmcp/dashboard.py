@@ -329,6 +329,26 @@ def to_dict(view: View) -> dict:
     }
 
 
+def _topologies() -> list[str]:
+    """The topologies this harness can serve.
+
+    **READ FROM THE MODULE, NOT OVER HTTP.** This dashboard reads the database
+    directly and never asks the server, so that it can still answer when the
+    server is down -- and the same rule applies here. Asking `/v1/topology`
+    would make the one view that explains a dead harness depend on a live one.
+
+    It reports what this build *can* serve, which is not the same as what is
+    reachable right now. `uv run qm dashboard` is the view that knows whether
+    anything is listening; this one knows what would be there if it were.
+    """
+    try:
+        from qmcp import topology_view
+
+        return [view.topology for view in topology_view.gallery()]
+    except Exception:                              # noqa: BLE001
+        return []
+
+
 def render(view: View) -> str:
     """The terminal view. Reads the `View` and queries nothing."""
     def shown(value: int | None) -> str:
@@ -345,6 +365,8 @@ def render(view: View) -> str:
         + (f"   -- {len([w for w in view.waiting if w.outstanding])} outstanding"
            if view.waiting else ""),
         f"  tables        {view.tables}",
+        f"  topologies    {len(_topologies())} shape(s) served at "
+        f"/v1/topology",
         "",
     ]
 
