@@ -2,7 +2,7 @@
 
     from qmcp.cookbook.delta import to_delta, from_delta
 
-    delta = to_delta(step, result, project="quaternionmedia/qmcp")
+    delta = to_delta(step, result, project=identity.this_project())
     step  = from_delta(delta, output_type=ChangeSummary)
 
 WHAT THIS IS FOR. dossier plans work as `ProjectDelta` rows -- discrete units
@@ -39,6 +39,7 @@ WHAT THIS CANNOT SEE. Whether the delta is true. It reads a step's declaration
 and, if given one, its result -- not whether the work was any good, whether the
 review that ran was a real review, or whether a step that produced output
 produced correct output. `phase` here is derived from execution facts and never
+from qmcp import identity
 from judgement.
 """
 

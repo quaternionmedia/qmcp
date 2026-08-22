@@ -5,13 +5,11 @@ implementation and a file of conformance vectors. qmcp does not import either --
 that would couple the server to the governance repository and neither could ship
 without the other. What is shared is the cases.
 
-THE SHARED CASES ARE NOT REACHABLE YET, AND THIS FILE SAYS SO. The governance
-submodule pins corpus `d4479cd`, which predates
-`project-seed/address-vectors.json` -- the vectors are on an unmerged corpus
-branch. `test_the_shared_conformance_vectors` skips with that reason rather than
-passing quietly, and starts running the moment the pin moves. Until then this
-implementation is verified against its own tests and *not* against the contract,
-which is a weaker claim and is stated as one.
+THE SHARED CASES ARE REACHABLE AND THEY RUN. This file used to say they were
+not: the pin predated `project-seed/address-vectors.json`, and the test skipped
+with that reason rather than passing quietly. The pin has moved, so the skip is
+gone and the claim is the stronger one -- this implementation is held to the
+same cases as every other.
 """
 
 from __future__ import annotations
@@ -42,15 +40,15 @@ VECTORS = ROOT / "governance" / "qm" / "project-seed" / "address-vectors.json"
 def test_the_shared_conformance_vectors():
     """Every case the corpus and dossier are also held to.
 
-    Skipped while the submodule pin predates the file. That is a real gap, not
-    a passing test: two implementations of one grammar are only kept honest by
-    the same cases, and right now only one of them has run them.
+    An absent vector file fails rather than skips. Two implementations of one
+    grammar are only kept honest by the same cases, and a green skip is how a
+    repository comes to believe it is conformant to something it never ran.
     """
     if not VECTORS.is_file():
-        pytest.skip(
+        pytest.fail(
             f"{VECTORS.relative_to(ROOT).as_posix()} is not in the pinned "
-            f"governance submodule (corpus d4479cd predates it). The grammar "
-            f"is unverified against the shared contract until the pin moves."
+            f"governance submodule. The grammar is unverified against the "
+            f"shared contract until the pin carries it."
         )
     cases = json.loads(VECTORS.read_text(encoding="utf-8"))["cases"]
     assert cases, "an empty vector file verifies nothing"

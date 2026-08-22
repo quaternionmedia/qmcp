@@ -1377,6 +1377,425 @@ def dashboard(database: Path | None, project: str | None, recent: int,
     click.echo(render(view))
 
 
+@cli.group("human")
+def human() -> None:
+    """The human-in-the-loop queue: what is waiting on a person.
+
+    Reads and writes the database directly rather than through the HTTP API,
+    for the reason the dashboard does: a queue you cannot read when the server
+    is down is a queue you cannot act on, and the server being down is when
+    somebody most wants to know what is outstanding.
+    """
+
+
+@human.command("list")
+@click.option("--database", type=click.Path(path_type=Path), default=None)
+@click.option("--all", "show_all", is_flag=True,
+              help="include requests that have already been answered")
+def human_list(database: Path | None, show_all: bool) -> None:
+    """What is waiting on a person, oldest first."""
+    from sqlmodel import Session, create_engine, select
+
+    from qmcp.db.models import HumanRequest, HumanResponse
+
+    engine = create_engine(f"sqlite:///{Path(database or _configured_database()).as_posix()}")
+    with Session(engine) as session:
+        requests = session.exec(
+            select(HumanRequest).order_by(HumanRequest.created_at)).all()
+        answers = {r.request_id: r for r in session.exec(select(HumanResponse)).all()}
+
+        shown = 0
+        for request in requests:
+            reply = answers.get(request.id)
+            if reply is not None and not show_all:
+                continue
+            shown += 1
+            mark = "[?]" if reply is None else "[=]"
+            click.echo(f"  {mark} {request.id}")
+            click.echo(f"      {request.prompt}")
+            if request.options:
+                click.echo(f"      options: {', '.join(request.options)}")
+            if reply is not None:
+                click.echo(f"      answered: {reply.response}"
+                           + (f"  ({reply.responded_by})" if reply.responded_by else ""))
+            click.echo("")
+
+        if not shown:
+            click.echo("  Nothing is waiting on a person."
+                       + ("" if show_all else "  (--all includes answered ones.)"))
+            return
+        click.echo(f"  {shown} waiting."
+                   if not show_all else f"  {shown} request(s).")
+
+
+@human.command("respond")
+@click.argument("request_id")
+@click.argument("response")
+@click.option("--database", type=click.Path(path_type=Path), default=None)
+@click.option("--by", default=None, help="who answered")
+def human_respond(request_id: str, response: str, database: Path | None,
+                  by: str | None) -> None:
+    """Answer one request. This is a person acting, and it is recorded as one.
+
+    A response does not resolve whatever the request was about. It records that
+    somebody was asked and answered, which is a different fact and the only one
+    this can establish.
+    """
+    from datetime import UTC, datetime
+
+    from sqlmodel import Session, create_engine, select
+
+    from qmcp.db.models import HumanRequest, HumanRequestStatus, HumanResponse
+
+    engine = create_engine(f"sqlite:///{Path(database or _configured_database()).as_posix()}")
+    with Session(engine) as session:
+        request = session.get(HumanRequest, request_id)
+        if request is None:
+            raise SystemExit(f"{request_id}: no such request. `qmcp human list` shows them.")
+        if request.options and response not in request.options:
+            raise SystemExit(
+                f"{response!r} is not one of {', '.join(request.options)}. "
+                f"A request that named its options is answered with one of them."
+            )
+        existing = session.exec(
+            select(HumanResponse).where(HumanResponse.request_id == request_id)).first()
+        if existing is not None:
+            raise SystemExit(
+                f"{request_id} was already answered {existing.response!r}. "
+                f"Nothing here overwrites a person's answer."
+            )
+
+        session.add(HumanResponse(request_id=request_id, response=response,
+                                  responded_by=by))
+        request.status = HumanRequestStatus.RESPONDED
+        session.add(request)
+        session.commit()
+
+    click.echo(f"  {request_id} answered {response!r}.")
+    click.echo("  The unit of work behind it moves to `planning`: somebody has")
+    click.echo("  looked. It does not move further, because being asked is not")
+    click.echo("  the same as the work being done.")
+
+
+@cli.group("threads")
+def threads() -> None:
+    """Conversations with an assistant, as units of work.
+
+    Reads a local export. Nothing here calls a paid service or needs a
+    credential -- `governance/qm/records/DRAFT-no-unattended-spending.md` is
+    why, and an API source will be a second source behind the same contract
+    rather than a change to this one.
+    """
+
+
+def _sources(root, sessions=None):
+    """Every thread source, each pointed at the store it actually reads.
+
+    Two roots, not one. The web exports live in a cache this project unpacks
+    into; Claude Code sessions live in a store somebody else owns and this only
+    reads. Passing one root to both would send the session reader looking in an
+    export cache and report zero sessions, which reads like an empty machine.
+    """
+    from qmcp.threads.chatgpt import ChatGPTThreads
+    from qmcp.threads.claude import ClaudeThreads
+    from qmcp.threads.claudecode import SESSION_ROOT, ClaudeCodeThreads
+
+    return [
+        ClaudeThreads(root=root),
+        ChatGPTThreads(root=root),
+        ClaudeCodeThreads(root=Path(sessions) if sessions else SESSION_ROOT),
+    ]
+
+
+def _root(root):
+    from qmcp.threads.cache import DEFAULT_ROOT
+
+    return Path(root) if root else DEFAULT_ROOT
+
+
+@threads.command("sources")
+@click.option("--root", type=click.Path(path_type=Path), default=None,
+              help="the export cache to read instead of the default")
+@click.option("--sessions", type=click.Path(path_type=Path), default=None,
+              help="the Claude Code session store to read instead of the default")
+def threads_sources(root: Path | None, sessions: Path | None) -> None:
+    """What is cached, per assistant, and what pulling it would cost."""
+    for source in _sources(_root(root), sessions):
+        click.echo(source.describe())
+        click.echo("")
+
+
+@threads.command("import")
+@click.argument("export", type=click.Path(exists=True, path_type=Path))
+@click.option("--root", type=click.Path(path_type=Path), default=None,
+              help="the cache to unpack into instead of the default")
+@click.option("--source", type=click.Choice(["claude", "chatgpt"]), default=None,
+              help="which service wrote it, when the shape cannot say")
+@click.option("--dry-run", is_flag=True, help="report and write nothing")
+def threads_import(export: Path, root: Path | None, source: str | None,
+                   dry_run: bool) -> None:
+    """Unpack an official data export into the cache.
+
+    EXPORT is the ZIP the service produced, or a `conversations.json` already
+    unpacked from one.
+
+    
+    THE API IS NOT A ROUTE TO THIS DATA. Neither Anthropic's nor OpenAI's API
+    exposes the conversation history of claude.ai or chatgpt.com -- they are
+    products for making new model calls, against different storage, with no
+    endpoint that lists your threads. The export is the sanctioned route and
+    requesting it is the account holder's, in the web interface.
+
+    Nothing here reaches the network or spends anything.
+    """
+    from qmcp.threads.importer import positional, render, unpack
+
+    directory = _root(root)
+    try:
+        report = unpack(export, directory, source=source, dry_run=dry_run)
+    except (ValueError, OSError) as exc:
+        raise SystemExit(f"{export.name}: {exc}") from exc
+
+    click.echo(render(report, directory, dry_run))
+
+    fallback = list(positional(report))
+    if fallback:
+        click.echo("")
+        click.echo(f"  {len(fallback)} conversation(s) carried no id and were "
+                   f"named by position.")
+        click.echo("  A later export with one deleted shifts those names, and "
+                   "the index would")
+        click.echo("  read that as many threads diverging at once. Worth "
+                   "knowing before it does.")
+
+    if not dry_run and report.total:
+        click.echo("")
+        click.echo("  Next: uv run qmcp threads index --write")
+
+
+@threads.command("index")
+@click.option("--root", type=click.Path(path_type=Path), default=None)
+@click.option("--sessions", type=click.Path(path_type=Path), default=None,
+              help="the Claude Code session store to read instead of the default")
+@click.option("--write", is_flag=True, help="write the index")
+@click.option("--check", "check", is_flag=True,
+              help="re-derive from the files and report drift; writes nothing")
+def threads_index(root: Path | None, sessions: Path | None, write: bool,
+                  check: bool) -> None:
+    """Index the cache, keeping what earlier indexes knew.
+
+    Nothing is overwritten. A conversation somebody kept talking in produces a
+    later version of the same strand, and whether it *grew* or *diverged* is
+    recorded rather than resolved -- an export that disagrees with an earlier
+    record of itself is a finding, and the prior digest is the only evidence.
+    """
+    import json as _json
+
+    from qmcp.threads import index as index_module
+
+    directory = _root(root)
+    path = directory / index_module.INDEX_NAME
+    sources = _sources(directory, sessions)
+
+    entries = index_module.build(sources)
+    unreadable = {
+        source.name: [item.path for item in source.unreadable]
+        for source in sources if getattr(source, "unreadable", None)
+    }
+
+    if check:
+        if not path.is_file():
+            raise SystemExit(
+                f"no index at {path}. `--check` compares a written index "
+                f"against the files; there is nothing to compare."
+            )
+        found = _json.loads(path.read_text(encoding="utf-8"))
+        problems = index_module.drift(found, entries)
+        if problems:
+            click.echo(f"{len(problems)} disagreement(s) between the index and "
+                       f"the files:")
+            for problem in problems:
+                click.echo(f"  {problem}")
+            raise SystemExit(1)
+        click.echo("The index still describes the files it was built from.")
+        click.echo("Only the cache layer is compared. The archive layer is "
+                   "history and cannot be re-derived from the files, which is "
+                   "what makes it worth keeping.")
+        return
+
+    merged, changed = index_module.merge(index_module.load(path), entries)
+    document = index_module.document(merged, unreadable)
+
+    if write:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json.dumps(document, indent=2) + "\n",
+                        encoding="utf-8", newline="\n")
+        click.echo(index_module.render(document, changed))
+        click.echo("")
+        click.echo(f"Written to {path}. It describes this machine's cache and "
+                   f"is not committed anywhere.")
+        return
+
+    click.echo(index_module.render(document, changed))
+    click.echo("")
+    click.echo("Nothing was written. Pass --write to keep it.")
+
+
+@threads.command("dashboard")
+def threads_dashboard() -> None:
+    """Where the archive is read. It is not here.
+
+    
+    THE ARCHIVE HAS ONE HUMAN SURFACE, AND IT IS THE CONTROL PANEL. This
+    project rendered a second one -- a self-contained HTML page -- and it was
+    removed rather than kept: two views of one dataset are two definitions of
+    what a figure means, and they drift the first time one is fixed.
+
+    The commands beside this one stay, because a command line is for machines
+    and for debugging. `governance/qm/PRINCIPLES.md` P13.
+    """
+    click.echo("  The archive is read in the control panel:")
+    click.echo("")
+    click.echo("    uv run python -m qmcp serve        # here, on loopback")
+    click.echo("    uv run dossier dashboard           # there, the Threads tab")
+    click.echo("")
+    click.echo("  It reads this harness over HTTP and imports nothing from it.")
+    click.echo("  For debugging, `qmcp threads list` and `--check` are still here.")
+
+
+@threads.command("list")
+@click.option("--root", type=click.Path(path_type=Path), default=None)
+@click.option("--diverged", is_flag=True,
+              help="only threads whose export disagrees with an earlier one")
+def threads_list(root: Path | None, diverged: bool) -> None:
+    """What the index holds. Reads the index, not the files."""
+    import json as _json
+
+    from qmcp.threads import index as index_module
+
+    path = _root(root) / index_module.INDEX_NAME
+    if not path.is_file():
+        raise SystemExit(
+            f"no index at {path}. `uv run qmcp threads index --write` builds "
+            f"one; nothing here reads the files, so an absent index is an "
+            f"absent answer rather than an empty one."
+        )
+
+    found = _json.loads(path.read_text(encoding="utf-8"))
+    rows = found.get("threads") or []
+    if diverged:
+        rows = [row for row in rows
+                if any(c["kind"] == "diverged" for c in row["history"])]
+
+    if not rows:
+        click.echo("No thread matches." if diverged else "The index is empty.")
+        return
+
+    for row in rows:
+        mark = "[!]" if any(c["kind"] == "diverged" for c in row["history"]) else "   "
+        click.echo(f"  {mark} {row['source']}/{row['id']}  "
+                   f"{row['turns']} turn(s)  {row['digest']}")
+        if row.get("title"):
+            click.echo(f"       {row['title']}")
+    click.echo("")
+    click.echo(f"{len(rows)} thread(s), from an index generated "
+               f"{found['generated_at']}. An export is a snapshot.")
+
+
+@cli.command("selfcheck")
+@click.option("--database", type=click.Path(path_type=Path), default=None,
+              help="record the invocations here instead of the configured database")
+@click.option("--project", default=None, help="owner/repo these rows belong to")
+@click.option("--deltas", "as_deltas", is_flag=True,
+              help="emit the failures as delta payloads instead of a report")
+@click.option("--json", "as_json", is_flag=True, help="emit the run as data")
+@click.option("--ask/--no-ask", default=True, show_default=True,
+              help="raise a human request for each failing check")
+def selfcheck(database: Path | None, project: str | None, as_deltas: bool,
+              as_json: bool, ask: bool) -> None:
+    """Run this repository's own gates, and record the run like any other.
+
+    Each check is a real subprocess against this working tree, written to the
+    database as a `ToolInvocation` -- the same row the server writes and the
+    same row `qmcp dashboard` reads back. A failing check becomes a unit of
+    work; a passing one becomes nothing, because a green gate is not work.
+
+    Pair it with the control panel:
+
+        uv run qmcp selfcheck --deltas > deltas.json
+        uv run qmcp dashboard --json > harness.json
+        # then, in dossier
+        uv run dossier deltas ingest deltas.json --write
+        uv run dossier harness ingest harness.json --write
+    """
+    import json as _json
+    import tempfile
+
+    from sqlmodel import Session, SQLModel, create_engine, select
+
+    from qmcp.dashboard import DEFAULT_PROJECT
+    from qmcp.db.models import HumanRequest, HumanResponse
+    from qmcp.selfcheck import checks, render, run_check, to_delta
+
+    repo = Path(__file__).resolve().parent.parent
+    owner_repo = project or DEFAULT_PROJECT
+    target = database or _configured_database()
+
+    engine = create_engine(f"sqlite:///{Path(target).as_posix()}")
+    SQLModel.metadata.create_all(engine)
+
+    # The captured run goes to a temporary directory. Writing it into the
+    # repository would make a self-check dirty the tree it is checking, which
+    # is the measurement disturbing its own subject.
+    capture_dir = Path(tempfile.mkdtemp(prefix="qmcp-selfcheck-"))
+
+    findings = []
+    with Session(engine) as session:
+        for check in checks(capture_dir):
+            finding, invocation = run_check(check, repo, owner_repo)
+            session.add(invocation)
+            findings.append(finding)
+        session.commit()
+
+        # A question is raised once per failing check and not once per run.
+        # Asking again on every run would fill the queue with the same question
+        # and bury the one somebody had not answered yet.
+        answered = {}
+        for finding in findings:
+            if finding.ok:
+                continue
+            from qmcp.selfcheck import ask as ask_about
+            request = ask_about(finding, owner_repo)
+            existing = session.get(HumanRequest, request.id)
+            if existing is None and ask:
+                session.add(request)
+            reply = session.exec(
+                select(HumanResponse).where(HumanResponse.request_id == request.id)
+            ).first()
+            answered[finding.check] = reply is not None
+        session.commit()
+
+    if as_deltas:
+        payloads = [to_delta(f, owner_repo, answered=answered.get(f.check, False))
+                    for f in findings if not f.ok]
+        click.echo(_json.dumps(payloads, indent=2))
+        return
+
+    if as_json:
+        click.echo(_json.dumps({
+            "schema": 1,
+            "project": owner_repo,
+            "findings": [
+                {"check": f.check, "ok": f.ok, "address": f.address,
+                 "duration_ms": f.duration_ms, "detail": f.detail}
+                for f in findings
+            ],
+        }, indent=2))
+        return
+
+    click.echo(render(findings, owner_repo))
+
+
 @cli.command("deltas")
 @click.option("--project", default=None, help="owner/repo these belong to")
 @click.option("--pipeline", default="change_impact", show_default=True,
