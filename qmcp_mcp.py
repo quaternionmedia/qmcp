@@ -12,14 +12,14 @@ Claude Code / Claude Desktop config:
       "mcpServers": {
         "qmcp-repo": {
           "command": "uv",
-          "args": ["run", "--project", "C:/Users/peter/repos/qm/qmcp", "python", "qmcp_mcp.py"],
-          "cwd": "C:/Users/peter/repos/qm/qmcp"
+          "args": ["run", "--project", "<path to your qmcp clone>", "python", "qmcp_mcp.py"],
+          "cwd": "<path to your qmcp clone>"
         }
       }
     }
 
 Environment variables:
-    QMCP_SERVER_URL  - URL of the running qmcp HTTP server (default: http://localhost:3333)
+    QMCP_SERVER_URL  - URL of the running qmcp HTTP server (default: the port `qmcp/config.py` allocates)
     QMCP_DB_PATH     - Path to the flow persistence SQLite DB (default: .qmcp_devflows.db)
 """
 
@@ -38,7 +38,18 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("qmcp-repo")
 
 REPO_ROOT = Path(__file__).parent.resolve()
-DEFAULT_SERVER_URL = os.getenv("QMCP_SERVER_URL", "http://localhost:3333")
+# **NOT A FOURTH COPY OF THE PORT.** `qmcp/config.py` owns the allocation --
+# 3141 the harness, 1618 the panel, 2718 the maps -- and this file carried
+# `3333` from before it existed, so the MCP server's default addressed a port
+# nothing serves. Read rather than restated: a number repeated in a second
+# place is one nothing updates.
+try:
+    from qmcp.config import Settings as _Settings
+    _DEFAULT_PORT = _Settings().port
+except Exception:                                  # noqa: BLE001
+    _DEFAULT_PORT = 3141
+
+DEFAULT_SERVER_URL = os.getenv("QMCP_SERVER_URL", f"http://localhost:{_DEFAULT_PORT}")
 DEFAULT_DB_PATH = os.getenv("QMCP_DB_PATH", str(REPO_ROOT / ".qmcp_devflows.db"))
 
 _RECIPES: dict[str, dict[str, Any]] = {
@@ -326,7 +337,7 @@ def server_health(server_url: str = DEFAULT_SERVER_URL) -> dict[str, Any]:
     """Check if the qmcp HTTP server is running and healthy.
 
     Args:
-        server_url: Base URL of the qmcp server (default: http://localhost:3333).
+        server_url: Base URL of the qmcp server (default: the port `qmcp/config.py` allocates).
 
     Returns:
         Health response dict, or an error dict if unreachable.
