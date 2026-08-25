@@ -1663,6 +1663,46 @@ def threads_dashboard() -> None:
     click.echo("  For debugging, `qmcp threads list` and `--check` are still here.")
 
 
+@threads.command("consolidate")
+@click.option("--root", type=click.Path(path_type=Path), default=None,
+              help="the export cache to read instead of the default")
+@click.option("--sessions", type=click.Path(path_type=Path), default=None,
+              help="the Claude Code session store to read instead of the default")
+@click.option("--corpus", type=click.Path(path_type=Path),
+              default=Path("governance") / "qm",
+              help="the corpus whose workspace names the projects")
+@click.option("--by-project", is_flag=True,
+              help="also list which threads each project has")
+def threads_consolidate(root: Path | None, sessions: Path | None,
+                        corpus: Path, by_project: bool) -> None:
+    """Which projects the archive is about, read against the workspace roster.
+
+    Reads files already on this disk and spends nothing. The count of threads
+    about no project is reported first and never omitted -- a consolidator that
+    printed only its hits would read as though it had placed everything.
+    """
+    from qmcp.spend import Budget
+    from qmcp.threads import consolidate as consolidator
+
+    if not (corpus / "ci" / "workspace.yaml").is_file():
+        raise click.ClickException(
+            f"no workspace at {corpus.as_posix()}/ci/workspace.yaml. The "
+            f"roster names the projects, so without it every thread would be "
+            f"about none of them, which is a different answer.")
+
+    names = consolidator.roster(corpus)
+    collected: list = []
+    for source in _sources(_root(root), sessions):
+        collected.extend(source.fetch([], Budget(authorised=0)))
+
+    reading = consolidator.consolidate(collected, names)
+    click.echo(reading.summary())
+    if by_project:
+        click.echo("")
+        for project, found in sorted(reading.by_project().items()):
+            click.echo(f"  {project}: {len(found)} thread(s)")
+
+
 @threads.command("list")
 @click.option("--root", type=click.Path(path_type=Path), default=None)
 @click.option("--diverged", is_flag=True,
@@ -1843,6 +1883,163 @@ def deltas(project: str | None, pipeline: str) -> None:
         payloads.append(payload)
 
     click.echo(_json.dumps(payloads, indent=2))
+
+
+# =============================================================================
+# The routes three modules already told people to run
+#
+# `qmcp.topology_view`, `qmcp.orchestration` and `qmcp.localmodel` each open
+# with a `uv run qmcp ...` line, and until this section none of those commands
+# existed. `tests/test_declared_commands.py` is what keeps that from happening
+# again, and it names the three that are still only claimed.
+# =============================================================================
+
+
+@cli.group("topology")
+def topology() -> None:
+    """The shapes this harness knows, and the one it runs a model through.
+
+    A window rather than a description. `qmcp.topology_view` holds boxes and
+    arrows with no coordinates, no glyphs and no colours; what is printed here
+    is one rendering of that, and the browser front end draws the same payload
+    differently without either being more correct.
+    """
+
+
+def _render_view(view: object) -> str:
+    """One view as text. A terminal drops what it has no room for.
+
+    Notes are shown and weights are not: a weight needs a length to mean
+    anything, and a column of numbers beside a list of boxes would be reporting
+    a measurement in a form nobody can read it in.
+    """
+    lines = [f"{view.topology} (level {view.level}) -- {view.caption}"]
+    marks = list(view.marks)
+    if view.is_refused:
+        marks.append("refused here")
+    if marks:
+        lines.append(f"  declares: {', '.join(marks)}")
+    lines.append("")
+    for box in view.boxes:
+        count = f" x{box.count}" if box.count is not None else ""
+        note = f"  -- {box.note}" if box.note else ""
+        lines.append(f"  [{box.kind:<6}] {box.label}{count}{note}")
+    if view.arrows:
+        lines.append("")
+        for arrow in view.arrows:
+            label = f" ({arrow.label})" if arrow.label else ""
+            mark = "" if arrow.kind == "flow" else f" [{arrow.kind}]"
+            lines.append(f"  {arrow.frm} -> {arrow.to}{label}{mark}")
+    return "\n".join(lines)
+
+
+@topology.command("gallery")
+@click.option("--level", type=click.IntRange(0, 2), default=0,
+              help="0 black box, 1 the parts, 2 the flow between them")
+def topology_gallery(level: int) -> None:
+    """Every topology this harness knows, at one level."""
+    from qmcp import governed
+    from qmcp import topology_view as tv
+
+    for view in [*tv.gallery(level=level), governed.view(level=level)]:
+        click.echo(_render_view(view))
+        click.echo("")
+
+
+@topology.command("show")
+@click.argument("kind")
+@click.option("--level", type=click.IntRange(0, 2), default=2,
+              help="0 black box, 1 the parts, 2 the flow between them")
+def topology_show(kind: str, level: int) -> None:
+    """One topology at one resolution.
+
+    KIND is a name from `topology gallery`, or `governed` for the seam a model
+    is called through.
+    """
+    from qmcp import governed
+    from qmcp import topology_view as tv
+    from qmcp.agentframework.models.enums import TopologyType
+
+    if kind == "governed":
+        click.echo(_render_view(governed.view(level=level)))
+        return
+    try:
+        wanted = TopologyType(kind)
+    except ValueError:
+        raise click.ClickException(
+            f"no topology named {kind!r}. `qmcp topology gallery` lists them.")
+    click.echo(_render_view(tv.view_of(wanted, level=level)))
+
+
+@cli.group("orchestration")
+def orchestration() -> None:
+    """What each topology would do, declared before anything runs one."""
+
+
+@orchestration.command("plane")
+def orchestration_plane() -> None:
+    """Every topology's status and what running it would do.
+
+    Reports the declaration rather than establishing it. A plane that worked
+    these out by running something would have already done the thing it was
+    deciding about.
+    """
+    from qmcp import orchestration as plane
+
+    click.echo(plane.render())
+    drift = plane.undeclared()
+    if drift:
+        click.echo("")
+        click.echo("Attested acts this module restates that the corpus no "
+                   "longer names, or vice versa:")
+        for line in drift:
+            click.echo(f"  - {line}")
+
+
+@cli.group("localmodel")
+def localmodel() -> None:
+    """Standing a local model up, and being able to do it again.
+
+    **A deployment decision, not governance.** This is the one place a vendor
+    is allowed to appear, because it is this project's own operational tooling
+    rather than a rule anybody adopts by reference.
+    """
+
+
+@localmodel.command("check")
+def localmodel_check() -> None:
+    """What is on this machine, before anything is installed. Installs nothing."""
+    from qmcp.localmodel import look
+
+    check = look()
+    click.echo(f"  installer:  {check.installer or 'none found'}")
+    click.echo(f"  ollama:     {check.ollama or 'not installed'}")
+    click.echo(f"  models dir: {check.models_dir or 'not set'}")
+    click.echo(f"  gpu:        {check.gpu or 'none reported'}"
+               + (f" ({check.vram_mb} MB)" if check.vram_mb else ""))
+    for volume in check.volumes:
+        click.echo(f"  volume:     {volume.human()}")
+    best = check.best_volume
+    click.echo(f"  roomiest:   {best.name if best else 'nothing roomy enough'}")
+    if check.system_drive_is_tight:
+        click.echo("  the system drive is tight; --models-dir elsewhere")
+    for blocker in check.blockers:
+        click.echo(f"  blocked by: {blocker}")
+
+
+@localmodel.command("plan")
+@click.option("--models-dir", default=None,
+              help="where models should be kept, if not the default")
+def localmodel_plan(models_dir: str | None) -> None:
+    """The exact commands, printed rather than run.
+
+    A step that downloads five gigabytes should be something a person read
+    before it started, and something they can run again later without this
+    module being involved.
+    """
+    from qmcp.localmodel import look, plan
+
+    click.echo(plan(look(), models_dir=models_dir).render())
 
 
 def main() -> None:

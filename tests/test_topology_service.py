@@ -195,3 +195,48 @@ def test_a_survey_authorises_no_spend():
     Mutation: raise the budget and this fails.
     """
     assert ts.SURVEY_BUDGET == 0
+
+
+# --- the governed seam, served beside the vocabulary ---------------------------
+
+
+def test_the_governed_seam_is_in_the_gallery(shapes_only):
+    """A shape a front end cannot list is a shape nobody will draw.
+
+    The reason `council` is listed rather than dropped, in the other
+    direction: the gallery is where somebody choosing a shape looks.
+    """
+    listed = shapes_only.get("/v1/topology").json()["topologies"]
+    names = [entry["topology"] for entry in listed]
+
+    assert "governed" in names
+    assert names.count("governed") == 1
+
+
+def test_the_governed_seam_is_served_off_loopback(shapes_only):
+    """It is a shape. It names nobody and holds nothing personal."""
+    response = shapes_only.get("/v1/topology/shape/governed")
+
+    assert response.status_code == 200
+    assert response.json()["payload"]["topology"] == "governed"
+
+
+def test_the_governed_payload_declares_that_it_spends(shapes_only):
+    """The plane's declarations are part of the picture, over HTTP too."""
+    payload = shapes_only.get(
+        "/v1/topology/shape/governed?level=2").json()["payload"]
+
+    assert "spends" in payload["marks"]
+    assert any(arrow["kind"] == "refusal" for arrow in payload["arrows"])
+
+
+def test_the_governed_seam_answers_at_every_level(shapes_only):
+    for level in (0, 1, 2):
+        response = shapes_only.get(f"/v1/topology/shape/governed?level={level}")
+        assert response.status_code == 200
+        assert response.json()["payload"]["level"] == level
+
+
+def test_an_unknown_shape_is_still_a_404(shapes_only):
+    """Adding a name outside the enum must not make every name resolve."""
+    assert shapes_only.get("/v1/topology/shape/govern").status_code == 404

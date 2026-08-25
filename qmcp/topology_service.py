@@ -10,9 +10,10 @@ not deployed, and those look identical from inside the demo.
 **TWO CLASSES OF ROUTE, AND THE DIFFERENCE IS PERSONAL DATA.**
 
 - The *shapes* -- `/v1/topology`, `/v1/topology/encoding`,
-  `/v1/topology/{kind}` -- are this harness's own vocabulary. A delegation
-  topology looks the same on every machine and names nobody. They are served
-  wherever the server is bound.
+  `/v1/topology/shape/{kind}` -- are this harness's own vocabulary. A
+  delegation topology looks the same on every machine and names nobody, and so
+  does `governed`, the seam a model is called through. They are served wherever
+  the server is bound.
 - The *readings* -- `/v1/topology/relations/{subject}` -- are derived from the
   thread archive, which holds a person's conversations. They carry project
   addresses, turn counts and what somebody talked about, and they are
@@ -49,6 +50,20 @@ MAX_SUBJECT = 100
 SURVEY_BUDGET = 0
 
 
+def _gallery() -> list[Any]:
+    """Every shape a caller can ask for, at black-box level.
+
+    The vocabulary's shapes, and then `governed` -- which is not one of them.
+    `TopologyType` is a catalogue of collaboration patterns and the governed
+    seam is this organisation's own pipeline, so it is listed beside them
+    rather than added to the enum: a name in that vocabulary is a name every
+    consumer of the agent framework inherits.
+    """
+    from qmcp import governed
+
+    return [*tv.gallery(), governed.view(level=tv.BLACK_BOX)]
+
+
 def _views() -> dict[str, Any]:
     """Every topology this harness knows, at black-box level."""
     return {
@@ -58,7 +73,7 @@ def _views() -> dict[str, Any]:
             {"topology": view.topology, "caption": view.caption,
              "status": view.status,
              "boxes": len(view.boxes), "arrows": len(view.arrows)}
-            for view in tv.gallery()
+            for view in _gallery()
         ],
         "encoding": tv.encoding_payload(),
     }
@@ -101,16 +116,23 @@ def register(app: Any) -> None:
         other is a person's conversations, and a route that could be confused
         for the other is the wrong shape for that boundary.
         """
+        from qmcp import governed
         from qmcp.agentframework.models.enums import TopologyType
 
-        try:
-            wanted = TopologyType(kind)
-        except ValueError:
-            raise HTTPException(
-                status_code=404,
-                detail=(f"no topology named {kind!r}. "
-                        f"`GET /v1/topology` lists them."))
-        view = tv.view_of(wanted, level=level)
+        if kind == "governed":
+            # Not in `TopologyType`, and served here because a front end
+            # drawing the shapes should not need a second route to draw the
+            # one shape that calls a model.
+            view = governed.view(level=level)
+        else:
+            try:
+                wanted = TopologyType(kind)
+            except ValueError:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(f"no topology named {kind!r}. "
+                            f"`GET /v1/topology` lists them."))
+            view = tv.view_of(wanted, level=level)
         return {"schema": 1, "payload": tv.as_payload(view),
                 "encoding": tv.encoding_payload(), "source": "topology"}
 
