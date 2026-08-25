@@ -39,6 +39,17 @@ uv run qmcp serve --reload
 
 See `quickstart.md` for a copy-paste walkthrough.
 
+Three commands worth knowing before the rest:
+
+```bash
+uv run qmcp topology show governed --level 2   # the seam a model is called through
+uv run qmcp orchestration plane                # what every shape would do, declared
+uv run qmcp human list                         # what is waiting on a person
+```
+
+The first is the one to read. Model output reaches the human queue through one
+door, and `docs/human_in_loop.md` says what that door does and does not enforce.
+
 ## Adoption and Onboarding
 
 Adoption checklist:
