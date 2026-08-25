@@ -29,9 +29,9 @@ uv run --no-sync python -m qmcp serve
 ## 3) Call the server (curl)
 
 ```bash
-curl -s http://localhost:3333/health
-curl -s http://localhost:3333/v1/tools
-curl -s -X POST http://localhost:3333/v1/tools/echo \
+curl -s http://localhost:3141/health
+curl -s http://localhost:3141/v1/tools
+curl -s -X POST http://localhost:3141/v1/tools/echo \
   -H "Content-Type: application/json" \
   -d '{"input":{"message":"hello"}}'
 ```
@@ -39,10 +39,10 @@ curl -s -X POST http://localhost:3333/v1/tools/echo \
 ## 4) Call the server (PowerShell)
 
 ```powershell
-Invoke-RestMethod -Method Get -Uri http://localhost:3333/health
-Invoke-RestMethod -Method Get -Uri http://localhost:3333/v1/tools
+Invoke-RestMethod -Method Get -Uri http://localhost:3141/health
+Invoke-RestMethod -Method Get -Uri http://localhost:3141/v1/tools
 $payload = @{ input = @{ message = "hello" } } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri http://localhost:3333/v1/tools/echo -ContentType "application/json" -Body $payload
+Invoke-RestMethod -Method Post -Uri http://localhost:3141/v1/tools/echo -ContentType "application/json" -Body $payload
 ```
 
 ## Next Steps

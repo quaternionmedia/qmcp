@@ -33,6 +33,7 @@ from pathlib import Path
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
+from qmcp import dashboard
 from qmcp.dashboard import DEFAULT_PROJECT, SCHEMA, build, render, to_dict
 from qmcp.db.models import InvocationStatus, ToolInvocation
 
@@ -294,3 +295,77 @@ def test_the_emitter_conforms_to_the_shared_payload_vectors():
                 f"{case['name']}: status {row['status']!r} is outside the "
                 f"vocabulary this emitter can produce"
             )
+
+
+# --- the cap, which used to be silent ------------------------------------------
+
+
+def _queue_of(tmp_path, count: int):
+    """A database with `count` outstanding questions in it."""
+    import sqlite3
+
+    database = tmp_path / "queue.db"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "CREATE TABLE human_requests (id TEXT PRIMARY KEY, request_type TEXT, "
+        "prompt TEXT, options TEXT, status TEXT, created_at TEXT)")
+    connection.executemany(
+        "INSERT INTO human_requests VALUES (?, 'approval', ?, '[]', 'pending', ?)",
+        [(f"ask-{n:03d}", f"question {n}", f"2026-08-25T00:{n:02d}:00")
+         for n in range(count)])
+    connection.commit()
+    connection.close()
+    return database
+
+
+def test_a_truncated_queue_says_how_many_it_holds(tmp_path):
+    """THE ONE THAT MATTERS.
+
+    A queue of fifteen arrived as ten and nothing said so, so a person acting
+    on `dossier`'s Outstanding list was acting on a work list that had quietly
+    dropped the five most recently asked. Found by queueing two governed runs
+    against a live harness and finding neither in the payload.
+
+    Mutation, quoted as it printed: `"queue_total": view.queue_total` replaced
+    with `len(view.waiting)`.
+
+        AssertionError: a truncated queue reported its own length as the total
+        assert 50 == (50 + 10)
+         +  where 50 = dashboard.QUEUE
+    """
+    view = dashboard.build(_queue_of(tmp_path, dashboard.QUEUE + 10))
+    payload = dashboard.to_dict(view)
+
+    assert payload["queue_shown"] == dashboard.QUEUE
+    assert payload["queue_total"] == dashboard.QUEUE + 10, (
+        "a truncated queue reported its own length as the total")
+    assert payload["queue_shown"] < payload["queue_total"]
+
+
+def test_an_untruncated_queue_reports_the_same_number_twice(tmp_path):
+    """Equal is the healthy case, and it must be sayable rather than implied."""
+    payload = dashboard.to_dict(dashboard.build(_queue_of(tmp_path, 3)))
+
+    assert payload["queue_shown"] == payload["queue_total"] == 3
+
+
+def test_an_absent_queue_is_zero_of_zero_rather_than_a_dropped_list(tmp_path):
+    """No table and a full table showing part of itself are different answers."""
+    import sqlite3
+
+    database = tmp_path / "bare.db"
+    sqlite3.connect(database).close()
+    payload = dashboard.to_dict(dashboard.build(database))
+
+    assert payload["queue_shown"] == 0
+    assert payload["queue_total"] == 0
+
+
+def test_the_queue_cap_is_not_the_invocation_window():
+    """A work list and a log window are different things.
+
+    Mutation: setting `QUEUE = RECENT` fails here, which is the assertion that
+    stops the two silently becoming one constant again.
+    """
+    assert dashboard.QUEUE != dashboard.RECENT
+    assert dashboard.QUEUE > dashboard.RECENT

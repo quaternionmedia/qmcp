@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from qmcp.client.mcp_client import default_base_url
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -44,7 +46,7 @@ class QMCPToolset:
         >>> from pydantic_ai import Agent
         >>> from qmcp.integrations.pydantic_ai import QMCPToolset, create_agent
         >>>
-        >>> async with QMCPToolset("http://localhost:3333") as toolset:
+        >>> async with QMCPToolset("http://localhost:3141") as toolset:
         ...     agent = create_agent(
         ...         "claude-sonnet-4-20250514",
         ...         toolsets=[toolset],
@@ -64,7 +66,11 @@ class QMCPToolset:
         correlation_id: Optional correlation ID for tracing
     """
 
-    base_url: str = "http://localhost:3333"
+    base_url: str = field(default_factory=default_base_url)
+    """Where this machine serves, unless told otherwise. Derived from
+    `qmcp.config` rather than typed in: a hard-coded port here could not
+    reach the server this package starts."""
+
     tool_prefix: str = ""
     timeout: float = 30.0
     correlation_id: str | None = None

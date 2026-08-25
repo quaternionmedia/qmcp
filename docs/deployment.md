@@ -82,7 +82,7 @@ services:
     volumes:
       - qmcp-data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3333/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3141/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -143,7 +143,7 @@ Operational accountability is strengthened by:
 Prometheus-compatible metrics are available at `/metrics`:
 
 ```bash
-curl http://localhost:3333/metrics
+curl http://localhost:3141/metrics
 ```
 
 **Available metrics:**
@@ -170,7 +170,7 @@ scrape_configs:
 
 ```bash
 # Simple health check
-curl http://localhost:3333/health
+curl http://localhost:3141/health
 
 # Response
 {"status": "healthy", "version": "0.1.0"}
@@ -193,7 +193,7 @@ Use correlation IDs to trace requests across services:
 import httpx
 
 response = httpx.post(
-    "http://localhost:3333/v1/tools/echo",
+    "http://localhost:3141/v1/tools/echo",
     json={"input": {"message": "hello"}},
     headers={"X-Correlation-ID": "my-workflow-123"}
 )

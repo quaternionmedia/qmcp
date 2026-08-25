@@ -252,6 +252,22 @@ def run(request: Request, budget: Budget, call: Callable[[str], str], *,
                    elapsed=elapsed, over_bound=over)
 
 
+# What a person is being asked, per state. **The state leads the prompt.**
+#
+# Both the terminal listing and the harness payload carry `prompt` and not
+# `context`, so a refusal whose state lived only in the context arrived beside
+# a draft as two rows with identical text, separable by reading the id. That
+# was found by queueing one of each and looking at `qmcp human list`.
+#
+# And the options differ because the questions differ: there is nothing to
+# accept in a run that produced no draft.
+_ASKS: dict[str, tuple[str, tuple[str, ...]]] = {
+    DRAFTED: ("", ("accept", "reject")),
+    REFUSED: ("Refused, nothing was called", ("re-issue", "leave")),
+    STOPPED: ("Stopped, a bound fired", ("re-issue", "leave")),
+}
+
+
 def queued(outcome: Outcome, *, timeout_seconds: int = 3600) -> dict[str, Any]:
     """The payload that puts one draft in front of a person.
 
@@ -259,18 +275,26 @@ def queued(outcome: Outcome, *, timeout_seconds: int = 3600) -> dict[str, Any]:
     posting it is not answering it** -- this returns a dict and does nothing,
     so that putting work in front of somebody stays a command somebody issued.
 
-    A refused or stopped run is queued too, and says so. Somebody deciding
-    whether to authorise a paid retry needs the refusal in front of them more
-    than they need the drafts that succeeded.
+    **`re-issue` is a decision, not an act.** A person choosing it has decided
+    the paid run is worth authorising; the run still happens when somebody
+    issues the command. Nothing here spends on the strength of an answer, which
+    is `records/DRAFT-no-unattended-spending.md` clause 5 -- consent is an
+    amount, given to a command, and it does not carry.
+
+    A refused or stopped run is queued too, and leads with which it was.
+    Somebody deciding whether to authorise a paid retry needs the refusal in
+    front of them more than they need the drafts that succeeded.
     """
     if outcome.state not in STATES:
         raise ValueError(f"{outcome.state!r} is not one of {STATES}")
 
+    lead, options = _ASKS[outcome.state]
     return {
         "id": f"{outcome.request.fingerprint}:{outcome.state}",
         "request_type": "approval",
-        "prompt": outcome.request.purpose,
-        "options": ["accept", "reject"],
+        "prompt": (f"{lead} -- {outcome.request.purpose}" if lead
+                   else outcome.request.purpose),
+        "options": list(options),
         "timeout_seconds": timeout_seconds,
         "context": {
             # Said outright rather than left to the reader of a text field.

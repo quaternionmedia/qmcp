@@ -63,7 +63,26 @@ from qmcp.addresses import ask_address, invocation_address
 # the git remote; see the reasoning there.
 DEFAULT_PROJECT = identity.this_project()
 RECENT = 10
+"""How many invocations the payload carries. A window onto a log."""
+
+QUEUE = 50
+"""How many queue rows the payload carries.
+
+**SEPARATE FROM `RECENT` BECAUSE A WORK LIST IS NOT A LOG WINDOW.** One
+constant served both, and ten is a reasonable window onto invocations and a
+poor one onto work waiting on a person: a queue of fifteen arrived as ten, the
+five dropped were the five most recently asked, and nothing in the payload
+said so. Truncating a log loses history; truncating a work list loses work.
+"""
+
 SCHEMA = 2
+"""The payload version a reader checks.
+
+`queue_total` and `queue_shown` were added without moving it. They are
+additive -- a reader at this version that has never heard of them is correct
+without them, and `dossier.harness.check_schema` requires an exact match, so a
+bump would refuse every payload in the field to announce a key nobody needed.
+"""
 
 # The tables this reads. Named so the payload can say which one was missing
 # rather than reporting a number nobody took.
@@ -133,6 +152,11 @@ class View:
     human_requests: int | None = None
     human_responses: int | None = None
     waiting: list[Waiting] = field(default_factory=list)
+    queue_total: int = 0
+    """How many rows the queue holds, before any cap. **Never derived from
+    `len(waiting)`** -- that is the number that survived the cap, and reporting
+    it as the total is exactly how a truncation goes silent."""
+
     tables: int = 0
 
     # Every table this view wanted and did not find. Empty is the healthy case.
@@ -175,8 +199,12 @@ def _count(connection: sqlite3.Connection, table: str) -> int | None:
 
 
 def _waiting(connection: sqlite3.Connection, project: str,
-             limit: int) -> list[Waiting]:
-    """The human queue, outstanding first, each row addressed.
+             limit: int) -> tuple[list[Waiting], int]:
+    """The human queue, outstanding first, each row addressed, and its size.
+
+    **THE SIZE IS RETURNED BESIDE THE ROWS AND NOT INFERRED FROM THEM.** A
+    caller holding only the capped list cannot tell a queue of ten from a queue
+    of fifty, and the difference is work nobody can see.
 
     Outstanding first because that is the order a person acts in. Answered rows
     are kept because what was asked and what was said is the audit trail.
@@ -186,7 +214,9 @@ def _waiting(connection: sqlite3.Connection, project: str,
     answer in the direction that matters.
     """
     if not _table_exists(connection, HUMAN_REQUESTS):
-        return []
+        # No queue and no rows, which is a different answer from a queue of
+        # fifty showing ten -- and the caller can now tell them apart.
+        return [], 0
     responses = _table_exists(connection, HUMAN_RESPONSES)
     rows = connection.execute(
         f"""SELECT r.id, r.request_type, r.prompt, r.options, r.status,
@@ -220,7 +250,7 @@ def _waiting(connection: sqlite3.Connection, project: str,
             answered_at=None if not responses or row[8] is None else str(row[8]),
         ))
     queue.sort(key=lambda item: (not item.outstanding, item.created_at))
-    return queue[:limit]
+    return queue[:limit], len(queue)
 
 
 def build(database: Path, project: str = DEFAULT_PROJECT,
@@ -243,16 +273,18 @@ def build(database: Path, project: str = DEFAULT_PROJECT,
             if not _table_exists(connection, name)
         )
         if INVOCATIONS in missing:
+            queue, queue_total = _waiting(connection, project, QUEUE)
             return View(project=project, database=database, tables=tables,
                         human_requests=_count(connection, HUMAN_REQUESTS),
                         human_responses=_count(connection, HUMAN_RESPONSES),
-                        waiting=_waiting(connection, project, recent),
+                        waiting=queue, queue_total=queue_total,
                         missing=missing)
 
         rows = list(connection.execute(
             "SELECT id, tool_name, status, duration_ms, created_at, error "
             "FROM tool_invocations ORDER BY created_at DESC"
         ))
+        queue, queue_total = _waiting(connection, project, QUEUE)
         return View(
             project=project,
             database=database,
@@ -273,7 +305,8 @@ def build(database: Path, project: str = DEFAULT_PROJECT,
             ],
             human_requests=_count(connection, HUMAN_REQUESTS),
             human_responses=_count(connection, HUMAN_RESPONSES),
-            waiting=_waiting(connection, project, recent),
+            waiting=queue,
+            queue_total=queue_total,
             tables=tables,
             missing=missing,
         )
@@ -317,6 +350,11 @@ def to_dict(view: View) -> dict:
             }
             for item in view.waiting
         ],
+        # **STATED, NOT LEFT TO BE COUNTED.** A reader comparing `queue_shown`
+        # with `queue_total` learns that rows were dropped; one counting the
+        # list it was given learns only how many it was given.
+        "queue_shown": len(view.waiting),
+        "queue_total": view.queue_total,
         "by_tool": view.by_tool,
         "by_status": view.by_status,
         "recent": [

@@ -406,3 +406,62 @@ def test_the_hitl_guide_does_not_claim_the_seconds_bound_is_enforced() -> None:
     assert "does not enforce" in guide or "not enforce" in guide, (
         "the guide must say what the seam does not enforce, because a reader "
         "who assumes a slow call is stopped is the reader this costs")
+
+
+# --- what a person sees in the queue, which is a prompt and not a context -----
+
+
+def test_a_refusal_and_a_draft_do_not_read_the_same(tmp_path=None) -> None:
+    """THE ONE THAT MATTERS HERE.
+
+    Both surfaces that show this queue -- `qmcp human list` and the harness
+    payload -- carry `prompt` and not `context`. A state that lived only in the
+    context arrived as two rows with identical text, separable by reading the
+    id. Found by queueing one of each against a live harness and looking.
+
+    Mutation, quoted as it printed: `_ASKS[REFUSED]` given an empty lead.
+
+        AssertionError: a refusal and a draft read identically to a person
+        assert 'a draft for the release notes' != 'a draft for the release
+        notes'
+    """
+    request = a_request()
+    refused = g.queued(g.run(request, Budget(), Counter()))
+    drafted = g.queued(g.run(request, Budget(authorised=1), Counter()))
+
+    assert refused["prompt"] != drafted["prompt"], (
+        "a refusal and a draft read identically to a person")
+    assert refused["prompt"].startswith("Refused"), (
+        "the state must lead, because a window with little room keeps the front")
+
+
+def test_there_is_nothing_to_accept_in_a_run_that_produced_no_draft() -> None:
+    """The options differ because the questions differ."""
+    refused = g.queued(g.run(a_request(), Budget(), Counter()))
+    stopped = g.queued(g.run(a_request(), Budget(authorised=1),
+                             Counter("x" * 9), bound=g.Bound(chars=2)))
+    drafted = g.queued(g.run(a_request(), Budget(authorised=1), Counter()))
+
+    assert refused["options"] == ["re-issue", "leave"]
+    assert stopped["options"] == ["re-issue", "leave"]
+    assert drafted["options"] == ["accept", "reject"]
+    assert "accept" not in refused["options"]
+
+
+def test_every_state_has_an_ask_and_no_state_is_missing_one() -> None:
+    """A state added without a question would fall through to a KeyError.
+
+    Cheaper to assert than to discover: the alternative is a run that reaches
+    the queue and raises there, which is the one place a failure costs a
+    person's attention rather than a developer's.
+    """
+    assert set(g._ASKS) == set(g.STATES)
+
+
+def test_a_stopped_run_says_a_bound_fired_rather_than_naming_a_budget() -> None:
+    """Refused and stopped are different facts and must not share a sentence."""
+    stopped = g.queued(g.run(a_request(), Budget(authorised=1),
+                             Counter("x" * 9), bound=g.Bound(chars=2)))
+
+    assert "bound" in stopped["prompt"]
+    assert "nothing was called" not in stopped["prompt"]

@@ -254,9 +254,11 @@ class MetaflowRunner(BaseRunner):
         flow_args: list[str],
     ) -> list[str]:
         """Assemble the subprocess command list."""
-        mcp_url = self.config.mcp_url or os.getenv(
-            "MCP_URL", "http://localhost:3333"
-        )
+        # Derived rather than typed in: a literal here could not reach the
+        # server this package starts. `MCP_URL` still wins when it is set.
+        from qmcp.client.mcp_client import default_base_url
+
+        mcp_url = self.config.mcp_url or os.getenv("MCP_URL", default_base_url())
 
         cmd = [sys.executable, flow_path, "run"]
         cmd.extend(flow_args)

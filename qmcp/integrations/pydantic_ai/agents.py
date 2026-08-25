@@ -162,7 +162,7 @@ class AgentBuilder(Generic[DepsT, T]):
         ...     AgentBuilder(Models.CLAUDE_SONNET_4)
         ...     .with_system_prompt("You are helpful.")
         ...     .with_output_type(MyResponse)
-        ...     .with_toolset(QMCPToolset("http://localhost:3333"))
+        ...     .with_toolset(QMCPToolset("http://localhost:3141"))
         ...     .build()
         ... )
     """

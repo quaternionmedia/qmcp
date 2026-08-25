@@ -189,7 +189,7 @@ import httpx
 import time
 
 # Create request
-response = httpx.post("http://localhost:3333/v1/human/requests", json={
+response = httpx.post("http://localhost:3141/v1/human/requests", json={
     "id": f"approve-{run_id}",
     "request_type": "approval",
     "prompt": "Deploy to production?",
@@ -200,7 +200,7 @@ request_id = response.json()["id"]
 
 # Poll for response
 while True:
-    result = httpx.get(f"http://localhost:3333/v1/human/requests/{request_id}")
+    result = httpx.get(f"http://localhost:3141/v1/human/requests/{request_id}")
     data = result.json()
     
     if data["request"]["status"] == "responded":
@@ -233,17 +233,17 @@ Then run the workflow in another terminal.
 ### Bash (curl)
 
 ```bash
-curl -s -X POST http://localhost:3333/v1/human/requests \
+curl -s -X POST http://localhost:3141/v1/human/requests \
   -H "Content-Type: application/json" \
   -d '{"id":"workflow-001","request_type":"approval","prompt":"Approve deployment to production?","options":["approve","reject"],"context":{"service":"api-gateway","environment":"prod"}}'
 
-curl -s http://localhost:3333/v1/human/requests/workflow-001
+curl -s http://localhost:3141/v1/human/requests/workflow-001
 
-curl -s -X POST http://localhost:3333/v1/human/responses \
+curl -s -X POST http://localhost:3141/v1/human/responses \
   -H "Content-Type: application/json" \
   -d '{"request_id":"workflow-001","response":"approve","responded_by":"ops@example.com","response_metadata":{"reason":"Looks good"}}'
 
-curl -s http://localhost:3333/v1/human/requests/workflow-001
+curl -s http://localhost:3141/v1/human/requests/workflow-001
 ```
 
 ### PowerShell
@@ -256,8 +256,8 @@ $create = @{
   options = @("approve","reject")
   context = @{ service = "api-gateway"; environment = "prod" }
 } | ConvertTo-Json -Depth 4
-Invoke-RestMethod -Method Post -Uri http://localhost:3333/v1/human/requests -ContentType "application/json" -Body $create
-Invoke-RestMethod -Method Get -Uri http://localhost:3333/v1/human/requests/workflow-001
+Invoke-RestMethod -Method Post -Uri http://localhost:3141/v1/human/requests -ContentType "application/json" -Body $create
+Invoke-RestMethod -Method Get -Uri http://localhost:3141/v1/human/requests/workflow-001
 
 $respond = @{
   request_id = "workflow-001"
@@ -265,8 +265,8 @@ $respond = @{
   responded_by = "ops@example.com"
   response_metadata = @{ reason = "Looks good" }
 } | ConvertTo-Json -Depth 4
-Invoke-RestMethod -Method Post -Uri http://localhost:3333/v1/human/responses -ContentType "application/json" -Body $respond
-Invoke-RestMethod -Method Get -Uri http://localhost:3333/v1/human/requests/workflow-001
+Invoke-RestMethod -Method Post -Uri http://localhost:3141/v1/human/responses -ContentType "application/json" -Body $respond
+Invoke-RestMethod -Method Get -Uri http://localhost:3141/v1/human/requests/workflow-001
 ```
 
 ## Where a request comes from, when a model produced it
@@ -312,7 +312,7 @@ The shape is servable and drawable:
 
 ```bash
 uv run qmcp topology show governed --level 2   # as text
-curl localhost:8000/v1/topology/shape/governed # as a payload, for a window
+curl localhost:3141/v1/topology/shape/governed # as a payload, for a window
 ```
 
 Why the seam exists at all is `governance/qm/records/DRAFT-shrink-the-black-box.md`.

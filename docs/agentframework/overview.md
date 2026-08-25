@@ -293,7 +293,7 @@ agent = create_agent(
 )
 
 # Add QMCP server tools with full audit trail
-async with QMCPToolset("http://localhost:3333") as toolset:
+async with QMCPToolset("http://localhost:3141") as toolset:
     agent = create_agent(
         Models.CLAUDE_SONNET_4,
         toolsets=[toolset],

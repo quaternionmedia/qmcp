@@ -39,7 +39,7 @@ a control panel:
     >>> engine = create_engine(f"sqlite:///{(root / 'a.db').as_posix()}")
     >>> SQLModel.metadata.create_all(engine)
     >>> sorted(to_dict(build(root / "a.db")))
-    ['by_status', 'by_tool', 'database', 'missing_tables', 'project', 'recent', 'schema', 'totals', 'waiting']
+    ['by_status', 'by_tool', 'database', 'missing_tables', 'project', 'queue_shown', 'queue_total', 'recent', 'schema', 'totals', 'waiting']
 
 That list came out of the emitter. It used to be a sorted copy of the keys
 written into this page, which is a sentence about itself: the example passed
@@ -48,6 +48,18 @@ whatever `to_dict` returned.
 `totals` are counts over this harness's whole history. `recent` is an excerpt.
 They are different claims and a consumer must not derive one from the other —
 which is why the payload carries both rather than leaving it to be worked out.
+
+`waiting` is an excerpt too, and `queue_shown` and `queue_total` are what say
+so. The queue was capped without either, so a control panel showed ten rows of
+fifteen and read as the whole of the work waiting on a person:
+
+    >>> payload = to_dict(build(root / "a.db"))
+    >>> payload["queue_shown"], payload["queue_total"]
+    (0, 0)
+
+Equal here because this database has an empty queue, and **equal is a claim
+rather than the absence of one** — a reader comparing them learns that nothing
+was held back. That is the difference between a number and a silence.
 
 ## A count nobody took is not a count of zero
 
