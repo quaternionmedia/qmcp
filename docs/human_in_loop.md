@@ -269,6 +269,54 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3333/v1/human/responses -Co
 Invoke-RestMethod -Method Get -Uri http://localhost:3333/v1/human/requests/workflow-001
 ```
 
+## Where a request comes from, when a model produced it
+
+The API above takes a request from anything that can post one. **When the thing
+being reviewed is a model's output, it arrives through one seam and not through
+that endpoint directly** -- `qmcp/governed.py`.
+
+    in -> budget -> model -> bound -> draft -> a person
+            |                  |
+            v                  v
+         refused            stopped
+
+A fixed sequence of total stages around exactly one call to something with no
+halting guarantee: budgeted before it through `qmcp.spend`, bounded after it,
+and ending here. `governed.queued(outcome)` builds the `POST
+/v1/human/requests` payload above and does nothing with it. **Building it is not
+posting it, and posting it is not answering it.**
+
+Three things follow that a caller of this API should know:
+
+- **A refused run is queued too.** A run that never called anything because the
+  budget was zero produces a request with `context.state == "refused"` and an
+  empty draft. Somebody deciding whether to authorise a paid retry needs that in
+  front of them more than they need the runs that succeeded.
+- **`context.this_is_a_draft` is always `true`.** Said outright rather than left
+  for a reader to infer from a text field.
+- **Answering is a person's.** `governance/qm/ci/attested-registry.yaml` names
+  answering a question in this queue as one of the acts reserved for a person,
+  and `qmcp.governed` offers no function that does it -- a test fails the moment
+  somebody adds one.
+
+And one thing the seam **does not enforce**, said here because a reader who
+assumes otherwise is the reader it costs: **a slow call is not stopped.**
+`Bound.seconds` is measured, and `context.over_bound` reports whether it was
+exceeded, but nothing interrupts the call — a run can exceed its expectation and
+still arrive as a draft, and that is the honest report rather than a refusal
+nothing carried out. Interrupting a callable that module does not own is not
+something Python offers for free, and a check claiming it would be a green one
+standing exactly where you believe something is enforced.
+
+The shape is servable and drawable:
+
+```bash
+uv run qmcp topology show governed --level 2   # as text
+curl localhost:8000/v1/topology/shape/governed # as a payload, for a window
+```
+
+Why the seam exists at all is `governance/qm/records/DRAFT-shrink-the-black-box.md`.
+
 ## Best Practices
 
 1. **Use meaningful IDs**: Include flow/run context in request IDs for traceability

@@ -362,3 +362,47 @@ def test_the_draft_and_the_ends_are_outputs_and_the_gates_are_gates() -> None:
     assert view.box("draft").kind == OUTPUT
     assert view.box("budget").kind == GATE
     assert view.box("queue").kind == GATE
+
+
+# --- the documentation, which is a second description of the same pipeline ----
+
+
+def test_the_hitl_guide_names_every_stage_this_module_walks() -> None:
+    """P12: nothing describes a behaviour in a second place beside the code.
+
+    `docs/human_in_loop.md` draws this pipeline for a reader who will never
+    open the module, which makes it exactly the second description that goes
+    stale. It cannot be generated from `STAGES` -- it is prose around a diagram
+    -- so it is held to them instead.
+
+    Mutation, quoted as it printed: renaming the `budget` stage to `allowance`
+    in `STAGES` and leaving the guide alone.
+
+        AssertionError: docs/human_in_loop.md draws a pipeline missing
+        ['allowance'], so a reader of that page has a different pipeline in
+        mind
+    """
+    from pathlib import Path
+
+    guide = (Path(__file__).resolve().parent.parent
+             / "docs" / "human_in_loop.md").read_text(encoding="utf-8")
+    section = guide.split("## Where a request comes from")[1]
+
+    missing = [s.id for s in g.STAGES if s.id not in section]
+    assert not missing, (
+        f"docs/human_in_loop.md draws a pipeline missing {missing}, so a "
+        f"reader of that page has a different pipeline in mind")
+    for ending in ("refused", "stopped"):
+        assert ending in section, f"the guide does not draw the {ending} path"
+
+
+def test_the_hitl_guide_does_not_claim_the_seconds_bound_is_enforced() -> None:
+    """The one sentence in that page that would be worth the most if wrong."""
+    from pathlib import Path
+
+    guide = (Path(__file__).resolve().parent.parent
+             / "docs" / "human_in_loop.md").read_text(encoding="utf-8")
+
+    assert "does not enforce" in guide or "not enforce" in guide, (
+        "the guide must say what the seam does not enforce, because a reader "
+        "who assumes a slow call is stopped is the reader this costs")

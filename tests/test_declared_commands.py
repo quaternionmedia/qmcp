@@ -14,12 +14,15 @@ module docstring naming a command that does not exist is that loop being
 described rather than being there, and a reader cannot tell those apart without
 typing it.
 
-WHAT IT SCANS, AND WHAT IT DELIBERATELY DOES NOT. Only `qmcp/`. This file names
-several commands that do not resolve, and a scan that read the tests would match
-its own exemption list and report the thing it was written to permit -- the trap
-`governance/qm` item 10 records as "a text scan matching the docstring that
-forbade it". The cost is that a claim made in a test is unchecked, and that is
-the trade being made rather than an oversight.
+WHAT IT SCANS, AND WHAT IT DELIBERATELY DOES NOT. `qmcp/`, `docs/`, the README
+and the quickstart -- a command named on a page a reader reaches before the
+source is read by more people than one named in a docstring, and until `SCANNED`
+had a second entry that half was unchecked. **`tests/` is excluded on purpose.**
+This file names several commands that do not resolve, and a scan that read the
+tests would match its own exemption list and report the thing it was written to
+permit -- the trap `governance/qm` item 10 records as "a text scan matching the
+docstring that forbade it". The cost is that a claim made in a test is
+unchecked, and that is the trade being made rather than an oversight.
 
 THE MUTATIONS, per P16, because a check nobody has seen fail is a check nobody
 has evidence for. Three were run, and each is quoted as it printed rather than
@@ -59,7 +62,15 @@ import pytest
 
 from qmcp.cli import cli
 
-PACKAGE = Path(__file__).resolve().parent.parent / "qmcp"
+ROOT = Path(__file__).resolve().parent.parent
+PACKAGE = ROOT / "qmcp"
+
+# Where a claim can be made. The package, and the pages a reader reaches before
+# the package -- a command named in a README is read by more people than one
+# named in a docstring, and until this list had a second entry it was the
+# unchecked half.
+SCANNED: tuple[Path, ...] = (PACKAGE, ROOT / "docs", ROOT / "README.md",
+                             ROOT / "quickstart.md")
 
 # A claim looks like `uv run qmcp <group> [<subcommand>]`. Everything from the
 # first option, backtick, quote or redirect onward is prose or arguments, and
@@ -90,10 +101,22 @@ ONLY_CLAIMED = {
 }
 
 
+def _pages() -> list[Path]:
+    """Every file a claim can be made in."""
+    found: list[Path] = []
+    for root in SCANNED:
+        if root.is_dir():
+            found.extend(sorted(root.rglob("*.py")))
+            found.extend(sorted(root.rglob("*.md")))
+        elif root.is_file():
+            found.append(root)
+    return found
+
+
 def declared() -> list[tuple[Path, str]]:
-    """Every command this package names, with the file that named it."""
+    """Every command this repository names, with the file that named it."""
     found = []
-    for path in sorted(PACKAGE.rglob("*.py")):
+    for path in _pages():
         text = path.read_text(encoding="utf-8", errors="replace")
         for match in CLAIM.finditer(text):
             parts = [p for p in match.group(1).split() if STOP.match(p)]
@@ -103,7 +126,20 @@ def declared() -> list[tuple[Path, str]]:
 
 
 def resolves(claim: str) -> str | None:
-    """`None` if the claim resolves, otherwise what is missing."""
+    """`None` if the claim resolves, otherwise what is missing.
+
+    **A SECOND TOKEN AFTER A PLAIN COMMAND IS AN ARGUMENT, NOT A SUBCOMMAND.**
+    An earlier version of this function did not make that distinction and
+    reported `docs/contributing.md` as claiming a command that does not exist,
+    on the strength of `uv run qmcp test tests/test_hitl.py` -- where `tests`
+    begins the `TEST_PATH` argument `qmcp test` declares. The document was
+    right and the check was answering a different question, which is the
+    reading `governance/qm` item 10 asks for before a result is believed.
+
+    What that costs: `uv run qmcp serve nonsense` resolves here. Whether a
+    command accepts its arguments is that command's own business, and a check
+    that took it on would be re-implementing click.
+    """
     parts = claim.split()
     group = cli.commands.get(parts[0])
     if group is None:
@@ -112,7 +148,7 @@ def resolves(claim: str) -> str | None:
         return None
     subcommands = getattr(group, "commands", None)
     if subcommands is None:
-        return f"`{parts[0]}` takes no subcommand, so `{parts[1]}` cannot exist"
+        return None
     if parts[1] not in subcommands:
         return f"`{parts[0]}` has no `{parts[1]}`"
     return None
@@ -138,7 +174,7 @@ def test_every_declared_command_resolves() -> None:
         problem = resolves(claim)
         if problem:
             broken.append(
-                f"{path.relative_to(PACKAGE.parent).as_posix()} claims "
+                f"{path.relative_to(ROOT).as_posix()} claims "
                 f"`uv run qmcp {claim}`, and {problem}")
     assert not broken, "\n".join(broken)
 
