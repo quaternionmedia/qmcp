@@ -52,7 +52,7 @@ print(result.output)
 ```python
 from qmcp.integrations.pydantic_ai import create_agent, QMCPToolset
 
-async with QMCPToolset("http://localhost:3333") as toolset:
+async with QMCPToolset("http://localhost:3141") as toolset:
     agent = create_agent(
         Models.CLAUDE_SONNET_4,
         system_prompt="You can use tools to help users.",
@@ -77,7 +77,7 @@ agent = (
     AgentBuilder(Models.CLAUDE_SONNET_4)
     .with_system_prompt("You are a task executor.")
     .with_output_type(TaskResult)
-    .with_toolset(QMCPToolset("http://localhost:3333"))
+    .with_toolset(QMCPToolset("http://localhost:3141"))
     .with_retries(3)
     .build()
 )
@@ -127,7 +127,7 @@ The `QMCPToolset` connects PydanticAI agents to your QMCP server, providing:
 ```python
 from qmcp.integrations.pydantic_ai import QMCPToolset
 
-async with QMCPToolset("http://localhost:3333") as toolset:
+async with QMCPToolset("http://localhost:3141") as toolset:
     # Get available tools
     tools = await toolset.get_tools()
     for tool in tools:
@@ -143,7 +143,7 @@ Avoid naming conflicts when using multiple toolsets:
 
 ```python
 async with QMCPToolset(
-    "http://localhost:3333",
+    "http://localhost:3141",
     tool_prefix="qmcp_",
 ) as toolset:
     # Tools are now named "qmcp_echo", "qmcp_planner", etc.
@@ -296,7 +296,7 @@ Create a PydanticAI `Agent` from a QMCP model.
 PydanticAI toolset connecting to a QMCP server.
 
 **Parameters:**
-- `base_url`: QMCP server URL (default: "http://localhost:3333")
+- `base_url`: QMCP server URL (default: "http://localhost:3141")
 - `tool_prefix`: Optional prefix for tool names
 - `timeout`: HTTP timeout in seconds (default: 30)
 - `correlation_id`: Optional correlation ID for tracing

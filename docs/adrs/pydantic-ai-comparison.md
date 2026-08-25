@@ -96,7 +96,7 @@ agent = Agent('model', toolsets=[server])
 ```python
 from qmcp.client import MCPClient
 
-with MCPClient("http://localhost:3333") as client:
+with MCPClient("http://localhost:3141") as client:
     tools = client.list_tools()
     result = client.invoke_tool("echo", {"message": "hello"})
 

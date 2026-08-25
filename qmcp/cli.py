@@ -45,7 +45,17 @@ def _default_metaflow_user() -> str:
 
 
 def _default_mcp_url() -> str:
-    return os.getenv("MCP_URL", "http://host.docker.internal:3333")
+    """Where a containerised flow reaches this machine's harness.
+
+    The host part is `host.docker.internal` because the caller is in a
+    container and the harness is not. The port is the one the harness serves,
+    read from its settings rather than typed in -- a literal here was 3333
+    while the server served 3141.
+    """
+    from qmcp.config import get_settings
+
+    return os.getenv("MCP_URL",
+                     f"http://host.docker.internal:{get_settings().port}")
 
 
 def _run_cmd(cmd: list[str], cwd: Path) -> None:

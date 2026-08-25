@@ -80,7 +80,7 @@ uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workf
 ```python
 from qmcp.client import MCPClient
 
-with MCPClient(base_url="http://localhost:3333") as client:
+with MCPClient(base_url="http://localhost:3141") as client:
     # List tools
     tools = client.list_tools()
 
@@ -263,7 +263,7 @@ docker compose -f docker-compose.flows.yml run --rm flow-runner \
 ```
 
 Set `MCP_URL` and `LLM_BASE_URL` (or pass `--mcp-url` / `--llm-base-url`) when
-running in Docker, e.g. `http://host.docker.internal:3333`.
+running in Docker, e.g. `http://host.docker.internal:3141`.
 
 ## License
 

@@ -75,7 +75,7 @@ class LocalReleaseNotesFlow(FlowSpec):
     mcp_url = Parameter(
         "mcp-url",
         help="MCP server URL for tool calls",
-        default=os.getenv("MCP_URL", "http://localhost:3333"),
+        default=os.getenv("MCP_URL", "http://localhost:3141"),
     )
     use_mcp = Parameter(
         "use-mcp",

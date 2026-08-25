@@ -10,13 +10,13 @@ Usage:
     # Then run the flow
     uv run python examples/flows/simple_plan.py run \
         --goal "Deploy a web service" \
-        --mcp-url "http://localhost:3333"
+        --mcp-url "http://localhost:3141"
 
     # On Windows, run via Docker
     docker compose -f docker-compose.flows.yml run --rm flow-runner \
         examples/flows/simple_plan.py run \
         --goal "Deploy a web service" \
-        --mcp-url "http://host.docker.internal:3333"
+        --mcp-url "http://host.docker.internal:3141"
 """
 
 import os
@@ -46,7 +46,7 @@ class SimplePlanFlow(FlowSpec):
     mcp_url = Parameter(
         "mcp-url",
         help="URL of the MCP server",
-        default=os.getenv("MCP_URL", "http://localhost:3333"),
+        default=os.getenv("MCP_URL", "http://localhost:3141"),
     )
 
     @step

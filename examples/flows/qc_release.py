@@ -123,7 +123,7 @@ class QCReleaseFlow(FlowSpec):
     )
     mcp_url = Parameter(
         "mcp-url", help="MCP server URL",
-        default=os.getenv("MCP_URL", "http://localhost:3333"),
+        default=os.getenv("MCP_URL", "http://localhost:3141"),
     )
     use_mcp = Parameter(
         "use-mcp", help="Invoke MCP tools", type=bool, default=True,

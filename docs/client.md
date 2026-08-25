@@ -18,7 +18,7 @@ uv pip install qmcp
 from qmcp.client import MCPClient
 
 # Connect to MCP server
-with MCPClient(base_url="http://localhost:3333") as client:
+with MCPClient(base_url="http://localhost:3141") as client:
     # Check server health
     health = client.health()
     print(f"Server status: {health['status']}")
@@ -41,14 +41,14 @@ The main client class for MCP server interaction.
 
 ```python
 MCPClient(
-    base_url: str = "http://localhost:3333",
+    base_url: str = "http://localhost:3141",
     timeout: float = 30.0,
     http_client: Optional[httpx.Client] = None
 )
 ```
 
 **Parameters:**
-- `base_url` – MCP server URL (default: `http://localhost:3333`)
+- `base_url` – MCP server URL (default: `http://localhost:3141`)
 - `timeout` – Request timeout in seconds (default: `30.0`)
 - `http_client` – Optional custom httpx client for testing
 
@@ -381,7 +381,7 @@ class MCPToolFlow(FlowSpec):
     mcp_url = Parameter(
         "mcp-url",
         help="MCP server URL",
-        default=os.getenv("MCP_URL", "http://localhost:3333"),
+        default=os.getenv("MCP_URL", "http://localhost:3141"),
     )
 
     @step
@@ -400,10 +400,10 @@ if __name__ == "__main__":
 ```
 
 Run locally (Linux/macOS):
-- `uv run python my_flow.py run --mcp-url http://localhost:3333`
+- `uv run python my_flow.py run --mcp-url http://localhost:3141`
 
 Run with Docker (recommended on Windows):
-- `docker compose -f docker-compose.flows.yml run --rm flow-runner my_flow.py run --mcp-url http://host.docker.internal:3333`
+- `docker compose -f docker-compose.flows.yml run --rm flow-runner my_flow.py run --mcp-url http://host.docker.internal:3141`
 - Set `MCP_URL` if you need a different host target.
 
 ### HITL Approval Flow

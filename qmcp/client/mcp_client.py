@@ -5,10 +5,18 @@ This client provides a clean interface for:
 - Human-in-the-loop request management
 - Invocation history queries
 
+**THE DEFAULT IS THE PORT THE SERVER SERVES, READ FROM ITS SETTINGS.** It was a
+hard-coded `3333` while `qmcp.config` served `3141`, so this client could not
+reach this server without being told where it was -- established by running both
+rather than by reading either. `config.py`'s own comment records the earlier
+half of that mismatch: 3333 is what the harness served while a panel looked on
+8000. The server moved and this did not.
+
 Usage:
     from qmcp.client import MCPClient
 
-    client = MCPClient("http://localhost:3333")
+    client = MCPClient()                      # wherever this machine serves
+    client = MCPClient("http://a.host:3141")  # or say where
 
     # List tools
     tools = client.list_tools()
@@ -32,6 +40,19 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from qmcp.config import get_settings
+
+
+def default_base_url() -> str:
+    """Where this machine serves, read from the server's own settings.
+
+    Derived rather than typed in, so `QMCP_PORT` moves both ends at once and
+    neither can be changed without the other following. A client pointed at
+    another machine passes `base_url` and this is not consulted.
+    """
+    settings = get_settings()
+    return f"http://{settings.host}:{settings.port}"
 
 
 class MCPClientError(Exception):
@@ -108,11 +129,13 @@ class MCPClient:
     orchestration systems. It is synchronous by default for simplicity.
 
     Args:
-        base_url: The base URL of the MCP server (e.g., "http://localhost:3333")
+        base_url: The base URL of the MCP server. Defaults to where this
+            machine serves, read from `qmcp.config`.
         timeout: Request timeout in seconds (default: 30)
     """
 
-    def __init__(self, base_url: str = "http://localhost:3333", timeout: float = 30.0):
+    def __init__(self, base_url: str | None = None, timeout: float = 30.0):
+        base_url = base_url or default_base_url()
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._client = httpx.Client(base_url=self.base_url, timeout=timeout)

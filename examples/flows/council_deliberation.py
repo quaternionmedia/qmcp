@@ -221,7 +221,7 @@ class CouncilDeliberationFlow(FlowSpec):
     mcp_url = Parameter(
         "mcp-url",
         help="MCP server URL (not used by council flow, for CLI compatibility)",
-        default=os.getenv("MCP_URL", "http://localhost:3333"),
+        default=os.getenv("MCP_URL", "http://localhost:3141"),
     )
 
     def _llm_config(self) -> LocalLLMConfig:

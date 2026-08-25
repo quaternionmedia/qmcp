@@ -13,7 +13,7 @@ Usage:
         --environment "production"
 
     # The flow will pause waiting for approval. Submit via API:
-    curl -X POST http://localhost:3333/v1/human/responses \\
+    curl -X POST http://localhost:3141/v1/human/responses \\
         -H "Content-Type: application/json" \\
         -d '{"request_id": "<request-id>", "response": "approve", "responded_by": "operator@example.com"}'
 """
@@ -51,7 +51,7 @@ class ApprovedDeployFlow(FlowSpec):
     mcp_url = Parameter(
         "mcp-url",
         help="URL of the MCP server",
-        default=os.getenv("MCP_URL", "http://localhost:3333"),
+        default=os.getenv("MCP_URL", "http://localhost:3141"),
     )
 
     approval_timeout = Parameter(
