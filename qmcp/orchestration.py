@@ -60,6 +60,37 @@ ATTESTED = (
 
 
 @dataclass(frozen=True)
+class Need:
+    """One thing a topology must have before it can be run, and what supplies it.
+
+    **A NEED THAT DOES NOT NAME ITS REMEDY IS A DEAD END**, which is the lesson
+    `dossier.views` learned the same week: telling somebody a topology cannot
+    run, without saying what would make it run, leaves them where the silence
+    did.
+    """
+
+    key: str
+    """What is missing. One of `NEEDS`."""
+
+    because: str
+    """What the topology cannot do without it, in a person's words."""
+
+    supplied_by: str
+    """The command or the thing that provides it."""
+
+
+# What a topology can be short of. Named rather than written as free text so
+# two shapes needing the same thing say so identically.
+BUILD = "build"
+BUDGET = "budget"
+WORKERS = "workers"
+MODEL = "model"
+PERSON = "person"
+
+NEEDS = (BUILD, BUDGET, WORKERS, MODEL, PERSON)
+
+
+@dataclass(frozen=True)
 class Capability:
     """What one topology would do if somebody ran it."""
 
@@ -75,6 +106,16 @@ class Capability:
 
     why: str
 
+    needs: tuple[Need, ...] = ()
+    """What must be supplied before this shape could run.
+
+    **Separate from `status`, and the two answer different questions.**
+    `status` says whether anybody has built it; `needs` says what a built one
+    still wants from the caller. A `RUNS` topology with an unmet need is not
+    broken -- it is waiting, and the difference is what a reader needs in
+    order to act.
+    """
+
     @property
     def can_run(self) -> bool:
         return self.status == RUNS
@@ -89,39 +130,68 @@ PLANE: tuple[Capability, ...] = (
             "`intake` for an export -- run without claiming the type. They "
             "cannot claim it safely: `TopologyRegistry` is keyed by type and "
             "replaces silently, so a second class claiming PIPELINE wins or "
-            "loses by import order rather than colliding"),
+            "loses by import order rather than colliding",
+        needs=(Need(BUILD,
+                    "the registered class is a stub whose `run` raises",
+                    "somebody writes it; `qmcp.feedback` and `intake` are the "
+                    "concrete pipelines that already work"),)),
     Capability(
         TopologyType.DELEGATION, RUNS, spends=False, writes=False, decides=False,
         why="route each unit of work to the worker registered for its shape. "
             "`qmcp.sweep` already had this shape before it had this name: nine "
             "parsers and fifteen questions, and the mix follows the work "
-            "rather than a setting"),
+            "rather than a setting",
+        needs=(Need(WORKERS,
+                    "it routes each unit of work to the worker registered for "
+                    "its shape, and an unregistered shape has nowhere to go",
+                    "pass `workers` to `delegate`; an unrouted shape is "
+                    "reported, never dropped"),)),
     Capability(
         TopologyType.CROSS_CHECK, RUNS, spends=False, writes=False, decides=False,
         why="several independent checkers on one claim, and a consensus that "
-            "is reported rather than acted on. Reports; does not decide"),
+            "is reported rather than acted on. Reports; does not decide",
+        needs=(Need(WORKERS,
+                    "a consensus of one checker is not a consensus",
+                    "pass more than one checker to `cross_check`"),)),
     Capability(
         TopologyType.ENSEMBLE, BRAINSTORM, spends=True, writes=False,
         decides=False,
         why="several workers on the same item, answers combined. Plausible and "
             "unbuilt. It spends by construction -- N answers to one question -- "
-            "so the first version needs a budget before it needs a runtime"),
+            "so the first version needs a budget before it needs a runtime",
+        needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
+               Need(BUDGET,
+                    "N answers to one question is N paid calls, and the "
+                    "default budget is zero",
+                    "issue it against an authorised budget; consent is an "
+                    "amount rather than a category"),)),
     Capability(
         TopologyType.DEBATE, BRAINSTORM, spends=True, writes=False, decides=True,
         why="positions argued to a conclusion. A good shape for a question with "
             "no right answer, and unbuilt. It decides, so it is not for an "
-            "attested act"),
+            "attested act",
+        needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
+               Need(BUDGET, "positions are argued by paid calls",
+                    "issue it against an authorised budget"),)),
     Capability(
         TopologyType.CHAIN_OF_COMMAND, BRAINSTORM, spends=True, writes=False,
         decides=True,
         why="escalation up a hierarchy. Unbuilt, and the escalation terminates "
-            "in something choosing"),
+            "in something choosing",
+        needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
+               Need(BUDGET, "each escalation is a paid call",
+                    "issue it against an authorised budget"),)),
     Capability(
         TopologyType.COMPOUND, BRAINSTORM, spends=True, writes=False,
         decides=False,
         why="topologies composed of topologies. Cannot usefully run until more "
             "than one of its parts does, which is an ordering fact rather than "
-            "a judgement about the shape"),
+            "a judgement about the shape",
+        needs=(Need(BUILD,
+                    "it composes topologies, and more than one of its parts "
+                    "has to run first",
+                    "build the parts; this is an ordering fact rather than a "
+                    "judgement about the shape"),)),
     Capability(
         TopologyType.COUNCIL, REFUSED, spends=True, writes=False, decides=True,
         why="its config gives the arbiter the final decision when consensus "
@@ -130,8 +200,49 @@ PLANE: tuple[Capability, ...] = (
             "welcome here and the deciding is not: a council that reached a "
             "verdict on whether to ratify would be a machine performing an act "
             "`ci/attested-registry.yaml` reserves for a person, and the verdict "
-            "would be indistinguishable from one somebody made"),
+            "would be indistinguishable from one somebody made",
+        needs=(Need(PERSON,
+                    "its arbiter takes the final decision when consensus "
+                    "fails, and that is an act the constitution reserves",
+                    "nothing supplies this: a person decides, and the shape is "
+                    "refused here rather than made safe"),)),
 )
+
+
+def unmet(capability: Capability, *, built: bool | None = None,
+          budget: int = 0, workers: int = 0, model: bool = False
+          ) -> tuple[Need, ...]:
+    """What this shape is still short of, given what the caller has.
+
+    **`status` AND `needs` ANSWER DIFFERENT QUESTIONS AND BOTH ARE ASKED.** A
+    shape nobody built is short of a build whatever else the caller brings; a
+    built one can still be short of a budget. Reporting only the first would
+    tell somebody to write code they already have.
+
+    `built` overrides the declared status, so a caller who has written a
+    runtime for a `BRAINSTORM` shape can ask what else it wants.
+    """
+    have_build = capability.can_run if built is None else built
+    short = []
+    for need in capability.needs:
+        if need.key == BUILD and have_build:
+            continue
+        if need.key == BUDGET and budget > 0:
+            continue
+        if need.key == WORKERS and workers > 1:
+            continue
+        if need.key == MODEL and model:
+            continue
+        # PERSON is never supplied here. A shape whose need is a person's
+        # judgement is not made runnable by passing an argument, and a branch
+        # that let it be would be the refusal quietly undone.
+        short.append(need)
+    return tuple(short)
+
+
+def runnable_now(**have) -> list[TopologyType]:
+    """Every shape a caller with `have` could run right now."""
+    return [c.topology for c in PLANE if not unmet(c, **have)]
 
 
 def by_type() -> dict[TopologyType, Capability]:
