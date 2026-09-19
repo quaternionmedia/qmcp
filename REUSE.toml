@@ -1,0 +1,70 @@
+version = 1
+SPDX-PackageName = "qmcp"
+SPDX-PackageSupplier = "Quaternion Media <peter.kagstrom@gmail.com>"
+SPDX-PackageDownloadLocation = "https://github.com/quaternionmedia/qmcp"
+
+# Licensing is declared here rather than as per-file SPDX headers. Most of the
+# annotatable surface is Python and Markdown whose opening lines are already
+# load-bearing (module docstrings, a document's H1), and the two governance
+# pointer files are symlinks, which cannot carry a header at all -- writing one
+# writes into the target. See the outbound-licensing record's section 12 in
+# governance/qm/records/.
+#
+# Paths are matched by the last block that matches, so the blocks below win
+# over the default at the top.
+
+# --- This project's own code and prose --------------------------------------
+# MIT is what this repository already declares publicly -- README.md's License
+# section has said "MIT" since it was written, and declaring anything else now
+# would contradict a claim people have been able to read and rely on.
+#
+# Which outbound class this project actually falls into -- a QM service under
+# the outbound-licensing record's section 4 is the candidate -- is a decision
+# for this project's adoption record, not something this file settles by
+# declaring a licence. This block records the current state rather than
+# ratifying it.
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2026 Quaternion Media"
+SPDX-License-Identifier = "MIT"
+
+# --- Copy-forward governance prose from the seed (outbound section 2) -------
+# AGENTS.md is project-seed/ide/AGENTS.md, CLAUDE.md and
+# .github/copilot-instructions.md follow it, and .claude/commands/ are the
+# harness command prose. All exist to be copied verbatim into repositories QM
+# does not govern, so terms that follow the copy would export QM's licence into
+# those repositories, which is what CC0 avoids.
+[[annotations]]
+path = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".claude/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 Quaternion Media"
+SPDX-License-Identifier = "CC0-1.0"
+
+# --- Executable and machine-read config (outbound section 3) ----------------
+# The workflows under .github/ are carried from project-seed/ci/ or are this
+# project's own CI; .vscode/ is the checked-in editor configuration. CC0 grants
+# no patent licence and is not fit for executable content, which is why these
+# differ from the block above.
+[[annotations]]
+path = [
+  ".github/**",
+  ".vscode/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 Quaternion Media"
+SPDX-License-Identifier = "Apache-2.0"
+
+# --- Root pointer file follows its target, not its directory ----------------
+# .github/copilot-instructions.md points at AGENTS.md, which is copy-forward
+# prose. Its licence is its target's, not .github/**'s, so this block comes
+# last and wins.
+[[annotations]]
+path = ".github/copilot-instructions.md"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 Quaternion Media"
+SPDX-License-Identifier = "CC0-1.0"
