@@ -47,41 +47,49 @@ class Topology(SQLModel, table=True):
         Raises:
             ValueError: If no config class is registered for this topology type.
         """
-        from ..configs.topology import (
-            ChainOfCommandConfig,
-            CompoundConfig,
-            CouncilConfig,
-            CrossCheckConfig,
-            DebateConfig,
-            DelegationConfig,
-            EnsembleConfig,
-            MeshConfig,
-            PipelineConfig,
-            RingConfig,
-            StarConfig,
-        )
-        from ..enums import TopologyType
-
-        _config_map = {
-            TopologyType.DEBATE: DebateConfig,
-            TopologyType.CHAIN_OF_COMMAND: ChainOfCommandConfig,
-            TopologyType.DELEGATION: DelegationConfig,
-            TopologyType.CROSS_CHECK: CrossCheckConfig,
-            TopologyType.ENSEMBLE: EnsembleConfig,
-            TopologyType.PIPELINE: PipelineConfig,
-            TopologyType.COMPOUND: CompoundConfig,
-            TopologyType.MESH: MeshConfig,
-            TopologyType.STAR: StarConfig,
-            TopologyType.RING: RingConfig,
-            TopologyType.COUNCIL: CouncilConfig,
-        }
-
-        config_cls = _config_map.get(self.topology_type)
+        config_cls = config_class_for(self.topology_type)
         if config_cls is None:
             raise ValueError(
                 f"No config class registered for topology type {self.topology_type!r}"
             )
         return config_cls.model_validate(self.config)
+
+
+def config_class_for(kind: TopologyType) -> type | None:
+    """The configuration class for one topology type, or None when it has none.
+
+    Declared once, here, so the HTTP schema route and the saved-design store
+    validate a config through the same table ``get_typed_config`` reads.
+    Imported lazily because the configs package is a sibling of this one and a
+    top-level import would make the two load-order dependent.
+    """
+    from ..configs.topology import (
+        ChainOfCommandConfig,
+        CompoundConfig,
+        CouncilConfig,
+        CrossCheckConfig,
+        DebateConfig,
+        DelegationConfig,
+        EnsembleConfig,
+        MeshConfig,
+        PipelineConfig,
+        RingConfig,
+        StarConfig,
+    )
+
+    return {
+        TopologyType.DEBATE: DebateConfig,
+        TopologyType.CHAIN_OF_COMMAND: ChainOfCommandConfig,
+        TopologyType.DELEGATION: DelegationConfig,
+        TopologyType.CROSS_CHECK: CrossCheckConfig,
+        TopologyType.ENSEMBLE: EnsembleConfig,
+        TopologyType.PIPELINE: PipelineConfig,
+        TopologyType.COMPOUND: CompoundConfig,
+        TopologyType.MESH: MeshConfig,
+        TopologyType.STAR: StarConfig,
+        TopologyType.RING: RingConfig,
+        TopologyType.COUNCIL: CouncilConfig,
+    }.get(kind)
 
 
 class TopologyMembership(SQLModel, table=True):
@@ -100,4 +108,5 @@ class TopologyMembership(SQLModel, table=True):
 __all__ = [
     "Topology",
     "TopologyMembership",
+    "config_class_for",
 ]

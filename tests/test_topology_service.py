@@ -240,3 +240,64 @@ def test_the_governed_seam_answers_at_every_level(shapes_only):
 def test_an_unknown_shape_is_still_a_404(shapes_only):
     """Adding a name outside the enum must not make every name resolve."""
     assert shapes_only.get("/v1/topology/shape/govern").status_code == 404
+
+
+# --- the configuration schema, a shape-class fact ------------------------------
+
+
+def test_a_kinds_configuration_schema_is_the_classs_own(shapes_only):
+    """What a designer's form is built from. The class is the one
+    `Topology.get_typed_config` validates through, read from the same table.
+
+    Mutation: serve `{}` as the schema and this fails.
+    """
+    from qmcp.agentframework.models.entities.topologies import config_class_for
+    from qmcp.agentframework.models.enums import TopologyType
+
+    body = shapes_only.get("/v1/topology/schema/debate").json()
+    assert body["schema"] == 1
+    assert body["topology"] == "debate"
+    assert body["config_class"] == "DebateConfig"
+    assert body["json_schema"] == config_class_for(TopologyType.DEBATE).model_json_schema()
+    assert "max_rounds" in body["json_schema"]["properties"]
+    assert body["status"] == "brainstorm"
+
+
+def test_every_kind_with_a_config_class_answers(shapes_only):
+    from qmcp.agentframework.models.entities.topologies import config_class_for
+    from qmcp.agentframework.models.enums import TopologyType
+
+    for kind in TopologyType:
+        answer = shapes_only.get(f"/v1/topology/schema/{kind.value}")
+        if config_class_for(kind) is None:
+            assert answer.status_code == 404, kind
+        else:
+            assert answer.status_code == 200, kind
+            assert answer.json()["json_schema"]["title"] == config_class_for(kind).__name__
+
+
+def test_a_kind_with_no_capability_still_has_a_schema_and_no_status(shapes_only):
+    """`mesh` has a config class and no declared capability. The schema is a
+    fact about the class; the status is the plane's and the plane is silent."""
+    body = shapes_only.get("/v1/topology/schema/mesh").json()
+    assert body["config_class"] == "MeshConfig"
+    assert body["status"] is None
+
+
+def test_governed_has_no_schema_and_the_404_says_it_is_a_seam(shapes_only):
+    """An empty schema would read as a shape that takes no configuration.
+
+    Mutation: return `{}` for governed and this fails.
+    """
+    answer = shapes_only.get("/v1/topology/schema/governed")
+    assert answer.status_code == 404
+    detail = answer.json()["detail"]
+    assert "seam" in detail and "not a configurable shape" in detail
+    assert "GET /v1/topology/shape/governed" in detail
+
+
+def test_an_unknown_kind_has_no_schema_and_the_404_lists_the_kinds(shapes_only):
+    answer = shapes_only.get("/v1/topology/schema/hexagon")
+    assert answer.status_code == 404
+    assert "debate" in answer.json()["detail"]
+    assert "council" in answer.json()["detail"]

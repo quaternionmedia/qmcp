@@ -165,3 +165,15 @@ def test_a_project_that_is_not_owner_repo_is_refused():
     """Guessing an owner would mint addresses that collide across orgs."""
     with pytest.raises(ValueError, match="owner/repo"):
         invocation_address("abc", "qmcp")
+
+
+def test_a_saved_topology_design_is_addressed_by_its_name():
+    """`topology` is ahead of the corpus's kind table, and this pins what this
+    implementation does with it until the kind lands there."""
+    from qmcp.addresses import topology_address
+
+    text = topology_address("two-checkers", "quaternionmedia/qmcp")
+    assert text == "quaternionmedia/qmcp/topology/two-checkers"
+    assert parse(text) == Address("quaternionmedia", "qmcp", "topology", "two-checkers")
+    with pytest.raises(ValueError, match="owner/repo"):
+        topology_address("x", "qmcp")

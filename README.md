@@ -189,8 +189,25 @@ Add `--no-sync` to skip syncing flow dependencies if the image is already built.
 | `/v1/human/requests` | GET | List human requests |
 | `/v1/human/requests/{id}` | GET | Get request with response |
 | `/v1/human/responses` | POST | Submit human response |
+| `/v1/topology` | GET | Every topology shape, and the encoding a window must honour |
+| `/v1/topology/encoding` | GET | Which visual channel carries which data axis |
+| `/v1/topology/shape/{kind}` | GET | One shape as boxes and arrows, at a level |
+| `/v1/topology/schema/{kind}` | GET | The JSON schema of one kind's configuration class |
+| `/v1/orchestration/plane` | GET | What every shape would do, declared: status, spends/writes/decides, needs, refusals, drift |
+| `/v1/orchestration/runnable` | GET | What a hand (`workers`, `budget`, `model`, `built`) could run, and what each shape is short of |
+| `/v1/topologies` | POST | Save a topology design, validated through its kind's configuration class |
+| `/v1/topologies` | GET | Every saved design, addressed, with the plane's verdict |
+| `/v1/topologies/{ref}` | GET | One design by id or by name; `?act=` judges a pairing |
+| `/v1/topologies/{ref}` | PUT | Change a design's description, config or version |
 | `/metrics` | GET | Prometheus metrics |
 | `/metrics/json` | GET | Metrics as JSON |
+
+The topology, orchestration and design routes name nobody and are served
+wherever the server is bound. `walkthrough/07-saving-a-shape-is-not-running-it.md`
+exercises them, and the reason a refused shape can be saved is in
+`qmcp/topology_designs.py`. The archive-derived readings under
+`/v1/topology/relations/` and `/v1/threads` are loopback-only and are not in
+this table.
 
 ## Built-in Tools
 
