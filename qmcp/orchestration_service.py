@@ -12,7 +12,7 @@ decide, which are refused -- would be a second copy of this organisation's
 rule, kept current by nobody. So the window asks, and this is what answers.
 
 **IT SERVES THE DECLARATION AND ADDS NOTHING TO IT.** Every field here is read
-off `PLANE`, `NEEDS`, `ATTESTED` and the three drift reports the module already
+off `PLANE`, `NEEDS`, `ATTESTED` and the drift reports the module already
 computes. Nothing is derived that the module does not state, because a plane
 served over HTTP that disagreed with the one printed in a terminal would be two
 answers to one question.

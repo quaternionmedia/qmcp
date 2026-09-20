@@ -241,6 +241,23 @@ def test_an_unknown_design_is_a_404_naming_where_to_look(served):
         assert "GET /v1/topologies" in answer.json()["detail"]
 
 
+def test_a_name_of_unicode_digits_is_a_name_and_not_a_crash(served):
+    """`'²'.isdigit()` is True and `int('²')` raises.
+
+    A saveable name made of such characters turned every read of it into a
+    500 -- found by a reviewer walking past the `isdigit()` gate. The gate is
+    now what `int` accepts, so the reference falls through to the name lookup
+    and resolves, and an unknown one is a 404 like any other.
+    """
+    saved(served, name="²", num_checkers=2)
+    answer = served.get("/v1/topologies/²")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["name"] == "²"
+    changed = served.put("/v1/topologies/²", json={"description": "still a name"})
+    assert changed.status_code == 200, changed.text
+    assert served.get("/v1/topologies/³").status_code == 404
+
+
 def test_a_digit_name_is_reachable_and_the_id_wins_a_collision(served):
     """A name may be all digits. The rule is id first, then name, and this
     pins the rule rather than leaving it to the query order."""

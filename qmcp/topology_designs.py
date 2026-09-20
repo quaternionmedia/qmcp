@@ -209,15 +209,24 @@ def register(app: Any, sessions: Sessions | None = None,
         sessions = get_session
 
     async def _find(session: Any, ref: str) -> Topology | None:
-        """By id when the reference is all digits, then by name.
+        """By id when the reference is an ASCII integer, then by name.
 
         A name may legally be all digits, so a digit reference tries the id
         first and the name second; the id wins a collision, and that order is
         the rule rather than an accident of the query.
+
+        **`isdigit()` IS NOT `int()`'s TEST.** `'²'.isdigit()` (superscript
+        two) is True and `int('²')` raises, so a saveable name made of
+        such characters turned every read of it into a 500. The gate is the
+        conversion itself: an id is what `int` accepts and nothing wider.
         """
-        if ref.isdigit():
+        try:
+            wanted = int(ref) if ref.isascii() and ref.isdigit() else None
+        except ValueError:
+            wanted = None
+        if wanted is not None:
             found = (await session.execute(
-                select(Topology).where(Topology.id == int(ref)))).scalar_one_or_none()
+                select(Topology).where(Topology.id == wanted))).scalar_one_or_none()
             if found is not None:
                 return found
         return (await session.execute(

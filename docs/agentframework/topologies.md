@@ -386,9 +386,10 @@ uv run python examples/flows/council_deliberation.py run \
 ## Over HTTP, for a designer
 
 The server serves the vocabulary above to a window that draws it, so the window
-carries no copy of what a shape is or what running one would do. Every payload
-carries `"schema": 1`, and a thing that cannot be answered arrives as a reason
-rather than an empty list.
+carries no copy of what a shape is or what running one would do. Every answer
+carries `"schema": 1`; a refusal (a 400, 404, 409 or 422) carries FastAPI's
+`detail` instead, with the sentence that says what to look at, so a thing that
+cannot be answered arrives as a reason rather than an empty list.
 
 | Route | What it answers |
 |---|---|

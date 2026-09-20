@@ -53,7 +53,7 @@ rides along so a legend is built from the words rather than from a guess:
     >>> plane["needs"]
     ['build', 'budget', 'workers', 'model', 'person']
 
-So do the three drift reports the module already computes. A window showing
+So do the drift reports the module already computes. A window showing
 the plane shows where the plane and the registry disagree, because a
 declaration for a shape nothing registers is a picture of something that is
 not there:
