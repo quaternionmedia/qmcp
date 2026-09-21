@@ -383,6 +383,34 @@ uv run python examples/flows/council_deliberation.py run \
     --llm-model "llama3.1"
 ```
 
+## Over HTTP, for a designer
+
+The server serves the vocabulary above to a window that draws it, so the window
+carries no copy of what a shape is or what running one would do. Every answer
+carries `"schema": 1`; a refusal (a 400, 404, 409 or 422) carries FastAPI's
+`detail` instead, with the sentence that says what to look at, so a thing that
+cannot be answered arrives as a reason rather than an empty list.
+
+| Route | What it answers |
+|---|---|
+| `GET /v1/topology/shape/{kind}` | the shape as boxes and arrows, at a level; `governed` is served here too |
+| `GET /v1/topology/schema/{kind}` | the JSON schema of the kind's configuration class -- what a form is built from; `governed` is a 404 saying it is a seam, not a configurable shape |
+| `GET /v1/orchestration/plane` | `qmcp.orchestration.PLANE` as a document: per shape its status, whether it spends, writes or decides, why, and its needs with what supplies each; the needs and attested-act vocabularies; the drift reports |
+| `GET /v1/orchestration/runnable?workers=&budget=&model=&built=` | what that hand could run now, and per shape what it is still short of. There is no `person` parameter and there will not be one |
+| `POST /v1/topologies` | save a design. `config` is validated through the kind's configuration class and stored with its defaults filled; the response carries an `address` and a `capability` block |
+| `GET /v1/topologies` | every saved design |
+| `GET /v1/topologies/{ref}?act=` | one design, by id or by name; `act` asks the plane about a pairing |
+| `PUT /v1/topologies/{ref}` | change `description`, `config` or `version`; name and kind are fixed |
+
+**A refused shape can be saved.** `council` is refused by the plane because its
+arbiter decides, and the refusal is of the run. The saved row comes back with
+the plane's `refusal` and a `saved_anyway` sentence, so a designer sees the
+rule at the moment of choosing rather than after. There is no `DELETE`.
+
+`walkthrough/07-saving-a-shape-is-not-running-it.md` exercises every route
+above through the test client, and `qmcp/topology_designs.py` and
+`qmcp/orchestration_service.py` hold the reasoning.
+
 ## Topology Registry
 
 ```python

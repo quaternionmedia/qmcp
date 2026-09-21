@@ -10,10 +10,11 @@ not deployed, and those look identical from inside the demo.
 **TWO CLASSES OF ROUTE, AND THE DIFFERENCE IS PERSONAL DATA.**
 
 - The *shapes* -- `/v1/topology`, `/v1/topology/encoding`,
-  `/v1/topology/shape/{kind}` -- are this harness's own vocabulary. A
-  delegation topology looks the same on every machine and names nobody, and so
-  does `governed`, the seam a model is called through. They are served wherever
-  the server is bound.
+  `/v1/topology/shape/{kind}`, `/v1/topology/schema/{kind}` -- are this
+  harness's own vocabulary. A delegation topology looks the same on every
+  machine and names nobody, and so does `governed`, the seam a model is called
+  through; the schema of a shape's configuration class is the same kind of
+  fact. They are served wherever the server is bound.
 - The *readings* -- `/v1/topology/relations/{subject}` -- are derived from the
   thread archive, which holds a person's conversations. They carry project
   addresses, turn counts and what somebody talked about, and they are
@@ -135,6 +136,53 @@ def register(app: Any) -> None:
             view = tv.view_of(wanted, level=level)
         return {"schema": 1, "payload": tv.as_payload(view),
                 "encoding": tv.encoding_payload(), "source": "topology"}
+
+    @app.get("/v1/topology/schema/{kind}")
+    async def configuration_schema(kind: str) -> dict[str, Any]:
+        """The JSON schema of one shape's configuration class.
+
+        What a designer's form is built from, so the form cannot offer a field
+        the class does not hold. The class is the one
+        `Topology.get_typed_config` validates a saved design through, read
+        from the same table, so a config that fits the schema fits the store.
+
+        `governed` is a 404 with a reason rather than an empty schema: it is a
+        seam, not a configurable shape, and an empty schema would read as a
+        shape that takes no configuration.
+        """
+        from qmcp.agentframework.models.entities.topologies import config_class_for
+        from qmcp.agentframework.models.enums import TopologyType
+        from qmcp.orchestration import by_type
+
+        kinds = [t.value for t in TopologyType if config_class_for(t) is not None]
+        if kind == "governed":
+            raise HTTPException(
+                status_code=404,
+                detail=("governed is a seam, not a configurable shape: it has "
+                        "no config class. `GET /v1/topology/shape/governed` "
+                        "draws it; `GET /v1/topology/schema/{kind}` answers "
+                        f"for {', '.join(kinds)}."))
+        try:
+            wanted = TopologyType(kind)
+        except ValueError:
+            raise HTTPException(
+                status_code=404,
+                detail=(f"no topology named {kind!r}. Kinds with a "
+                        f"configuration: {', '.join(kinds)}."))
+        config_class = config_class_for(wanted)
+        if config_class is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(f"{kind} is in the vocabulary and has no config class. "
+                        f"Kinds with a configuration: {', '.join(kinds)}."))
+        capability = by_type().get(wanted)
+        return {
+            "schema": 1,
+            "topology": wanted.value,
+            "config_class": config_class.__name__,
+            "json_schema": config_class.model_json_schema(),
+            "status": capability.status if capability else None,
+        }
 
 
 def register_readings(app: Any, root: Path) -> None:

@@ -36,6 +36,12 @@ SCHEMA = 1
 
 KINDS: frozenset[str] = frozenset({
     "branch", "pr", "issue", "ver", "doc", "delta", "invocation", "ask",
+    # A saved topology design, by its name. **Ahead of the corpus**: the kind
+    # table in `governance/qm/docs/ref/addresses.md` and the reference
+    # implementation do not hold it yet, and the shared vectors carry no case
+    # for it either way, so this implementation accepts an address the
+    # reference one refuses until the kind is proposed there and lands.
+    "topology",
 })
 
 # Reserved by dossier for entities that are not repository-scoped.
@@ -115,3 +121,16 @@ def invocation_address(invocation_id: str, project: str) -> str:
     if not owner or not repo:
         raise ValueError(f"{project!r}: expected owner/repo")
     return format_address(owner, repo, "invocation", str(invocation_id))
+
+
+def topology_address(name: str, project: str) -> str:
+    """`quaternionmedia/qmcp/topology/<name>` for one saved topology design.
+
+    The name rather than the row's integer id, because the name is the
+    identity a designer chose and the id is the database's -- a second store
+    holding the same design would give it a different id and the same name.
+    """
+    owner, _, repo = project.partition("/")
+    if not owner or not repo:
+        raise ValueError(f"{project!r}: expected owner/repo")
+    return format_address(owner, repo, "topology", name)

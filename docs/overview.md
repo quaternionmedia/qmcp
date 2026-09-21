@@ -32,6 +32,13 @@ Quickstart: see `../quickstart.md` for a copy-paste walkthrough.
   - Query invocation history (`GET /v1/invocations`)
   - Request human input or approval (`POST /v1/human/requests`)
   - Poll for human responses (`GET /v1/human/requests/{id}`)
+- Serves the topology vocabulary to a window that must not carry its own copy:
+  - Draw a shape (`GET /v1/topology/shape/{kind}`) and build a form from its
+    configuration class (`GET /v1/topology/schema/{kind}`)
+  - Ask what every shape would do (`GET /v1/orchestration/plane`) and what a
+    hand could run now (`GET /v1/orchestration/runnable`)
+  - Keep designs (`/v1/topologies`), each answered with the plane's verdict --
+    a refused shape saves, because designing is not an act and running is
 - Provides durability via:
   - SQLite persistence for all interactions
   - Audit trails for every tool invocation

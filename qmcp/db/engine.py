@@ -52,14 +52,13 @@ async def close_db() -> None:
 
 
 @asynccontextmanager
-async def get_session() -> AsyncGenerator[AsyncSession]:
-    """Get an async database session.
+async def session_scope(engine) -> AsyncGenerator[AsyncSession]:
+    """One session over the given engine, committed on exit, rolled back on error.
 
-    Usage:
-        async with get_session() as session:
-            result = await session.execute(select(Model))
+    `get_session` is this over the configured engine. It is separate so a
+    route module can be handed a database that is not the configured one --
+    a walkthrough or a test must not write into somebody's queue.
     """
-    engine = get_engine()
     async_session = sessionmaker(
         engine,
         class_=AsyncSession,
@@ -72,3 +71,15 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
+
+
+@asynccontextmanager
+async def get_session() -> AsyncGenerator[AsyncSession]:
+    """Get an async database session.
+
+    Usage:
+        async with get_session() as session:
+            result = await session.execute(select(Model))
+    """
+    async with session_scope(get_engine()) as session:
+        yield session

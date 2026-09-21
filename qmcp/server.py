@@ -28,8 +28,10 @@ from qmcp.db.models import HumanRequestStatus, InvocationStatus
 from qmcp.logging import configure_logging, get_logger
 from qmcp.metrics import metrics, record_hitl_request, record_tool_invocation
 from qmcp.middleware import RequestTracingMiddleware
+from qmcp.orchestration_service import register as register_orchestration
 from qmcp.threads.cache import DEFAULT_ROOT as THREAD_CACHE
 from qmcp.threads.service import register as register_threads
+from qmcp.topology_designs import register as register_topology_designs
 from qmcp.topology_service import register as register_topology
 from qmcp.topology_service import register_readings as register_topology_readings
 from qmcp.schemas.mcp import (
@@ -128,7 +130,12 @@ def create_app() -> FastAPI:
     # caller the archive is there.
     # The topology *shapes* name nobody and are served wherever this is bound.
     # The *readings* are derived from the archive and follow it exactly.
+    # The orchestration plane and the saved designs are shapes too: a
+    # capability is a claim about a shape and a design is a shape with a
+    # configuration, so both are served beside the shapes.
     register_topology(app)
+    register_orchestration(app)
+    register_topology_designs(app)
 
     if is_loopback(settings.host):
         register_threads(app, THREAD_CACHE)
