@@ -56,6 +56,15 @@ all-providers = [
     "openai>=1.50.0",
     "google-generativeai>=0.8.0",
 ]
+# Voice HITL: answer human-approval requests by voice (see qmcp/integrations/voice).
+# vox has no published release yet, so this pins to the sibling checkout —
+# replace with a real submodule/version pin once vox has a remote.
+voice = [
+    "vox",
+]
+
+[tool.uv.sources]
+vox = { path = "../vox", editable = true }
 
 [tool.uv]
 package = true
