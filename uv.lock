@@ -4946,7 +4946,7 @@ requires-dist = [
     { name = "sqlmodel", specifier = ">=0.0.31" },
     { name = "structlog", specifier = ">=25.1.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
-    { name = "vox", marker = "extra == 'voice'", editable = "../vox" },
+    { name = "vox", marker = "extra == 'voice'", editable = "vox" },
 ]
 provides-extras = ["dev", "flows", "pydantic-ai", "anthropic", "openai", "mcp", "all-providers", "voice"]
 
@@ -5598,7 +5598,7 @@ wheels = [
 [[package]]
 name = "vox"
 version = "0.1.0"
-source = { editable = "../vox" }
+source = { editable = "vox" }
 dependencies = [
     { name = "httpx" },
     { name = "pyttsx3" },
