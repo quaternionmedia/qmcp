@@ -319,9 +319,37 @@ This document outlines the phased implementation plan for building a production-
 
 ---
 
-## Current Sprint: ALL PHASES COMPLETE ✅
+## Phase 9: The Designer's Seam
 
-All 8 phases are complete. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
+The routes a window draws from, so that no window carries its own copy of what
+a shape is or what running one would do. `docs/agentframework/topologies.md`,
+*Over HTTP, for a designer*, is the reference; `walkthrough/07-saving-a-shape-is-not-running-it.md`
+exercises every route. The window that reads them is codecartographer, and the
+plan they serve is the corpus's `plans/the-web-window.md`; its
+`handbook/handoffs/the-web-window.md` names what each remaining phase asks of
+this server.
+
+### Deliverables
+
+- [x] `GET /v1/orchestration/plane` and `GET /v1/orchestration/runnable` -- the plane as a document, and what a declared hand could run
+- [x] `GET /v1/topology/schema/{kind}` -- the form a designer builds from
+- [x] `/v1/topologies` (POST, GET, GET one, PUT) over the table that existed with no route; a refused shape saves and says so
+- [x] The `topology` address kind, ahead of the corpus's grammar; the shared-vectors test reads the corpus's vector once it exists
+- [ ] **An execution route.** Run a shape whose plane status is `runs` against declared workers and a declared budget, through the governed seam; the spend declared and consented here (`records/DRAFT-no-unattended-spending.md` in the corpus), the refusal asked of `orchestration.refuses` at run. Nothing a window sends turns a draft into a decision
+- [ ] **An event stream** (`/v1/events`), after the window's polling overlay exists -- one more surface to govern, so it comes second by decision
+- [ ] Answering the human queue from a web window is **deferred by decision** in the corpus's plan; build nothing for it until it has been reviewed
+
+### Acceptance Criteria
+
+- [x] Every designer route is documented and walked through in `walkthrough/07`
+- [ ] The execution route's walkthrough shows a run refused before it spends, and a run consented before it starts
+- [ ] The corpus's `project-seed/address-vectors.json` carries a `topology` vector and `tests/test_addresses.py` passes against it
+
+---
+
+## Current Sprint
+
+Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
 
 **Phase Summary:**
 | Phase | Description | Tests |
@@ -346,7 +374,7 @@ All 8 phases are complete. QMCP is a production-ready MCP server with PydanticAI
 - Comprehensive test coverage
 
 **Next Steps (Future Work):**
-- Topology runtime execution (Pipeline, Council, etc.) with PydanticAI built-in
+- Topology runtime execution (Pipeline, Council, etc.) with PydanticAI built-in -- Phase 9's execution route is the governed way in
 - CI/CD pipeline (GitHub Actions)
 - HumanInLoopMixin HITL API integration
 - AsyncRunner implementation
