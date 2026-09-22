@@ -1487,6 +1487,83 @@ def human_respond(request_id: str, response: str, database: Path | None,
     click.echo("  the same as the work being done.")
 
 
+@human.command("voice")
+@click.argument("request_id", required=False)
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+@click.option("--joe-url", default="http://127.0.0.1:8000",
+              help="joe engine URL, for speech recognition")
+@click.option("--duration", default=5.0, type=float, help="seconds to listen per attempt")
+@click.option("--max-retries", default=2, type=int,
+              help="re-asks before giving up on an unclear spoken answer")
+@click.option("--forever", is_flag=True,
+              help="keep answering requests as they arrive, instead of just one")
+@click.option("--poll-interval", default=2.0, type=float,
+              help="seconds between checks for the next pending request, with --forever")
+def human_voice(request_id: str | None, base_url: str | None, joe_url: str,
+                duration: float, max_retries: int, forever: bool,
+                poll_interval: float) -> None:
+    """Answer one (or, with --forever, every) pending request by voice.
+
+    Speaks the prompt through TTS, listens via a running joe engine's speech
+    recognition, and submits the parsed yes/no. Unlike `human list` and
+    `human respond`, this goes over HTTP rather than straight to the
+    database: speech recognition only exists behind a running `qmcp serve`
+    and a running joe backend (`joe backend`, from the joe repo), so there is
+    no offline path here to preserve.
+
+    REQUEST_ID is optional: without it, the oldest pending request is
+    answered. Requires the `voice` extra (`uv sync --extra voice`).
+    """
+    try:
+        from vox import JoeSTT, Pyttsx3TTS
+    except ImportError:
+        raise SystemExit(
+            "vox is not installed. `uv sync --extra voice` (pins the sibling "
+            "vox checkout until vox has its own release)."
+        )
+
+    from qmcp.client import HumanRequestExpiredError, MCPClient, MCPClientError
+    from qmcp.integrations.voice import UnclearResponse, VoiceApprovalLoop
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    loop = VoiceApprovalLoop(
+        stt=JoeSTT(base_url=joe_url),
+        tts=Pyttsx3TTS(),
+        client=client,
+        max_retries=max_retries,
+        listen_duration=duration,
+    )
+
+    if forever:
+        click.echo("Listening for pending requests by voice. Ctrl+C to stop.")
+        try:
+            answered = loop.run_forever(poll_interval=poll_interval)
+        except KeyboardInterrupt:
+            click.echo("\nStopped.")
+            return
+        click.echo(f"Answered {answered} request(s).")
+        return
+
+    if request_id is None:
+        pending = client.list_human_requests(status_filter="pending", limit=1)
+        if not pending:
+            click.echo("Nothing is waiting on a person.")
+            return
+        request_id = pending[0].id
+
+    try:
+        response = loop.run_once(request_id)
+    except UnclearResponse as exc:
+        raise SystemExit(str(exc))
+    except HumanRequestExpiredError as exc:
+        raise SystemExit(str(exc))
+    except MCPClientError as exc:
+        raise SystemExit(str(exc))
+
+    click.echo(f"  {request_id} answered {response.response!r} (by voice).")
+
+
 @cli.group("threads")
 def threads() -> None:
     """Conversations with an assistant, as units of work.
