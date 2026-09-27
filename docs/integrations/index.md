@@ -42,17 +42,21 @@ Provides:
 - Option selection that reads a request's `options` rather than their order
 - A retry budget, so an ambiguous answer is re-asked rather than guessed
 
-Speech-to-text is delegated over HTTP to a [joe](https://github.com/quaternionmedia/joe)
-engine; the [vox](https://github.com/quaternionmedia/vox) seam is vendored as a
-submodule at `./vox`.
+Speech-to-text is delegated over HTTP to a speech engine. The
+[vox](https://github.com/quaternionmedia/vox) seam states the contract and
+names no engine; `vox.adapters.joe` names the one this uses by default. vox is
+vendored as a submodule at `./vox`.
 
 **Status**: Works end to end; `run_forever` is not bounded on an idle queue.
 
 ```python
 from qmcp.integrations.voice import VoiceApprovalLoop
-from vox import JoeSTT, Pyttsx3TTS
+from vox import HttpSTT
+from vox.adapters import JOE
+from vox.adapters.pyttsx3 import Pyttsx3TTS
 
-VoiceApprovalLoop(stt=JoeSTT(), tts=Pyttsx3TTS()).run_once("deploy-001")
+stt = HttpSTT("http://127.0.0.1:8000", contract=JOE)
+VoiceApprovalLoop(stt=stt, tts=Pyttsx3TTS()).run_once("deploy-001")
 ```
 
 ## Decision Matrix

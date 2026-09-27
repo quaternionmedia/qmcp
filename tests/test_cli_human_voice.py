@@ -33,11 +33,34 @@ class _FakeTTS:
 
 
 def _install_fake_vox(monkeypatch, stt, tts) -> None:
-    """`qmcp human voice` imports `vox` lazily; stand it in without installing it."""
+    """`qmcp human voice` imports `vox` lazily; stand it in without installing it.
+
+    Three modules, because vox states the contract in one place and names the
+    engine in another: the client and the adapters are separate imports, and
+    standing in for only one of them would not exercise the lookup the CLI
+    actually performs.
+    """
     fake_vox = ModuleType("vox")
-    fake_vox.JoeSTT = lambda *a, **k: stt
-    fake_vox.Pyttsx3TTS = lambda *a, **k: tts
-    monkeypatch.setitem(sys.modules, "vox", fake_vox)
+    fake_vox.HttpSTT = lambda *a, **k: stt
+
+    fake_contract = MagicMock(name="EngineContract")
+    fake_adapters = ModuleType("vox.adapters")
+    fake_adapters.JOE = fake_contract
+
+    fake_joe = ModuleType("vox.adapters.joe")
+    fake_joe.JOE = fake_contract
+    fake_joe.DEFAULT_URL = "http://127.0.0.1:8000"
+
+    fake_pyttsx3 = ModuleType("vox.adapters.pyttsx3")
+    fake_pyttsx3.Pyttsx3TTS = lambda *a, **k: tts
+
+    for name, module in [
+        ("vox", fake_vox),
+        ("vox.adapters", fake_adapters),
+        ("vox.adapters.joe", fake_joe),
+        ("vox.adapters.pyttsx3", fake_pyttsx3),
+    ]:
+        monkeypatch.setitem(sys.modules, name, module)
 
 
 def _pending_request(request_id: str = "demo-1") -> HumanRequest:

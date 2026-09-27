@@ -10,18 +10,18 @@ except by `responded_by`.
 
 | QMCP provides | vox provides |
 |---|---|
-| The HITL queue, its API and its audit trail | The speech seam: STT and TTS behind one adapter |
-| `VoiceApprovalLoop`, which turns a transcript into a response | `VoiceSession`, `JoeSTT`, `Pyttsx3TTS` |
+| The HITL queue, its API and its audit trail | The speech seam: an engine contract, a client, and synthesis |
+| `VoiceApprovalLoop`, which turns a transcript into a response | `EngineContract`, `HttpSTT`, `VoiceSession` |
 | The retry budget and the yes/no parse | The engine contract and a deterministic stand-in for it |
 
-Speech-to-text is not performed locally. `vox.JoeSTT` is an HTTP client
-against a running [joe](https://github.com/quaternionmedia/joe) engine's
-`/api/voice/*` endpoints, and it is that engine's machine whose microphone is
-used. Text-to-speech is local and offline (`pyttsx3`).
+Speech-to-text is not performed locally. `vox.HttpSTT` is an HTTP client
+against whatever engine an `EngineContract` describes, and it is that engine's
+machine whose microphone is used. vox names no engine; `vox.adapters.joe` is
+the contract for the one used here. Text-to-speech is local and offline.
 
 ```
 prompt --> vox TTS --> speaker
-                                 microphone --> joe (whisper) --> transcript
+                                 microphone --> speech engine --> transcript
                                                                       |
                                                      parse_yes_no  <--+
                                                                       |
@@ -50,9 +50,12 @@ running `VoiceApprovalLoop` against real backends requires it.
 
 ```python
 from qmcp.integrations.voice import VoiceApprovalLoop
-from vox import JoeSTT, Pyttsx3TTS
+from vox import HttpSTT
+from vox.adapters import JOE
+from vox.adapters.pyttsx3 import Pyttsx3TTS
 
-loop = VoiceApprovalLoop(stt=JoeSTT(), tts=Pyttsx3TTS())
+stt = HttpSTT("http://127.0.0.1:8000", contract=JOE)
+loop = VoiceApprovalLoop(stt=stt, tts=Pyttsx3TTS())
 loop.run_once("deploy-001")   # answer one pending request
 loop.run_forever()            # keep answering as new ones arrive
 ```
@@ -63,17 +66,18 @@ From the CLI, alongside `qmcp human list` and `qmcp human respond`:
 qmcp human voice deploy-001     # answer that request
 qmcp human voice                # answer whatever is oldest and pending
 qmcp human voice --forever      # keep answering; Ctrl+C to stop
+qmcp human voice --engine joe   # which vox.adapters entry to talk to
 ```
 
-A joe engine must be reachable. `vox doctor` reports which of the three
+The engine must be reachable. `vox doctor` reports which of the three
 preconditions is missing — engine unreachable, no microphone on the engine's
-machine, or local TTS failing to initialize — rather than failing partway
-through a recording.
+machine, or synthesis failing — rather than failing partway through a
+recording.
 
 ## How a spoken answer becomes a response
 
 `parse_yes_no` normalizes casing and punctuation before matching, because a
-whisper transcript carries both ("Yes.", "Yeah, go ahead."). Negatives are
+transcript carries both ("Yes.", "Yeah, go ahead."). Negatives are
 matched before positives, so "no, don't" is not read as a stray positive.
 
 `choose_option` then maps the decision onto the request's own `options` **by
@@ -104,8 +108,9 @@ ambiguous answer is never guessed at.
 The integration's own tests use scripted stand-ins for STT and TTS and touch
 no audio device. vox carries the layer below: `uv run vox loop --offline`
 closes the full audio → text → audio → text round trip against a deterministic
-engine on an ephemeral port, with no joe, no model download and no microphone.
+engine on an ephemeral port, with no engine, no model download and no
+microphone.
 
-That deterministic engine is a codec wearing joe's HTTP contract. It proves the
-seam and makes no claim about transcription accuracy, which is what a real joe
-answers and what `uv run vox loop` (without `--offline`) exercises.
+That deterministic engine is a codec wearing an `EngineContract`. It proves
+the seam and makes no claim about transcription accuracy, which is what a real
+engine answers and what `uv run vox loop` (without `--offline`) exercises.
