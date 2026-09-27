@@ -45,6 +45,7 @@ Three commands worth knowing before the rest:
 uv run qmcp topology show governed --level 2   # the seam a model is called through
 uv run qmcp orchestration plane                # what every shape would do, declared
 uv run qmcp human list                         # what is waiting on a person
+uv run qmcp human voice                        # answer the oldest of them by speaking
 ```
 
 The first is the one to read. Model output reaches the human queue through one
