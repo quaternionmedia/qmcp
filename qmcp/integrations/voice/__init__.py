@@ -16,7 +16,8 @@ Usage:
 from qmcp.integrations.voice.adapter import (
     UnclearResponse,
     VoiceApprovalLoop,
+    choose_option,
     parse_yes_no,
 )
 
-__all__ = ["VoiceApprovalLoop", "UnclearResponse", "parse_yes_no"]
+__all__ = ["VoiceApprovalLoop", "UnclearResponse", "parse_yes_no", "choose_option"]

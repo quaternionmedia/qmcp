@@ -1,7 +1,12 @@
 import pytest
 
 from qmcp.client.mcp_client import HumanRequest, HumanRequestExpiredError, HumanResponse
-from qmcp.integrations.voice.adapter import UnclearResponse, VoiceApprovalLoop, parse_yes_no
+from qmcp.integrations.voice.adapter import (
+    UnclearResponse,
+    VoiceApprovalLoop,
+    choose_option,
+    parse_yes_no,
+)
 
 
 @pytest.mark.parametrize(
@@ -181,3 +186,63 @@ def test_run_forever_stops_when_nothing_pending():
 
     assert answered == 0
     assert stt.calls == 0
+
+
+# ─── choosing which option a yes or a no means ────────────────────────────────
+#
+# Every test above passes options=["approve", "reject"], so the conventional
+# ordering was the only one ever exercised. Nothing in a request states which
+# position is the affirmative one, and a request is free to carry them the
+# other way round.
+
+@pytest.mark.parametrize(
+    "decision,options,expected",
+    [
+        (True, ["approve", "reject"], "approve"),
+        (False, ["approve", "reject"], "reject"),
+        # Reversed: position would give exactly the wrong answer.
+        (True, ["reject", "approve"], "approve"),
+        (False, ["reject", "approve"], "reject"),
+        # Other vocabularies the parser already knows.
+        (True, ["deny", "confirm"], "confirm"),
+        (False, ["deny", "confirm"], "deny"),
+        (True, ["yes", "no"], "yes"),
+        (False, ["yes", "no"], "no"),
+        # Punctuation and casing, as a transcript or a UI label may carry them.
+        (True, ["Reject.", "Approve!"], "Approve!"),
+        # Nothing recognisable: position is the only information there is,
+        # and the affirmative conventionally comes first.
+        (True, ["ship it", "wait"], "ship it"),
+        (False, ["ship it", "wait"], "wait"),
+        # A single option is the answer whichever way the decision went.
+        (True, ["acknowledge"], "acknowledge"),
+        (False, ["acknowledge"], "acknowledge"),
+    ],
+)
+def test_choose_option_reads_the_options_rather_than_their_order(decision, options, expected):
+    assert choose_option(decision, options) == expected
+
+
+def test_run_once_submits_the_approving_option_however_it_is_ordered():
+    """The defect this guards: a spoken "yes" recorded as a rejection."""
+    client = FakeClient()
+    client.add_pending("deploy-006", "Deploy?", options=["reject", "approve"])
+    loop = VoiceApprovalLoop(
+        stt=ScriptedSTT(["yes"]), tts=RecordingTTS(), client=client, max_retries=0
+    )
+
+    response = loop.run_once("deploy-006")
+
+    assert response.response == "approve"
+
+
+def test_run_once_submits_the_rejecting_option_however_it_is_ordered():
+    client = FakeClient()
+    client.add_pending("deploy-007", "Deploy?", options=["reject", "approve"])
+    loop = VoiceApprovalLoop(
+        stt=ScriptedSTT(["no"]), tts=RecordingTTS(), client=client, max_retries=0
+    )
+
+    response = loop.run_once("deploy-007")
+
+    assert response.response == "reject"

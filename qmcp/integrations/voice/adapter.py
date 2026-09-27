@@ -65,6 +65,25 @@ def parse_yes_no(text: str) -> bool | None:
     return None
 
 
+def choose_option(decision: bool, options: list[str]) -> str:
+    """Pick the option a yes or a no means, by reading the options themselves.
+
+    Position is not meaning. A request carrying `["reject", "approve"]`
+    would have a spoken "yes" recorded as `reject` if the first option were
+    taken to be the approving one, and nothing in the request says which
+    position is which.
+
+    Where no option is recognisable — `["ship it", "wait"]` — position is
+    the only information available, and the conventional ordering puts the
+    affirmative first.
+    """
+    wanted = _YES_WORDS if decision else _NO_WORDS
+    for option in options:
+        if set(re.sub(r"[^\w\s]", "", option.lower()).split()) & wanted:
+            return option
+    return options[0] if decision else options[-1]
+
+
 class SpeechToText(Protocol):
     def listen(self, duration: float = 5.0) -> tuple[str, str]: ...
 
@@ -125,7 +144,7 @@ class VoiceApprovalLoop:
 
         options = request.options or ["approve", "reject"]
         decision = self._ask(request.prompt)
-        answer = options[0] if decision else (options[1] if len(options) > 1 else options[0])
+        answer = choose_option(decision, options)
 
         response = self.client.submit_human_response(
             request_id=request_id, response=answer, responded_by="vox"
