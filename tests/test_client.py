@@ -151,6 +151,30 @@ class TestMCPClientHITL:
         assert response is not None
         assert response.response == "yes"
 
+    def test_list_human_requests_filters_by_status(self, client, mcp_client):
+        """list_human_requests, unlike get_human_request, must not expire anything."""
+        mcp_client.create_human_request(
+            request_id="list-pending-001",
+            request_type="approval",
+            prompt="Still pending?",
+            options=["approve", "reject"],
+        )
+        mcp_client.create_human_request(
+            request_id="list-answered-001",
+            request_type="approval",
+            prompt="Already answered?",
+            options=["approve", "reject"],
+        )
+        mcp_client.submit_human_response(request_id="list-answered-001", response="approve")
+
+        pending = mcp_client.list_human_requests(status_filter="pending")
+        pending_ids = {r.id for r in pending}
+        assert "list-pending-001" in pending_ids
+        assert "list-answered-001" not in pending_ids
+
+        answered = mcp_client.list_human_requests(status_filter="responded")
+        assert "list-answered-001" in {r.id for r in answered}
+
 
 class TestMCPClientInvocations:
     """Tests for invocation history."""
@@ -308,6 +332,30 @@ def mcp_client(client):
                     created_at=resp_data["created_at"],
                 )
             return request, human_response
+
+        def list_human_requests(self, status_filter=None, request_type=None, limit=50, offset=0):
+            from qmcp.client.mcp_client import HumanRequest
+            params = {"limit": limit, "offset": offset}
+            if status_filter:
+                params["status"] = status_filter
+            if request_type:
+                params["request_type"] = request_type
+            response = self._test_client.get("/v1/human/requests", params=params)
+            response.raise_for_status()
+            data = response.json()
+            return [
+                HumanRequest(
+                    id=r["id"],
+                    request_type=r["request_type"],
+                    prompt=r["prompt"],
+                    status=r["status"],
+                    created_at=r["created_at"],
+                    expires_at=r.get("expires_at"),
+                    options=r.get("options"),
+                    context=r.get("context"),
+                )
+                for r in data["requests"]
+            ]
 
         def submit_human_response(self, request_id, response, responded_by=None, metadata=None):
             from qmcp.client.mcp_client import (

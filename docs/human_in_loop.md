@@ -164,6 +164,22 @@ Content-Type: application/json
 | `input` | Free-form text | Clarification, context |
 | `review` | Content validation | Document review, code review |
 
+## Answering by voice
+
+An `approval` request can be answered by speaking rather than by typing
+`qmcp human respond`. The prompt is spoken aloud, the reply is transcribed,
+and the transcribed answer is submitted through this same API, recorded with
+`responded_by` set to `vox`. Nothing else about the request differs.
+
+```bash
+qmcp human voice deploy-001     # answer that request
+qmcp human voice --forever      # keep answering as new ones arrive
+```
+
+An answer that parses as neither yes nor no is re-asked rather than guessed
+at, and submits nothing if the retry budget is exhausted.
+`docs/integrations/voice.md` covers the setup, the bounds and the caveats.
+
 ## Status Lifecycle
 
 ```

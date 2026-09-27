@@ -33,6 +33,32 @@ agent = create_agent(
 )
 ```
 
+### [Voice](voice.md)
+
+Answers a pending human-in-the-loop request by speech instead of by typing.
+Provides:
+- `VoiceApprovalLoop`, speaking a prompt and submitting the transcribed reply
+- A yes/no parse tolerant of transcript punctuation and casing
+- Option selection that reads a request's `options` rather than their order
+- A retry budget, so an ambiguous answer is re-asked rather than guessed
+
+Speech-to-text is delegated over HTTP to a speech engine. The
+[vox](https://github.com/quaternionmedia/vox) seam states the contract and
+names no engine; `vox.adapters.joe` names the one this uses by default. vox is
+vendored as a submodule at `./vox`.
+
+**Status**: Works end to end; `run_forever` is not bounded on an idle queue.
+
+```python
+from qmcp.integrations.voice import VoiceApprovalLoop
+from vox import HttpSTT
+from vox.adapters import JOE
+from vox.adapters.pyttsx3 import Pyttsx3TTS
+
+stt = HttpSTT("http://127.0.0.1:8000", contract=JOE)
+VoiceApprovalLoop(stt=stt, tts=Pyttsx3TTS()).run_once("deploy-001")
+```
+
 ## Decision Matrix
 
 When to use what:
@@ -44,6 +70,7 @@ When to use what:
 | Expose tools via HTTP | QMCP `tool_registry` |
 | Audit all tool calls | QMCP MCP Server |
 | Human approval workflow | QMCP HITL API |
+| Answer an approval by speaking | QMCP `integrations.voice` over vox |
 | Model pricing/limits | QMCP `Models` registry |
 | Multi-agent patterns | QMCP Topologies |
 | Structured output | PydanticAI `output_type` |

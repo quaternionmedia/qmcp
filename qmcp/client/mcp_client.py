@@ -331,6 +331,51 @@ class MCPClient:
 
         return request, human_response
 
+    def list_human_requests(
+        self,
+        status_filter: str | None = None,
+        request_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[HumanRequest]:
+        """List human requests, optionally filtered by status or type.
+
+        Unlike `get_human_request`, this does not expire stale pending
+        requests as a side effect — it is safe to poll on a loop.
+
+        Args:
+            status_filter: Only requests in this status (e.g. "pending").
+            request_type: Only requests of this type (e.g. "approval").
+            limit: Max results (server caps at 500).
+            offset: Pagination offset.
+
+        Returns:
+            HumanRequest list, most recently created first.
+        """
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if status_filter:
+            params["status"] = status_filter
+        if request_type:
+            params["request_type"] = request_type
+
+        response = self._client.get("/v1/human/requests", params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        return [
+            HumanRequest(
+                id=r["id"],
+                request_type=r["request_type"],
+                prompt=r["prompt"],
+                status=r["status"],
+                created_at=r["created_at"],
+                expires_at=r.get("expires_at"),
+                options=r.get("options"),
+                context=r.get("context"),
+            )
+            for r in data["requests"]
+        ]
+
     def submit_human_response(
         self,
         request_id: str,

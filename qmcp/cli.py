@@ -1487,6 +1487,99 @@ def human_respond(request_id: str, response: str, database: Path | None,
     click.echo("  the same as the work being done.")
 
 
+@human.command("voice")
+@click.argument("request_id", required=False)
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+@click.option("--engine", default="joe",
+              help="which vox.adapters entry to use for speech recognition")
+@click.option("--engine-url", default=None,
+              help="where that engine listens (default: the adapter's own)")
+@click.option("--duration", default=5.0, type=float, help="seconds to listen per attempt")
+@click.option("--max-retries", default=2, type=int,
+              help="re-asks before giving up on an unclear spoken answer")
+@click.option("--forever", is_flag=True,
+              help="keep answering requests as they arrive, instead of just one")
+@click.option("--poll-interval", default=2.0, type=float,
+              help="seconds between checks for the next pending request, with --forever")
+def human_voice(request_id: str | None, base_url: str | None, engine: str,
+                engine_url: str | None, duration: float, max_retries: int,
+                forever: bool, poll_interval: float) -> None:
+    """Answer one (or, with --forever, every) pending request by voice.
+
+    Speaks the prompt through a synthesizer, listens via a running speech
+    engine, and submits the parsed yes/no. Unlike `human list` and
+    `human respond`, this goes over HTTP rather than straight to the
+    database: recognition only exists behind a running `qmcp serve` and a
+    running engine, so there is no offline path here to preserve.
+
+    --engine names a module in `vox.adapters`; vox states the contract and
+    names no engine of its own.
+
+    REQUEST_ID is optional: without it, the oldest pending request is
+    answered. Requires the `voice` extra (`uv sync --extra voice`).
+    """
+    try:
+        import importlib
+
+        from vox import HttpSTT
+        from vox.adapters.pyttsx3 import Pyttsx3TTS
+    except ImportError:
+        raise SystemExit(
+            "vox is not installed. `uv sync --extra voice` (pins the vendored "
+            "vox submodule until vox has its own release)."
+        )
+
+    try:
+        adapter = importlib.import_module(f"vox.adapters.{engine}")
+        contract = getattr(adapter, engine.upper())
+    except (ImportError, AttributeError):
+        raise SystemExit(f"No vox engine adapter named {engine!r}.")
+
+    from qmcp.client import HumanRequestExpiredError, MCPClient, MCPClientError
+    from qmcp.integrations.voice import UnclearResponse, VoiceApprovalLoop
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    loop = VoiceApprovalLoop(
+        stt=HttpSTT(
+            engine_url or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000"),
+            contract=contract,
+        ),
+        tts=Pyttsx3TTS(),
+        client=client,
+        max_retries=max_retries,
+        listen_duration=duration,
+    )
+
+    if forever:
+        click.echo("Listening for pending requests by voice. Ctrl+C to stop.")
+        try:
+            answered = loop.run_forever(poll_interval=poll_interval)
+        except KeyboardInterrupt:
+            click.echo("\nStopped.")
+            return
+        click.echo(f"Answered {answered} request(s).")
+        return
+
+    if request_id is None:
+        pending = client.list_human_requests(status_filter="pending", limit=1)
+        if not pending:
+            click.echo("Nothing is waiting on a person.")
+            return
+        request_id = pending[0].id
+
+    try:
+        response = loop.run_once(request_id)
+    except UnclearResponse as exc:
+        raise SystemExit(str(exc))
+    except HumanRequestExpiredError as exc:
+        raise SystemExit(str(exc))
+    except MCPClientError as exc:
+        raise SystemExit(str(exc))
+
+    click.echo(f"  {request_id} answered {response.response!r} (by voice).")
+
+
 @cli.group("threads")
 def threads() -> None:
     """Conversations with an assistant, as units of work.
