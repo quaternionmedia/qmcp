@@ -74,6 +74,38 @@ preconditions is missing — engine unreachable, no microphone on the engine's
 machine, or synthesis failing — rather than failing partway through a
 recording.
 
+## Which microphone
+
+Recording happens on the engine's machine, and its default input is often
+not a microphone. One workstation here lists twenty inputs across four host
+APIs, with the same microphone appearing four times under a byte-identical
+name, and the default is a capture card.
+
+```bash
+joe voice devices          # the list, with the host API that distinguishes them
+joe voice level --every    # speak while it runs; the one that moves is yours
+export JOE_INPUT_DEVICE=29 # set it once, on the engine's side
+```
+
+A name fragment matching several devices is refused rather than guessed.
+Devices that open and return samples outside `[-1, 1]` are refused too —
+some do, and a level meter reads that as the loudest input on the machine.
+
+## Which voice
+
+The prompt is spoken by a `vox` synthesizer, and there are three:
+
+| backend | audible | needs installing | transcribable |
+|---|---|---|---|
+| `recording` | no | nothing | only by vox's own engine |
+| `formant` | yes | nothing | no |
+| `pyttsx3` | yes | a system voice | yes |
+
+`pyttsx3` is what this uses and what a spoken prompt should use: `formant`
+is audible but whisper cannot read it, which matters if a loop ever
+transcribes its own output. `vox.synth.SPEECH_IS_NOT_TRANSCRIBABLE` carries
+the measurement.
+
 ## How a spoken answer becomes a response
 
 `parse_yes_no` normalizes casing and punctuation before matching, because a
