@@ -167,6 +167,31 @@ def test_human_voice_forever_answers_then_stops_on_interrupt(monkeypatch):
     fake_client.submit_human_response.assert_called_once()
 
 
+def test_human_voice_forever_names_what_it_asked_and_left_pending(monkeypatch):
+    """Nobody answered: the request is asked once, left pending, and named
+    when the loop stops, so the person returning knows what went unheard."""
+    stt = _FakeSTT([""])
+    tts = _FakeTTS()
+    _install_fake_vox(monkeypatch, stt, tts)
+
+    request = _pending_request("demo-4")
+    fake_client = MagicMock()
+    # Still pending on the second look; the loop passes over it and sleeps.
+    fake_client.list_human_requests.side_effect = [[request], [request]]
+    fake_client.get_human_request.return_value = (request, None)
+    monkeypatch.setattr("qmcp.client.MCPClient", lambda *a, **k: fake_client)
+    monkeypatch.setattr(
+        "qmcp.integrations.voice.adapter.time.sleep", MagicMock(side_effect=KeyboardInterrupt)
+    )
+
+    result = CliRunner().invoke(cli.cli, ["human", "voice", "--forever"])
+
+    assert result.exit_code == 0, result.output
+    assert "still pending: demo-4" in result.output
+    fake_client.submit_human_response.assert_not_called()
+    assert sum(s.startswith("Deploy?") for s in tts.spoken) == 1
+
+
 def test_human_voice_without_vox_installed_fails_clearly(monkeypatch):
     monkeypatch.setitem(sys.modules, "vox", None)  # forces ImportError on `import vox`
 

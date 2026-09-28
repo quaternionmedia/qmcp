@@ -1671,8 +1671,14 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
             answered = loop.run_forever(poll_interval=poll_interval)
         except KeyboardInterrupt:
             click.echo("\nStopped.")
-            return
-        click.echo(f"Answered {answered} request(s).")
+        else:
+            click.echo(f"Answered {answered} request(s).")
+        if loop.unanswered:
+            click.echo(
+                "Asked once, no usable answer, still pending: "
+                + ", ".join(loop.unanswered)
+                + ". `qmcp human voice <id>` asks one again."
+            )
         return
 
     if request_id is None:
