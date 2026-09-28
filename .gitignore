@@ -19,3 +19,6 @@ wheels/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# The voice loop writes its audio here (joe-contract convention); never tracked.
+Data/

@@ -39,7 +39,7 @@ uv run qmcp serve --reload
 
 See `quickstart.md` for a copy-paste walkthrough.
 
-Three commands worth knowing before the rest:
+Commands worth knowing before the rest:
 
 ```bash
 uv run qmcp topology show governed --level 2   # the seam a model is called through
@@ -50,6 +50,9 @@ uv run qmcp human voice                        # answer the oldest of them by sp
 
 The first is the one to read. Model output reaches the human queue through one
 door, and `docs/human_in_loop.md` says what that door does and does not enforce.
+The last needs the `vox` submodule and a running speech engine;
+`docs/integrations/voice.md` is its page, and `quickstart.md` §5 is its
+shortest proof.
 
 ## Adoption and Onboarding
 
@@ -61,9 +64,11 @@ Adoption checklist:
 - Wire `/metrics` into your monitoring stack.
 
 Onboarding path:
-1. `uv sync --all-extras`
-2. Run the end-to-end tutorial below.
-3. `uv run qmcp serve` for local exploration.
+1. `git submodule update --init vox` — `vox` is a path dependency of the
+   `voice` extra, and a sync on a fresh clone fails without it.
+2. `uv sync --all-extras`
+3. Run the end-to-end tutorial below.
+4. `uv run qmcp serve` for local exploration.
 
 ### End-to-End Tutorial (HITL approval workflow)
 
@@ -72,6 +77,7 @@ This tutorial mirrors the end-to-end test
 
 Copy and paste:
 ```bash
+git submodule update --init vox
 uv sync --all-extras
 uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
 ```
@@ -220,7 +226,8 @@ this table.
 ## Development
 
 ```bash
-# Install dev dependencies
+# Install dev dependencies (the vox submodule first; a sync without it fails)
+git submodule update --init vox
 uv sync --all-extras
 
 # Run tests (with auto cleanup)

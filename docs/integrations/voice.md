@@ -40,7 +40,11 @@ uv sync --all-extras
 
 `--all-extras` rather than `--extra dev`: the latter omits `pydantic-ai` and
 other extras, and the resulting ImportError in unrelated tests reads as a code
-regression rather than as a missing dependency.
+regression rather than as a missing dependency. (`uv sync --extra voice`, the
+minimum the CLI's own help names, installs only vox — enough to answer by
+voice, not enough to run the suite.) The submodule line comes first either
+way: `vox` is a path dependency, and a sync on a fresh clone exits 2 while
+the directory is empty.
 
 `qmcp.integrations.voice` is structurally typed against vox's shape and does
 not import it, so qmcp imports without the `voice` extra installed. Only
@@ -81,11 +85,18 @@ not a microphone. One workstation here lists twenty inputs across four host
 APIs, with the same microphone appearing four times under a byte-identical
 name, and the default is a capture card.
 
+These run in the engine's own checkout, not this one — the engine owns its
+microphone:
+
 ```bash
-joe voice devices          # the list, with the host API that distinguishes them
-joe voice level --every    # speak while it runs; the one that moves is yours
-export JOE_INPUT_DEVICE=29 # set it once, on the engine's side
+uv run joe voice devices        # the list, with the host API that distinguishes them
+uv run joe voice level --every  # speak while it runs; the one that moves is yours
+export JOE_INPUT_DEVICE=29      # in the environment the engine's backend starts from
 ```
+
+`JOE_INPUT_DEVICE` is read by the engine process at record time, so it has
+to be set where `joe backend` starts — setting it beside `qmcp` changes
+nothing.
 
 A name fragment matching several devices is refused rather than guessed.
 Devices that open and return samples outside `[-1, 1]` are refused too —
