@@ -333,13 +333,17 @@ def mcp_client(client):
                 )
             return request, human_response
 
-        def list_human_requests(self, status_filter=None, request_type=None, limit=50, offset=0):
+        def list_human_requests(
+            self, status_filter=None, request_type=None, limit=50, offset=0, oldest_first=False
+        ):
             from qmcp.client.mcp_client import HumanRequest
             params = {"limit": limit, "offset": offset}
             if status_filter:
                 params["status"] = status_filter
             if request_type:
                 params["request_type"] = request_type
+            if oldest_first:
+                params["oldest_first"] = "true"
             response = self._test_client.get("/v1/human/requests", params=params)
             response.raise_for_status()
             data = response.json()

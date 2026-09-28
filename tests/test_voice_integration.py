@@ -73,9 +73,13 @@ class FakeClient:
     def get_human_request(self, request_id: str):
         return self.requests[request_id], self.responses.get(request_id)
 
-    def list_human_requests(self, status_filter=None, request_type=None, limit=50, offset=0):
+    def list_human_requests(
+        self, status_filter=None, request_type=None, limit=50, offset=0, oldest_first=False
+    ):
+        # Insertion order is creation order; the server lists newest first
+        # unless asked otherwise, and so does this.
         pending = [r for rid, r in self.requests.items() if rid not in self.responses]
-        return pending[:limit]
+        return (pending if oldest_first else pending[::-1])[:limit]
 
     def submit_human_response(self, request_id, response, responded_by=None, metadata=None):
         self.submitted.append((request_id, response))
@@ -175,6 +179,19 @@ def test_run_forever_answers_each_pending_request_in_turn():
 
     assert answered == 2
     assert set(client.submitted) == {("req-a", "approve"), ("req-b", "reject")}
+
+
+def test_run_forever_asks_the_oldest_request_first():
+    """The server lists newest first unless asked; a queue answered by voice
+    is answered in the order it was asked."""
+    client = FakeClient()
+    client.add_pending("older", "Deploy A?", options=["approve", "reject"])
+    client.add_pending("newer", "Deploy B?", options=["approve", "reject"])
+
+    loop = VoiceApprovalLoop(stt=ScriptedSTT(["yes", "no"]), tts=RecordingTTS(), client=client)
+    loop.run_forever(max_iterations=5)
+
+    assert client.submitted == [("older", "approve"), ("newer", "reject")]
 
 
 def test_run_forever_stops_when_nothing_pending():

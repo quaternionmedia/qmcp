@@ -213,7 +213,9 @@ class VoiceApprovalLoop:
         iterations = 0
         while max_iterations is None or iterations < max_iterations:
             iterations += 1
-            pending = self.client.list_human_requests(status_filter="pending", limit=1)
+            pending = self.client.list_human_requests(
+                status_filter="pending", limit=1, oldest_first=True
+            )
             if not pending:
                 if max_iterations is None:
                     time.sleep(poll_interval)

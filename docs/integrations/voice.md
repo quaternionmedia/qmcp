@@ -161,9 +161,12 @@ submits nothing: an ambiguous answer is never guessed at.
 - **`run_forever` has no upper bound on an idle queue.** With
   `max_iterations` unset it sleeps and polls indefinitely. That is correct at
   a terminal and is not suitable for running unattended.
-- **Discovery uses `list_human_requests(status_filter="pending")`**, which has
-  no side effects. Polling `get_human_request` in its place would expire
-  requests as a consequence of looking at them.
+- **Discovery uses `list_human_requests(status_filter="pending",
+  oldest_first=True)`**, which has no side effects. Polling
+  `get_human_request` in its place would expire requests as a consequence of
+  looking at them. A pending listing leaves out requests past their expiry,
+  so nobody is asked a question that can no longer be answered; the server
+  lists newest first unless `oldest_first` is passed.
 - **A request that already carries a response is returned unchanged.**
   `run_once` does not ask twice.
 - **`responded_by` is recorded as `vox`.** A voice answer is attributable as a

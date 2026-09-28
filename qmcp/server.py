@@ -386,13 +386,29 @@ def create_app() -> FastAPI:
         request_type: str | None = Query(default=None, description="Filter by type"),
         limit: int = Query(default=50, ge=1, le=500, description="Max results"),
         offset: int = Query(default=0, ge=0, description="Offset for pagination"),
+        oldest_first: bool = Query(
+            default=False, description="Order by creation, oldest first"
+        ),
     ) -> HumanRequestListResponse:
-        """List human requests with optional filtering."""
+        """List human requests with optional filtering.
+
+        A pending request past its expiry is not listed as pending: nobody can
+        answer it, and a reader taking the first pending request would ask
+        about it. Its stored status is left alone, so listing stays free of
+        side effects.
+        """
         async with get_session() as session:
-            query = select(HumanRequest).order_by(HumanRequest.created_at.desc())
+            created = HumanRequest.created_at
+            query = select(HumanRequest).order_by(created if oldest_first else created.desc())
 
             if status_filter:
                 query = query.where(HumanRequest.status == status_filter)
+            if status_filter == HumanRequestStatus.PENDING:
+                # SQLite stores naive datetimes, treat as UTC
+                now = datetime.now(UTC).replace(tzinfo=None)
+                query = query.where(
+                    (HumanRequest.expires_at == None) | (HumanRequest.expires_at > now)  # noqa: E711
+                )
             if request_type:
                 query = query.where(HumanRequest.request_type == request_type)
 
