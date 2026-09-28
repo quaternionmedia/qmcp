@@ -64,22 +64,32 @@ seam first with no hardware, no engine and no model — the loop closes in
 under a second and writes its audio under `Data/`, which is ignored:
 
 ```bash
-uv run --no-sync vox loop --offline
+uv run vox loop --offline
 ```
 
-Against a real engine (one that answers `vox.adapters.joe`'s contract, such
-as `joe backend` on port 8000), the same loop runs through real
-transcription, and a pending request is answered by voice:
+Against a real engine — one that answers `vox.adapters.joe`'s contract, such
+as joe — a pending request is answered by voice. The engine side, once, in
+the engine's own checkout:
 
 ```bash
-uv run --no-sync vox doctor           # engine reachable, a mic on its machine, synthesis
-uv run --no-sync qmcp human list      # what is waiting on a person
-uv run --no-sync qmcp human voice     # speak the answer to the oldest of them
+uv run joe voice setup   # find, save and prove your microphone
+uv run joe backend       # the speech engine, on port 8000
 ```
 
-`human list` reads this clone's own database, whose tables are created the
-first time the server starts — run step 2 before it, or it fails with
-`no such table: human_requests`.
+Then here, with the server from step 2 running:
+
+```bash
+uv run vox doctor           # engine reachable, a mic on its machine, synthesis
+uv run qmcp human list      # what is waiting on a person
+uv run qmcp human voice     # hear the question, say one of its options
+```
+
+The question is spoken aloud with its options ("Say approve or hold."), and
+recording stops when you do. If the server or the engine is not running,
+`human voice` says which and names the command that starts it, before
+anything is spoken. `human list` reads this clone's own database, whose
+tables are created the first time the server starts — run step 2 before it,
+or it fails with `no such table: human_requests`.
 
 `docs/integrations/voice.md` carries the setup that makes this reliable:
 which microphone the engine records from, which synthesizer speaks, and how

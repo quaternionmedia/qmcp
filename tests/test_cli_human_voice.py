@@ -4,6 +4,7 @@ import sys
 from types import ModuleType
 from unittest.mock import MagicMock
 
+import pytest
 from click.testing import CliRunner
 
 import qmcp.cli as cli
@@ -30,6 +31,16 @@ class _FakeTTS:
     def speak(self, text: str, out_path: str | None = None) -> str:
         self.spoken.append(text)
         return out_path or "spoken.wav"
+
+
+# Captured before the autouse stub below replaces it for the dialog tests.
+_REAL_PREFLIGHT = cli._voice_preflight
+
+
+@pytest.fixture(autouse=True)
+def _servers_up(monkeypatch):
+    """The dialog tests stand in for both servers; the preflight has its own tests."""
+    monkeypatch.setattr(cli, "_voice_preflight", lambda *a, **k: None)
 
 
 def _install_fake_vox(monkeypatch, stt, tts) -> None:
@@ -216,3 +227,45 @@ def test_human_voice_names_a_shadowing_directory(monkeypatch):
     assert result.exit_code != 0
     assert "vox is shadowed" in result.output
     assert "C:/somewhere/qmcp/vox" in result.output
+
+
+# --- the preflight: both servers up before anything is spoken -----------------
+
+
+def _contract():
+    from vox.contract import EngineContract
+
+    return EngineContract()
+
+
+def _refuse_urls(monkeypatch, down: str):
+    import httpx
+
+    def fake_get(url, timeout=None):
+        if down in url:
+            raise httpx.ConnectError("refused")
+        return httpx.Response(200, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+
+def test_preflight_names_the_command_when_qmcp_is_down(monkeypatch):
+    _refuse_urls(monkeypatch, "3141")
+    with pytest.raises(SystemExit) as exc:
+        _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "joe")
+    assert "No qmcp server answers at http://127.0.0.1:3141" in str(exc.value)
+    assert "uv run python -m qmcp serve" in str(exc.value)
+
+
+def test_preflight_names_the_command_when_the_engine_is_down(monkeypatch):
+    _refuse_urls(monkeypatch, "8000")
+    with pytest.raises(SystemExit) as exc:
+        _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "joe")
+    assert "No speech engine answers at http://127.0.0.1:8000" in str(exc.value)
+    assert "uv run joe voice setup" in str(exc.value)
+    assert "uv run joe backend" in str(exc.value)
+
+
+def test_preflight_passes_when_both_answer(monkeypatch):
+    _refuse_urls(monkeypatch, "nowhere")
+    _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "joe")

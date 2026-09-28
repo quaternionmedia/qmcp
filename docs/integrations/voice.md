@@ -99,18 +99,18 @@ not a microphone. One workstation here lists twenty inputs across four host
 APIs, with the same microphone appearing four times under a byte-identical
 name, and the default is a capture card.
 
-These run in the engine's own checkout, not this one — the engine owns its
-microphone:
+One command, in the engine's own checkout — the engine owns its microphone:
 
 ```bash
-uv run joe voice devices        # the list, with the host API that distinguishes them
-uv run joe voice level --every  # speak while it runs; the one that moves is yours
-export JOE_INPUT_DEVICE=29      # in the environment the engine's backend starts from
+uv run joe voice setup
 ```
 
-`JOE_INPUT_DEVICE` is read by the engine process at record time, so it has
-to be set where `joe backend` starts — setting it beside `qmcp` changes
-nothing.
+It counts down, tries every input while you keep talking, saves the loudest
+one that heard you, and finishes by transcribing a sentence you say. The
+choice is saved in the engine's checkout and read at record time, so a
+running backend uses it on its next recording with no restart and no
+environment variable. `uv run joe voice devices` marks it; `JOE_INPUT_DEVICE`,
+where set in the backend's environment, still overrides it.
 
 A name fragment matching several devices is refused rather than guessed.
 Devices that open and return samples outside `[-1, 1]` are refused too —

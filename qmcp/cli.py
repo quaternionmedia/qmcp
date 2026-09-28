@@ -429,6 +429,38 @@ def cookbook_serve(host: str, port: int | None, reload: bool) -> None:
     _run_server(host, port, reload)
 
 
+def _voice_preflight(qmcp_url: str, engine_url: str, contract, engine: str) -> None:
+    """Refuse to start a voice dialog that cannot finish, saying why.
+
+    Both halves are checked before anything is spoken, so a first run with
+    one of them down ends in the command that starts it rather than in a
+    connection traceback -- or, worse, a prompt spoken into a room whose
+    answer can never be recorded.
+    """
+    import httpx
+
+    try:
+        httpx.get(f"{qmcp_url}/health", timeout=3).raise_for_status()
+    except httpx.HTTPError:
+        raise SystemExit(
+            f"No qmcp server answers at {qmcp_url}. Start one from this clone"
+            " with `uv run python -m qmcp serve`, then run this again."
+        )
+    try:
+        httpx.get(contract.url(engine_url, contract.health), timeout=3).raise_for_status()
+    except httpx.HTTPError:
+        hint = (
+            " For joe, in its own checkout: `uv run joe voice setup` once to choose"
+            " the microphone, then `uv run joe backend`."
+            if engine == "joe"
+            else ""
+        )
+        raise SystemExit(
+            f"No speech engine answers at {engine_url} ({engine}).{hint}"
+            " Then run this again."
+        )
+
+
 def _vox_shadowed_by() -> str | None:
     """The directory `import vox` wrongly resolves to, or None.
 
@@ -1613,11 +1645,10 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
     from qmcp.integrations.voice import UnclearResponse, VoiceApprovalLoop
 
     client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    resolved_engine = engine_url or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000")
+    _voice_preflight(client.base_url, resolved_engine, contract, engine)
     loop = VoiceApprovalLoop(
-        stt=HttpSTT(
-            engine_url or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000"),
-            contract=contract,
-        ),
+        stt=HttpSTT(resolved_engine, contract=contract),
         tts=Pyttsx3TTS(),
         client=client,
         max_retries=max_retries,
