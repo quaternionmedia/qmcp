@@ -160,4 +160,45 @@ def test_human_voice_without_vox_installed_fails_clearly(monkeypatch):
     result = CliRunner().invoke(cli.cli, ["human", "voice", "demo-1"])
 
     assert result.exit_code != 0
-    assert "vox is not installed" in result.output
+    assert "vox is not importable" in result.output
+    # Both named remedies work while a running console-script server holds
+    # `qmcp.exe`, which is exactly when a plain `uv sync` cannot.
+    assert "uv pip install -e ./vox pyttsx3" in result.output
+    assert "uvx --from ." in result.output
+
+
+def test_serve_refuses_to_race_a_healthy_server(monkeypatch):
+    """A port already answering as qmcp is information, not a bind traceback."""
+    monkeypatch.setattr(cli, "_qmcp_already_serving", lambda host, port: "0.1.0")
+    started = MagicMock()
+    monkeypatch.setattr(cli.uvicorn, "run", started)
+
+    result = CliRunner().invoke(cli.cli, ["serve"])
+
+    assert result.exit_code != 0
+    assert "already serves" in result.output
+    assert "second server is not needed" in result.output
+    started.assert_not_called()
+
+
+def test_serve_starts_when_nothing_answers(monkeypatch):
+    monkeypatch.setattr(cli, "_qmcp_already_serving", lambda host, port: None)
+    started = MagicMock()
+    monkeypatch.setattr(cli.uvicorn, "run", started)
+
+    result = CliRunner().invoke(cli.cli, ["serve"])
+
+    assert result.exit_code == 0
+    started.assert_called_once()
+
+
+def test_serve_warns_when_started_through_the_console_script(monkeypatch):
+    """The exe shim is what a later `uv sync` cannot replace on Windows."""
+    monkeypatch.setattr(cli, "_qmcp_already_serving", lambda host, port: None)
+    monkeypatch.setattr(cli.uvicorn, "run", MagicMock())
+    monkeypatch.setattr(cli.sys, "argv", [r"C:\x\.venv\Scripts\qmcp.exe", "serve"])
+
+    result = CliRunner().invoke(cli.cli, ["serve"])
+
+    assert result.exit_code == 0
+    assert "python -m qmcp serve" in result.output

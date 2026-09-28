@@ -14,8 +14,8 @@ This document defines how changes should be made safely.
 
 Start here after cloning the repo:
 
-1. `git submodule update --init vox` — `vox` is a path dependency of the
-   `voice` extra; on a fresh clone the next step exits 2 without this.
+1. `git submodule update --init vox` — `vox` is a path dependency in the
+   default set; on a fresh clone the next step exits 2 without this.
 2. `uv sync --all-extras`
 3. `uv run pytest`
 4. Run the end-to-end HITL tutorial (mirrors

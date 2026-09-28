@@ -38,17 +38,31 @@ git submodule update --init vox
 uv sync --all-extras
 ```
 
-`--all-extras` rather than `--extra dev`: the latter omits `pydantic-ai` and
-other extras, and the resulting ImportError in unrelated tests reads as a code
-regression rather than as a missing dependency. (`uv sync --extra voice`, the
-minimum the CLI's own help names, installs only vox — enough to answer by
-voice, not enough to run the suite.) The submodule line comes first either
-way: `vox` is a path dependency, and a sync on a fresh clone exits 2 while
-the directory is empty.
+vox and `pyttsx3` are **default dependencies**, not an extra: any `uv sync`
+installs them, and none removes them. (They were an extra once, and a plain
+`uv sync` then stripped them as extraneous mid-session.) `--all-extras`
+rather than `--extra dev` for the rest: the latter omits `pydantic-ai` and
+other extras, and the resulting ImportError in unrelated tests reads as a
+code regression rather than as a missing dependency. The submodule line
+comes first either way: `vox` is a path dependency, and a sync on a fresh
+clone exits 2 while the directory is empty.
+
+While a server started from this clone's **console script** is running,
+Windows will not let a sync replace `Scripts/qmcp.exe`, and the sync dies
+partway. A server left running belongs on the module form, which opens no
+exe and syncs fine beside it:
+
+```bash
+uv run python -m qmcp serve
+```
+
+With a console-script server already up, add missing packages without a
+sync (`uv pip install -e ./vox pyttsx3`), or run the CLI in an environment
+of its own: `uvx --from . --with ./vox --with pyttsx3 qmcp human voice ...`.
 
 `qmcp.integrations.voice` is structurally typed against vox's shape and does
-not import it, so qmcp imports without the `voice` extra installed. Only
-running `VoiceApprovalLoop` against real backends requires it.
+not import it, so qmcp imports even where vox is absent. Only running
+`VoiceApprovalLoop` against real backends requires it.
 
 ## Usage
 
