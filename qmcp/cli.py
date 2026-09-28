@@ -429,11 +429,48 @@ def cookbook_serve(host: str, port: int | None, reload: bool) -> None:
     _run_server(host, port, reload)
 
 
+def _qmcp_already_serving(host: str, port: int) -> str | None:
+    """The version already answering /health here as qmcp, or None.
+
+    Checked before binding, because uvicorn's own bind failure arrives after
+    the startup banner and reads as a broken server rather than as the fact
+    that a working one is already up.
+    """
+    import httpx
+
+    try:
+        response = httpx.get(f"http://{host}:{port}/health", timeout=2)
+        body = response.json()
+    except Exception:
+        return None
+    if response.status_code == 200 and "status" in body:
+        return str(body.get("version", "unknown"))
+    return None
+
+
 def _run_server(host: str | None, port: int | None, reload: bool) -> None:
     settings = get_settings()
 
     actual_host = host or settings.host
     actual_port = port or settings.port
+
+    serving = _qmcp_already_serving(actual_host, actual_port)
+    if serving is not None:
+        raise SystemExit(
+            f"qmcp {serving} already serves http://{actual_host}:{actual_port},"
+            " and every CLI command talks to it over HTTP -- a second server"
+            " is not needed. To run another beside it, pass a different"
+            " --port."
+        )
+
+    if sys.argv and sys.argv[0].lower().endswith("qmcp.exe"):
+        click.echo(
+            "note: started via the console script. While this process runs,"
+            " `uv sync` cannot replace Scripts/qmcp.exe. For a server left"
+            " running, use `uv run python -m qmcp serve` instead; a sync then"
+            " works with the server up.",
+            err=True,
+        )
 
     click.echo(f"Starting QMCP server on {actual_host}:{actual_port}")
 
@@ -1517,7 +1554,8 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
     names no engine of its own.
 
     REQUEST_ID is optional: without it, the oldest pending request is
-    answered. Requires the `voice` extra (`uv sync --extra voice`).
+    answered. vox and its synthesizer install with the default dependencies:
+    `git submodule update --init vox`, then `uv sync`.
     """
     try:
         import importlib
@@ -1526,8 +1564,13 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
         from vox.adapters.pyttsx3 import Pyttsx3TTS
     except ImportError:
         raise SystemExit(
-            "vox is not installed. `uv sync --extra voice` (pins the vendored "
-            "vox submodule until vox has its own release)."
+            "vox is not importable. It installs with the default dependencies:"
+            " `git submodule update --init vox`, then `uv sync`. While a server"
+            " started from this clone's console script is running, a sync"
+            " cannot replace `qmcp.exe`; either add the packages without a"
+            " sync (`uv pip install -e ./vox pyttsx3`) or run this command in"
+            " an environment of its own:"
+            " `uvx --from . --with ./vox --with pyttsx3 qmcp human voice ...`."
         )
 
     try:

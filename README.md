@@ -64,8 +64,8 @@ Adoption checklist:
 - Wire `/metrics` into your monitoring stack.
 
 Onboarding path:
-1. `git submodule update --init vox` — `vox` is a path dependency of the
-   `voice` extra, and a sync on a fresh clone fails without it.
+1. `git submodule update --init vox` — `vox` is a path dependency in the
+   default set, and any sync on a fresh clone fails without it.
 2. `uv sync --all-extras`
 3. Run the end-to-end tutorial below.
 4. `uv run qmcp serve` for local exploration.

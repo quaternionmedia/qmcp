@@ -11,14 +11,20 @@ uv sync --all-extras
 uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
 ```
 
-The submodule line comes first because `vox` is a path dependency of the
-`voice` extra: on a fresh clone with the submodule empty, `uv sync
---all-extras` exits 2 before installing anything.
+The submodule line comes first because `vox` is a path dependency in the
+default set: on a fresh clone with the submodule empty, any `uv sync` exits
+2 before installing anything.
 
 ## 2) Start the server
 
+For a quick look, either form works. For a server you will **leave
+running**, use the module form — it opens no `qmcp.exe`, so `uv sync` and
+plain `uv run` keep working beside it (Windows will not replace a running
+executable):
+
 ```bash
-uv run qmcp serve
+uv run python -m qmcp serve     # the form for a server left running
+uv run qmcp serve               # fine for a short-lived look
 ```
 
 For Docker-based flows, use the cookbook wrapper (binds to all interfaces by default):
@@ -26,14 +32,11 @@ For Docker-based flows, use the cookbook wrapper (binds to all interfaces by def
 uv run qmcp cookbook serve
 ```
 
-If the qmcp shim cannot be installed (Windows), use:
-```bash
-uv run --no-sync python -m qmcp serve
-```
-
-While the server runs from this clone, give every further `uv run` here the
-`--no-sync` flag: a bare `uv run` re-syncs the environment first, and on
-Windows that aborts partway when it cannot replace the running `qmcp.exe`.
+If a console-script server (`uv run qmcp serve`) is already running from
+this clone, give every further `uv` command here `--no-sync`, or add
+packages with `uv pip install` — a sync cannot replace the running exe and
+aborts partway. Starting `serve` while a healthy server already holds the
+port says so and exits, rather than failing at the bind.
 
 ## 3) Call the server (curl)
 

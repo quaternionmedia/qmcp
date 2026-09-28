@@ -15,6 +15,11 @@ dependencies = [
     "sqlmodel>=0.0.31",
     "structlog>=25.1.0",
     "uvicorn>=0.30.0",
+    # The voice seam is a default, not an extra: answering the HITL queue by
+    # speech is this server's flagship human path, and an extra meant any
+    # plain `uv sync` removed it as extraneous and the CLI died mid-use.
+    "vox",
+    "pyttsx3>=2.90",
 ]
 
 [project.scripts]
@@ -59,9 +64,7 @@ all-providers = [
 # Voice HITL: answer human-approval requests by voice (see qmcp/integrations/voice).
 # vox is vendored as a git submodule at ./vox (see .gitmodules), the same
 # pattern as governance/qm — pinned here, updated deliberately, not floating.
-voice = [
-    "vox",
-]
+# It sits in the default dependencies above; there is no `voice` extra.
 
 [tool.uv.sources]
 vox = { path = "vox", editable = true }
