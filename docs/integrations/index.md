@@ -45,7 +45,7 @@ Provides:
 Speech-to-text is delegated over HTTP to a speech engine. The
 [vox](https://github.com/quaternionmedia/vox) seam states the contract and
 names no engine; `vox.adapters.joe` names the one this uses by default. vox is
-vendored as a submodule at `./vox`.
+vendored as a submodule at `vendor/vox`.
 
 **Status**: Works end to end; `run_forever` is not bounded on an idle queue.
 

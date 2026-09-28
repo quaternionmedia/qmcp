@@ -3,5 +3,5 @@
 	url = https://github.com/quaternionmedia/qm.git
 	branch = project/qmcp
 [submodule "vox"]
-	path = vox
+	path = vendor/vox
 	url = https://github.com/quaternionmedia/vox.git

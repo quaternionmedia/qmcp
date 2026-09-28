@@ -64,7 +64,7 @@ Adoption checklist:
 - Wire `/metrics` into your monitoring stack.
 
 Onboarding path:
-1. `git submodule update --init vox` — `vox` is a path dependency in the
+1. `git submodule update --init vendor/vox` — `vox` is a path dependency in the
    default set, and any sync on a fresh clone fails without it.
 2. `uv sync --all-extras`
 3. Run the end-to-end tutorial below.
@@ -77,7 +77,7 @@ This tutorial mirrors the end-to-end test
 
 Copy and paste:
 ```bash
-git submodule update --init vox
+git submodule update --init vendor/vox
 uv sync --all-extras
 uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
 ```
@@ -227,7 +227,7 @@ this table.
 
 ```bash
 # Install dev dependencies (the vox submodule first; a sync without it fails)
-git submodule update --init vox
+git submodule update --init vendor/vox
 uv sync --all-extras
 
 # Run tests (with auto cleanup)

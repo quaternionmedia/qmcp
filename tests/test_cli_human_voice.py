@@ -163,7 +163,7 @@ def test_human_voice_without_vox_installed_fails_clearly(monkeypatch):
     assert "vox is not importable" in result.output
     # Both named remedies work while a running console-script server holds
     # `qmcp.exe`, which is exactly when a plain `uv sync` cannot.
-    assert "uv pip install -e ./vox pyttsx3" in result.output
+    assert "uv pip install -e ./vendor/vox pyttsx3" in result.output
     assert "uvx --from ." in result.output
 
 
@@ -202,3 +202,17 @@ def test_serve_warns_when_started_through_the_console_script(monkeypatch):
 
     assert result.exit_code == 0
     assert "python -m qmcp serve" in result.output
+
+
+def test_human_voice_names_a_shadowing_directory(monkeypatch):
+    """The failure that recurred: vox resolving to a bare directory. The CLI
+    names the directory rather than recommending a reinstall that cannot help."""
+    shadow = ModuleType("vox")
+    shadow.__path__ = ["C:/somewhere/qmcp/vox"]  # a namespace package has no __file__
+    monkeypatch.setitem(sys.modules, "vox", shadow)
+
+    result = CliRunner().invoke(cli.cli, ["human", "voice", "demo-1"])
+
+    assert result.exit_code != 0
+    assert "vox is shadowed" in result.output
+    assert "C:/somewhere/qmcp/vox" in result.output

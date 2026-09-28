@@ -6,7 +6,7 @@ end-to-end workflow.
 ## 1) Install and run the end-to-end HITL test
 
 ```bash
-git submodule update --init vox
+git submodule update --init vendor/vox
 uv sync --all-extras
 uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
 ```
