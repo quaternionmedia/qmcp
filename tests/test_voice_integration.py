@@ -101,7 +101,7 @@ def test_run_once_answers_clear_approval():
 
     assert result.response == "approve"
     assert client.submitted == [("deploy-001", "approve")]
-    assert tts.spoken[0] == "Deploy to production?"
+    assert tts.spoken[0] == "Deploy to production? Say approve or reject."
     assert "Recorded: approve" in tts.spoken
 
 
@@ -129,7 +129,8 @@ def test_run_once_retries_on_unclear_answer_then_succeeds():
 
     assert result.response == "approve"
     assert stt.calls == 3
-    assert tts.spoken.count("Sorry, I didn't catch that. Yes or no?") == 2
+    assert tts.spoken[1] == "I heard: uh. Say approve or reject."
+    assert tts.spoken[2] == "I heard: hmm. Say approve or reject."
 
 
 def test_run_once_raises_when_never_clear():
@@ -246,3 +247,60 @@ def test_run_once_submits_the_rejecting_option_however_it_is_ordered():
     response = loop.run_once("deploy-007")
 
     assert response.response == "reject"
+
+
+# --- a closed-choice dialog, as VoiceXML frames one ---------------------------
+#
+# The grammar is the request's own options: the prompt says them, an answer
+# naming one is taken, and hearing nothing (noinput) is told apart from
+# hearing something unusable (nomatch).
+
+
+def test_an_option_outside_the_yes_no_vocabulary_is_accepted_by_name():
+    """The defect: a request carrying ["approve", "hold"] could not be
+    answered "hold" -- it parsed as neither yes nor no, was re-asked, and
+    ended unanswered."""
+    client = FakeClient()
+    client.add_pending("dr-1", "Launch the audit?", options=["approve", "hold"])
+    loop = VoiceApprovalLoop(stt=ScriptedSTT(["Hold."]), tts=RecordingTTS(), client=client)
+
+    assert loop.run_once("dr-1").response == "hold"
+
+
+def test_a_multi_word_option_is_accepted_by_name():
+    client = FakeClient()
+    client.add_pending("ship-1", "Ready?", options=["ship it", "wait"])
+    loop = VoiceApprovalLoop(stt=ScriptedSTT(["wait, please"]), tts=RecordingTTS(), client=client)
+
+    assert loop.run_once("ship-1").response == "wait"
+
+
+def test_a_negated_option_is_not_taken_as_that_option():
+    client = FakeClient()
+    client.add_pending("dr-2", "Launch the audit?", options=["approve", "hold"])
+    loop = VoiceApprovalLoop(stt=ScriptedSTT(["don't approve it"]), tts=RecordingTTS(), client=client)
+
+    assert loop.run_once("dr-2").response == "hold"
+
+
+def test_noinput_and_nomatch_are_reprompted_differently():
+    client = FakeClient()
+    client.add_pending("dr-3", "Launch the audit?", options=["approve", "hold"])
+    tts = RecordingTTS()
+    loop = VoiceApprovalLoop(stt=ScriptedSTT(["", "banana", "approve"]), tts=tts, client=client)
+
+    assert loop.run_once("dr-3").response == "approve"
+    assert tts.spoken[:3] == [
+        "Launch the audit? Say approve or hold.",
+        "I didn't hear anything. Say approve or hold.",
+        "I heard: banana. Say approve or hold.",
+    ]
+
+
+def test_three_or_more_options_are_spoken_as_a_list():
+    client = FakeClient()
+    client.add_pending("pick-1", "Which?", options=["red", "green", "blue"])
+    tts = RecordingTTS()
+    VoiceApprovalLoop(stt=ScriptedSTT(["green"]), tts=tts, client=client).run_once("pick-1")
+
+    assert tts.spoken[0] == "Which? Say red, green, or blue."

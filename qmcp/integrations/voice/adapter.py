@@ -84,6 +84,33 @@ def choose_option(decision: bool, options: list[str]) -> str:
     return options[0] if decision else options[-1]
 
 
+def match_option(text: str, options: list[str]) -> str | None:
+    """The request's own option a transcript names, or None.
+
+    The options are the grammar, as a VoiceXML field's are: an answer that
+    says one of them is that answer, whether or not it is a yes/no word.
+    An option is named when every word of it appears in the transcript;
+    naming none, or more than one, is no match.
+    """
+    words = set(re.sub(r"[^\w\s]", "", text.lower()).split())
+    named = [
+        option
+        for option in options
+        if (option_words := set(re.sub(r"[^\w\s]", "", option.lower()).split()))
+        and option_words <= words
+    ]
+    return named[0] if len(named) == 1 else None
+
+
+def say_options(options: list[str]) -> str:
+    """The spoken grammar: "Say approve or hold." / "Say red, green, or blue."."""
+    if len(options) == 1:
+        return f"Say {options[0]}."
+    if len(options) == 2:
+        return f"Say {options[0]} or {options[1]}."
+    return f"Say {', '.join(options[:-1])}, or {options[-1]}."
+
+
 class SpeechToText(Protocol):
     def listen(self, duration: float = 5.0) -> tuple[str, str]: ...
 
@@ -120,17 +147,36 @@ class VoiceApprovalLoop:
         self.max_retries = max_retries
         self.listen_duration = listen_duration
 
-    def _ask(self, prompt: str) -> bool:
-        """Speak `prompt`, listen, parse — re-asking on an unclear answer."""
-        self.tts.speak(prompt)
+    def _ask(self, prompt: str, options: list[str]) -> str:
+        """Speak the prompt and its options, listen, and return the option chosen.
+
+        A closed-choice dialog in VoiceXML's shape: the prompt says the
+        grammar, which is the request's own options; a yes or no maps onto
+        them by meaning and an answer naming one is taken directly; and a
+        re-ask says which of two things went wrong — nothing heard
+        (noinput) or something heard and unusable (nomatch), echoing what
+        was heard so the speaker can hear the mishearing. Unclear after the
+        retry budget raises, and nothing is guessed.
+        """
+        grammar = say_options(options)
+        self.tts.speak(f"{prompt} {grammar}")
+        heard = ""
         for attempt in range(self.max_retries + 1):
-            transcript, _ = self.stt.listen(duration=self.listen_duration)
-            decision = parse_yes_no(transcript)
+            heard, _ = self.stt.listen(duration=self.listen_duration)
+            decision = parse_yes_no(heard)
             if decision is not None:
-                return decision
+                return choose_option(decision, options)
+            named = match_option(heard, options)
+            if named is not None:
+                return named
             if attempt < self.max_retries:
-                self.tts.speak("Sorry, I didn't catch that. Yes or no?")
-        raise UnclearResponse(f"No clear yes/no after {self.max_retries + 1} attempts")
+                if not heard.strip():
+                    self.tts.speak(f"I didn't hear anything. {grammar}")
+                else:
+                    self.tts.speak(f"I heard: {heard.strip()[:80]}. {grammar}")
+        raise UnclearResponse(
+            f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
+        )
 
     def run_once(self, request_id: str) -> HumanResponse:
         """Answer one pending request by voice.
@@ -143,8 +189,7 @@ class VoiceApprovalLoop:
             return existing
 
         options = request.options or ["approve", "reject"]
-        decision = self._ask(request.prompt)
-        answer = choose_option(decision, options)
+        answer = self._ask(request.prompt, options)
 
         response = self.client.submit_human_response(
             request_id=request_id, response=answer, responded_by="vox"

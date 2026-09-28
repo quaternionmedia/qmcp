@@ -133,19 +133,28 @@ the measurement.
 
 ## How a spoken answer becomes a response
 
+It is a closed-choice dialog in the shape VoiceXML gives one: the request's
+own `options` are the grammar, and the prompt says them — a request carrying
+`["approve", "hold"]` is spoken as *"Launch the audit? Say approve or
+hold."*
+
 `parse_yes_no` normalizes casing and punctuation before matching, because a
 transcript carries both ("Yes.", "Yeah, go ahead."). Negatives are
 matched before positives, so "no, don't" is not read as a stray positive.
+`choose_option` maps a yes or no onto the options **by reading them**, not by
+their position: a request carrying `["reject", "approve"]` records a spoken
+"yes" as `approve`.
 
-`choose_option` then maps the decision onto the request's own `options` **by
-reading them**, not by their position. A request carrying
-`["reject", "approve"]` records a spoken "yes" as `approve`. Where no option
-is recognisable — `["ship it", "wait"]` — position is the only information
-available and the affirmative is taken to be first.
+An answer that is neither yes nor no is matched against the options by name
+(`match_option`), so "hold" answers `["approve", "hold"]` and "wait" answers
+`["ship it", "wait"]`. Naming none, or more than one, is no match.
 
-An answer that parses as neither is re-asked, up to `max_retries` (default 2).
-Exhausting the budget raises `UnclearResponse` and submits nothing: an
-ambiguous answer is never guessed at.
+The re-ask says which of two things went wrong, up to `max_retries` (default
+2): *"I didn't hear anything."* when the transcript is empty (VoiceXML's
+noinput), or *"I heard: banana."* when something was heard and was unusable
+(nomatch) — echoing the mishearing lets the speaker hear it. Each re-ask
+repeats the options. Exhausting the budget raises `UnclearResponse` and
+submits nothing: an ambiguous answer is never guessed at.
 
 ## Bounds and caveats
 
