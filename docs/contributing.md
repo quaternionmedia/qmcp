@@ -14,16 +14,18 @@ This document defines how changes should be made safely.
 
 Start here after cloning the repo:
 
-1. `uv sync --all-extras`
-2. `uv run pytest`
-3. Run the end-to-end HITL tutorial (mirrors
+1. `git submodule update --init vox` — `vox` is a path dependency of the
+   `voice` extra; on a fresh clone the next step exits 2 without this.
+2. `uv sync --all-extras`
+3. `uv run pytest`
+4. Run the end-to-end HITL tutorial (mirrors
    `tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow`):
 
 ```bash
 uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
 ```
 
-4. Review `docs/agentframework/overview.md` and run agent framework tests:
+5. Review `docs/agentframework/overview.md` and run agent framework tests:
 
 ```bash
 uv run pytest tests/test_agentframework_models.py tests/test_agentframework_mixins.py -v
