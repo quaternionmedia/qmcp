@@ -30,11 +30,11 @@ prompt --> vox TTS --> speaker
 
 ## Installation
 
-vox is vendored as a git submodule at `./vox` and pinned deliberately rather
+vox is vendored as a git submodule at `vendor/vox` and pinned deliberately rather
 than floated:
 
 ```bash
-git submodule update --init vox
+git submodule update --init vendor/vox
 uv sync --all-extras
 ```
 
@@ -57,8 +57,8 @@ uv run python -m qmcp serve
 ```
 
 With a console-script server already up, add missing packages without a
-sync (`uv pip install -e ./vox pyttsx3`), or run the CLI in an environment
-of its own: `uvx --from . --with ./vox --with pyttsx3 qmcp human voice ...`.
+sync (`uv pip install -e ./vendor/vox pyttsx3`), or run the CLI in an environment
+of its own: `uvx --from . --with ./vendor/vox --with pyttsx3 qmcp human voice ...`.
 
 `qmcp.integrations.voice` is structurally typed against vox's shape and does
 not import it, so qmcp imports even where vox is absent. Only running

@@ -429,6 +429,27 @@ def cookbook_serve(host: str, port: int | None, reload: bool) -> None:
     _run_server(host, port, reload)
 
 
+def _vox_shadowed_by() -> str | None:
+    """The directory `import vox` wrongly resolves to, or None.
+
+    A directory named `vox` without an `__init__.py` on any `sys.path` root
+    makes `vox` an empty namespace package that hides the installed one:
+    its submodules still import, so a check on `vox.stt` passes, while
+    `from vox import HttpSTT` fails. qmcp's editable install puts the
+    project root on `sys.path`, which is why the submodule moved from a
+    top-level `vox/` to `vendor/vox`; a clone updated across that move can
+    keep the old directory.
+    """
+    try:
+        import vox
+    except ImportError:
+        return None
+    if getattr(vox, "__file__", None) is not None:
+        return None
+    paths = list(getattr(vox, "__path__", []))
+    return paths[0] if paths else "an unknown location"
+
+
 def _qmcp_already_serving(host: str, port: int) -> str | None:
     """The version already answering /health here as qmcp, or None.
 
@@ -1555,7 +1576,7 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
 
     REQUEST_ID is optional: without it, the oldest pending request is
     answered. vox and its synthesizer install with the default dependencies:
-    `git submodule update --init vox`, then `uv sync`.
+    `git submodule update --init vendor/vox`, then `uv sync`.
     """
     try:
         import importlib
@@ -1563,14 +1584,23 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
         from vox import HttpSTT
         from vox.adapters.pyttsx3 import Pyttsx3TTS
     except ImportError:
+        shadow = _vox_shadowed_by()
+        if shadow:
+            raise SystemExit(
+                "vox is shadowed: `import vox` resolves to the directory"
+                f" {shadow}, which is not the package, so vox's own names are"
+                " missing. That is a leftover top-level `vox/` directory -- the"
+                " submodule lives at vendor/vox. Delete the stray directory and"
+                " run this again."
+            )
         raise SystemExit(
             "vox is not importable. It installs with the default dependencies:"
-            " `git submodule update --init vox`, then `uv sync`. While a server"
+            " `git submodule update --init vendor/vox`, then `uv sync`. While a server"
             " started from this clone's console script is running, a sync"
             " cannot replace `qmcp.exe`; either add the packages without a"
-            " sync (`uv pip install -e ./vox pyttsx3`) or run this command in"
-            " an environment of its own:"
-            " `uvx --from . --with ./vox --with pyttsx3 qmcp human voice ...`."
+            " sync (`uv pip install -e ./vendor/vox pyttsx3`) or run this command"
+            " in an environment of its own:"
+            " `uvx --from . --with ./vendor/vox --with pyttsx3 qmcp human voice ...`."
         )
 
     try:

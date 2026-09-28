@@ -62,12 +62,12 @@ all-providers = [
     "google-generativeai>=0.8.0",
 ]
 # Voice HITL: answer human-approval requests by voice (see qmcp/integrations/voice).
-# vox is vendored as a git submodule at ./vox (see .gitmodules), the same
+# vox is vendored as a git submodule at vendor/vox (see .gitmodules), the same
 # pattern as governance/qm — pinned here, updated deliberately, not floating.
 # It sits in the default dependencies above; there is no `voice` extra.
 
 [tool.uv.sources]
-vox = { path = "vox", editable = true }
+vox = { path = "vendor/vox", editable = true }
 
 [tool.uv]
 package = true
