@@ -1491,13 +1491,17 @@ def human() -> None:
 @human.command("list")
 @click.option("--database", type=click.Path(path_type=Path), default=None)
 @click.option("--all", "show_all", is_flag=True,
-              help="include requests that have already been answered")
+              help="include requests that have been answered or have expired")
 def human_list(database: Path | None, show_all: bool) -> None:
     """What is waiting on a person, oldest first."""
+    from datetime import UTC, datetime
+
     from sqlmodel import Session, create_engine, select
 
     from qmcp.db.models import HumanRequest, HumanResponse
 
+    # SQLite stores naive datetimes, treat as UTC
+    now = datetime.now(UTC).replace(tzinfo=None)
     engine = create_engine(f"sqlite:///{Path(database or _configured_database()).as_posix()}")
     with Session(engine) as session:
         requests = session.exec(
@@ -1507,10 +1511,14 @@ def human_list(database: Path | None, show_all: bool) -> None:
         shown = 0
         for request in requests:
             reply = answers.get(request.id)
-            if reply is not None and not show_all:
+            expires = request.expires_at
+            if expires is not None and expires.tzinfo is not None:
+                expires = expires.astimezone(UTC).replace(tzinfo=None)
+            expired = reply is None and expires is not None and expires <= now
+            if (reply is not None or expired) and not show_all:
                 continue
             shown += 1
-            mark = "[?]" if reply is None else "[=]"
+            mark = "[x]" if expired else "[?]" if reply is None else "[=]"
             click.echo(f"  {mark} {request.id}")
             click.echo(f"      {request.prompt}")
             if request.options:
@@ -1518,11 +1526,13 @@ def human_list(database: Path | None, show_all: bool) -> None:
             if reply is not None:
                 click.echo(f"      answered: {reply.response}"
                            + (f"  ({reply.responded_by})" if reply.responded_by else ""))
+            elif expired:
+                click.echo(f"      expired: {expires:%Y-%m-%d %H:%M} UTC, unanswered")
             click.echo("")
 
         if not shown:
             click.echo("  Nothing is waiting on a person."
-                       + ("" if show_all else "  (--all includes answered ones.)"))
+                       + ("" if show_all else "  (--all includes answered and expired ones.)"))
             return
         click.echo(f"  {shown} waiting."
                    if not show_all else f"  {shown} request(s).")
@@ -1666,7 +1676,7 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
         return
 
     if request_id is None:
-        pending = client.list_human_requests(status_filter="pending", limit=1)
+        pending = client.list_human_requests(status_filter="pending", limit=1, oldest_first=True)
         if not pending:
             click.echo("Nothing is waiting on a person.")
             return

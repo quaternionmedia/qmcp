@@ -123,6 +123,8 @@ def test_human_voice_without_request_id_uses_oldest_pending(monkeypatch):
     assert result.exit_code == 0, result.output
     fake_client.get_human_request.assert_called_once_with("demo-3")
     assert "answered 'reject'" in result.output
+    # The server lists newest first unless asked; "oldest" has to be asked for.
+    assert fake_client.list_human_requests.call_args.kwargs["oldest_first"] is True
 
 
 def test_human_voice_without_request_id_and_nothing_pending(monkeypatch):

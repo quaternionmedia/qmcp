@@ -337,26 +337,32 @@ class MCPClient:
         request_type: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        oldest_first: bool = False,
     ) -> list[HumanRequest]:
         """List human requests, optionally filtered by status or type.
 
         Unlike `get_human_request`, this does not expire stale pending
-        requests as a side effect — it is safe to poll on a loop.
+        requests as a side effect — it is safe to poll on a loop. A pending
+        request past its expiry is left out of a "pending" listing.
 
         Args:
             status_filter: Only requests in this status (e.g. "pending").
             request_type: Only requests of this type (e.g. "approval").
             limit: Max results (server caps at 500).
             offset: Pagination offset.
+            oldest_first: Order by creation, oldest first.
 
         Returns:
-            HumanRequest list, most recently created first.
+            HumanRequest list, most recently created first unless
+            `oldest_first`.
         """
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         if status_filter:
             params["status"] = status_filter
         if request_type:
             params["request_type"] = request_type
+        if oldest_first:
+            params["oldest_first"] = "true"
 
         response = self._client.get("/v1/human/requests", params=params)
         response.raise_for_status()
