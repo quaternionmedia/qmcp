@@ -59,12 +59,14 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3141/v1/tools/echo -Content
 
 ## 5) The voice loop
 
-The queue you just exercised can be answered by speaking. Prove the speech
-seam first with no hardware, no engine and no model — the loop closes in
-under a second and writes its audio under `Data/`, which is ignored:
+The queue you just exercised can be answered by speaking. Prove the whole
+voice path first, with no hardware, no engine and no model. A request is
+queued on a throwaway server, answered through vox's deterministic engine and
+read back, for four scripted answers: a yes, an option by name, a mismatch and
+silence. It takes a few seconds and leaves this clone's queue alone:
 
 ```bash
-uv run vox loop --offline
+uv run qmcp cookbook voice
 ```
 
 Against a real engine — one that answers `vox.adapters.joe`'s contract, such
@@ -79,10 +81,14 @@ uv run joe backend       # the speech engine, on port 8000
 Then here, with the server from step 2 running:
 
 ```bash
-uv run vox doctor           # engine reachable, a mic on its machine, synthesis
-uv run qmcp human list      # what is waiting on a person
-uv run qmcp human voice     # hear the question, say one of its options
+uv run vox doctor                   # engine reachable, a mic on its machine, synthesis
+uv run qmcp cookbook voice --live   # one question aloud; say approve or hold
+uv run qmcp human list              # what is waiting on a person
+uv run qmcp human voice             # hear the question, say one of its options
 ```
+
+`cookbook voice --live` queues one request of its own, `voice-check-<time>`,
+which expires in five minutes, and reports what was recorded.
 
 The question is spoken aloud with its options ("Say approve or hold."), and
 recording stops when you do. If the server or the engine is not running,
