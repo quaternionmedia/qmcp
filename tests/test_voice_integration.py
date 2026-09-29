@@ -343,3 +343,72 @@ def test_three_or_more_options_are_spoken_as_a_list():
     VoiceApprovalLoop(stt=ScriptedSTT(["green"]), tts=tts, client=client).run_once("pick-1")
 
     assert tts.spoken[0] == "Which? Say red, green, or blue."
+
+
+# --- what the loop tells a display ---------------------------------------------
+
+
+class AnnouncingSTT(ScriptedSTT):
+    """A scripted engine that also keeps what the dialog announced to it."""
+
+    def __init__(self, transcripts, fail=False):
+        super().__init__(transcripts)
+        self.announced: list[tuple[str, str, str | None]] = []
+        self.fail = fail
+
+    def announce(self, state, text="", reason=None):
+        if self.fail:
+            raise RuntimeError("the display is away")
+        self.announced.append((state, text, reason))
+        return True
+
+
+def test_a_clear_answer_is_announced_as_asked_then_recorded():
+    client = FakeClient()
+    client.add_pending("deploy-1", "Deploy?", options=["approve", "hold"])
+    stt = AnnouncingSTT(["yes"])
+
+    VoiceApprovalLoop(stt=stt, tts=RecordingTTS(), client=client).run_once("deploy-1")
+
+    assert stt.announced == [
+        ("speaking", "Deploy? Say approve or hold.", None),
+        ("recorded", "approve", None),
+    ]
+
+
+def test_each_reask_is_announced_with_its_reason():
+    client = FakeClient()
+    client.add_pending("deploy-2", "Deploy?", options=["approve", "hold"])
+    stt = AnnouncingSTT(["", "banana", "hold"])
+
+    VoiceApprovalLoop(stt=stt, tts=RecordingTTS(), client=client, max_retries=2).run_once("deploy-2")
+
+    assert [(s, r) for s, _, r in stt.announced] == [
+        ("speaking", None),
+        ("speaking", "noinput"),
+        ("speaking", "nomatch"),
+        ("recorded", None),
+    ]
+    assert stt.announced[2][1].startswith("I heard: banana.")
+
+
+def test_giving_up_is_announced_with_what_was_last_heard():
+    client = FakeClient()
+    client.add_pending("deploy-3", "Deploy?", options=["approve", "hold"])
+    stt = AnnouncingSTT(["banana"])
+
+    with pytest.raises(UnclearResponse):
+        VoiceApprovalLoop(stt=stt, tts=RecordingTTS(), client=client, max_retries=1).run_once("deploy-3")
+
+    assert stt.announced[-1] == ("gave_up", "banana", None)
+    assert client.submitted == []
+
+
+def test_a_display_that_fails_costs_the_dialog_nothing():
+    client = FakeClient()
+    client.add_pending("deploy-4", "Deploy?", options=["approve", "hold"])
+
+    VoiceApprovalLoop(stt=AnnouncingSTT(["yes"], fail=True), tts=RecordingTTS(),
+                      client=client).run_once("deploy-4")
+
+    assert client.submitted == [("deploy-4", "approve")]

@@ -161,6 +161,7 @@ class VoiceApprovalLoop:
         retry budget raises, and nothing is guessed.
         """
         grammar = say_options(options)
+        self._announce("speaking", f"{prompt} {grammar}")
         self.tts.speak(f"{prompt} {grammar}")
         heard = ""
         for attempt in range(self.max_retries + 1):
@@ -173,9 +174,12 @@ class VoiceApprovalLoop:
                 return named
             if attempt < self.max_retries:
                 if not heard.strip():
-                    self.tts.speak(f"I didn't hear anything. {grammar}")
+                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
-                    self.tts.speak(f"I heard: {heard.strip()[:80]}. {grammar}")
+                    reask, reason = f"I heard: {heard.strip()[:80]}. {grammar}", "nomatch"
+                self._announce("speaking", reask, reason=reason)
+                self.tts.speak(reask)
+        self._announce("gave_up", heard.strip())
         raise UnclearResponse(
             f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
         )
@@ -196,8 +200,25 @@ class VoiceApprovalLoop:
         response = self.client.submit_human_response(
             request_id=request_id, response=answer, responded_by="vox"
         )
+        self._announce("recorded", answer)
         self.tts.speak(f"Recorded: {answer}")
         return response
+
+    def _announce(self, state: str, text: str = "", reason: str | None = None) -> None:
+        """Tell whatever shows the exchange what the dialog is doing.
+
+        The dialog's own states -- `speaking` (with the reason on a re-ask),
+        `recorded`, `gave_up` -- go to the STT backend's `announce`, which
+        vox's `HttpSTT` has for an engine that names a conversation route.
+        A backend without one, or one that fails, costs the dialog nothing.
+        """
+        announce = getattr(self.stt, "announce", None)
+        if announce is None:
+            return
+        try:
+            announce(state, text, reason=reason)
+        except Exception:
+            pass
 
     def run_forever(self, poll_interval: float = 2.0, max_iterations: int | None = None) -> int:
         """Keep answering pending requests as they appear.
