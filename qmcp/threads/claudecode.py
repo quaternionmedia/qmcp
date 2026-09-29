@@ -1,6 +1,6 @@
 """Claude Code sessions, which are already local and carry more than a web export.
 
-    ~/.claude/projects/<project>/*.jsonl
+    ~/.claude/projects/<project>/*.jsonl    (leaks: allow the fixed location this module reads, not one machine's path)
 
 **THIS IS THE ANSWER TO "WHAT CAN THE API ADD", AND THE ANSWER IS THAT THE API
 IS NOT WHERE THIS LIVES EITHER.** Neither Anthropic's API nor OpenAI's exposes
