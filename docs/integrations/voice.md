@@ -92,6 +92,21 @@ preconditions is missing — engine unreachable, no microphone on the engine's
 machine, or synthesis failing — rather than failing partway through a
 recording.
 
+A page can start the same thing over HTTP, which is how joe's front end
+offers "Answer by voice" for what is waiting:
+
+| Route | What it does |
+|---|---|
+| `POST /v1/human/requests/{id}/voice` | asks that request aloud on this machine; `202` once started, `404` for no such request, `409` for one not waiting or while another conversation runs |
+| `GET /v1/human/voice` | whether a conversation is running, and how the last one ended: its exit code and the last lines it printed |
+
+The conversation runs as `qmcp human voice <id>` in a process of its own, so
+it carries the same preflight and messages as the command, and the
+synthesizer gets a process's main thread, which it needs on Windows. One runs
+at a time. `QMCP_VOICE_ENGINE` and `QMCP_VOICE_ENGINE_URL` choose the engine.
+Both routes are served only when the server is bound to loopback: a caller
+elsewhere has no business making this machine speak and listen.
+
 ## Which microphone
 
 Recording happens on the engine's machine, and its default input is often

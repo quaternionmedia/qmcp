@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Which vox engine adapter answers `POST /v1/human/requests/{id}/voice`,
+    # and where it listens when not at the adapter's own default.
+    voice_engine: str = "joe"
+    voice_engine_url: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
