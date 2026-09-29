@@ -194,6 +194,28 @@ def test_run_forever_asks_the_oldest_request_first():
     assert client.submitted == [("older", "approve"), ("newer", "reject")]
 
 
+def test_run_forever_asks_an_unanswered_request_once_and_moves_on():
+    """Nobody at the speaker: the loop re-asked the same request at once, for
+    as long as it ran. Now one request costs one prompt and its re-asks, it
+    stays pending with nothing guessed, and the next request is still asked."""
+    client = FakeClient()
+    client.add_pending("nobody-home", "Launch?", options=["approve", "hold"])
+    client.add_pending("later", "Deploy?", options=["approve", "reject"])
+    stt = ScriptedSTT(["", "", "", "yes"])
+    tts = RecordingTTS()
+
+    loop = VoiceApprovalLoop(stt=stt, tts=tts, client=client, max_retries=2)
+    answered = loop.run_forever(max_iterations=6)
+
+    assert answered == 1
+    assert client.submitted == [("later", "approve")]
+    assert loop.unanswered == ["nobody-home"]
+    # One prompt and two re-asks for the first, one prompt for the second,
+    # and nothing more across the remaining iterations.
+    assert stt.calls == 4
+    assert sum(s.startswith("Launch?") for s in tts.spoken) == 1
+
+
 def test_run_forever_stops_when_nothing_pending():
     client = FakeClient()
     stt = ScriptedSTT(["yes"])

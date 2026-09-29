@@ -174,6 +174,11 @@ submits nothing: an ambiguous answer is never guessed at.
   lists newest first unless `oldest_first` is passed.
 - **A request that already carries a response is returned unchanged.**
   `run_once` does not ask twice.
+- **`run_forever` asks each request once per run.** One that gets no usable
+  answer stays pending, is not asked again by that run, and is named when
+  the loop stops (`VoiceApprovalLoop.unanswered`); the next request is still
+  asked. Nobody at the speaker costs one prompt and its re-asks, not the
+  same question on repeat. `qmcp human voice <id>` asks it again.
 - **`responded_by` is recorded as `vox`.** A voice answer is attributable as a
   voice answer, and is otherwise an ordinary human response.
 

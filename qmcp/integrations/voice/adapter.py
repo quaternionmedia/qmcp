@@ -146,6 +146,8 @@ class VoiceApprovalLoop:
         self.client = client or MCPClient()
         self.max_retries = max_retries
         self.listen_duration = listen_duration
+        # Requests `run_forever` asked and got no usable answer to, oldest first.
+        self.unanswered: list[str] = []
 
     def _ask(self, prompt: str, options: list[str]) -> str:
         """Speak the prompt and its options, listen, and return the option chosen.
@@ -207,25 +209,42 @@ class VoiceApprovalLoop:
         `max_iterations` bounds the loop for tests/demos; omit it to run
         until interrupted.
 
+        **A request is asked once per run.** One that gets no usable answer
+        stays pending -- nothing is guessed -- and this loop moves on rather
+        than asking it again. Re-asking at once repeated the same question to
+        an empty room every few seconds for as long as the loop ran, and a
+        person who was not listening came back to a queue the loop had been
+        talking at. The request remains answerable by `qmcp human respond`,
+        by `qmcp human voice <id>`, or by the next run; `self.unanswered`
+        names them.
+
         Returns the number of requests answered.
         """
         answered = 0
         iterations = 0
+        self.unanswered = []
         while max_iterations is None or iterations < max_iterations:
             iterations += 1
+            # One more than the requests already passed over: at most that
+            # many of the oldest can be ones this run has asked.
             pending = self.client.list_human_requests(
-                status_filter="pending", limit=1, oldest_first=True
+                status_filter="pending",
+                limit=min(len(self.unanswered) + 1, 500),
+                oldest_first=True,
             )
-            if not pending:
+            fresh = [r for r in pending if r.id not in self.unanswered]
+            if not fresh:
                 if max_iterations is None:
                     time.sleep(poll_interval)
                     continue
                 break
 
             try:
-                self.run_once(pending[0].id)
+                self.run_once(fresh[0].id)
                 answered += 1
-            except (HumanRequestExpiredError, UnclearResponse):
+            except UnclearResponse:
+                self.unanswered.append(fresh[0].id)
+            except HumanRequestExpiredError:
                 pass
 
         return answered
