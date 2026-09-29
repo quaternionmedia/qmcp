@@ -267,8 +267,8 @@ debugging, which is what `qmcp threads list` and `--check` are.
 
 ## The whole thing, as commands
 
-    uv run qmcp threads import ~/Downloads/claude-export.zip --dry-run
-    uv run qmcp threads import ~/Downloads/claude-export.zip
+    uv run qmcp threads import claude-export.zip --dry-run
+    uv run qmcp threads import claude-export.zip
     uv run qmcp threads index --write
     uv run qmcp threads list --diverged
     uv run python -m qmcp serve            # serves /v1/threads on loopback
