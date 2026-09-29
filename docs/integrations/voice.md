@@ -161,6 +161,21 @@ noinput), or *"I heard: banana."* when something was heard and was unusable
 repeats the options. Exhausting the budget raises `UnclearResponse` and
 submits nothing: an ambiguous answer is never guessed at.
 
+## Watching the exchange
+
+The loop announces its own states to the STT backend as it goes: `speaking`
+before each question or re-ask (a re-ask carries `reason`, `noinput` or
+`nomatch`), `recorded` with the option once it is submitted, and `gave_up`
+with what was last heard. vox's `HttpSTT.announce` posts them to the engine's
+`conversation` route when its contract names one. joe's does, and joe's front
+end shows the whole turn live: the question, the open microphone, the person
+speaking, the pause, the reading, and the answer. The engine reports the
+microphone's states itself.
+
+Announcing is optional on both sides. A backend without `announce`, or an
+engine without the route, changes nothing, and an announcement that fails is
+dropped rather than stopping the question.
+
 ## Bounds and caveats
 
 - **`run_forever` has no upper bound on an idle queue.** With
