@@ -182,14 +182,40 @@ submits nothing: an ambiguous answer is never guessed at.
 - **`responded_by` is recorded as `vox`.** A voice answer is attributable as a
   voice answer, and is otherwise an ordinary human response.
 
-## Testing without hardware
+## Testing the integration
 
-The integration's own tests use scripted stand-ins for STT and TTS and touch
-no audio device. vox carries the layer below: `uv run vox loop --offline`
-closes the full audio → text → audio → text round trip against a deterministic
-engine on an ephemeral port, with no engine, no model download and no
-microphone.
+`qmcp cookbook voice` is the check, in two forms that answer different
+questions:
 
-That deterministic engine is a codec wearing an `EngineContract`. It proves
-the seam and makes no claim about transcription accuracy, which is what a real
-engine answers and what `uv run vox loop` (without `--offline`) exercises.
+```bash
+uv run qmcp cookbook voice          # the wiring, with no hardware
+uv run qmcp cookbook voice --live   # a person at this machine is heard
+```
+
+**Offline**, a qmcp server is started on an ephemeral port over a database
+made for the run, and vox's deterministic engine stands in for the speech
+engine. Four scripted answers go through the real path: the request created
+over HTTP, the prompt synthesized to a file, the answer returned over the
+engine contract, and the response submitted and read back. Each ending is
+checked against its script:
+
+| heard | the queue afterwards |
+|---|---|
+| "Yes, go ahead." | `approve`, by `vox`: a yes read onto the options |
+| "Hold." | `hold`, by `vox`: an option by name |
+| "banana" | nothing; re-asked "I heard: banana." |
+| (silence) | nothing; re-asked "I didn't hear anything." |
+
+The configured queue is not touched, and no microphone, speaker or model is
+needed. `tests/test_cookbook_voice.py` runs it and makes sure it can fail: a
+loop that records the first option for an answer it cannot match turns it red.
+
+**`--live`** asks one question aloud, *"Voice check. Say approve or hold."*,
+through the configured server and a running engine, after the same
+preflight `human voice` runs. It queues one request, `voice-check-<time>`,
+which expires in five minutes, and reports what was recorded.
+
+The deterministic engine is a codec wearing an `EngineContract`. It proves the
+wiring and makes no claim about transcription accuracy, which only `--live`
+tests. vox's own `uv run vox loop --offline` checks the layer below: the audio
+→ text → audio → text round trip, with no queue.

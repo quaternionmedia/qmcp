@@ -46,13 +46,15 @@ uv run qmcp topology show governed --level 2   # the seam a model is called thro
 uv run qmcp orchestration plane                # what every shape would do, declared
 uv run qmcp human list                         # what is waiting on a person
 uv run qmcp human voice                        # answer the oldest of them by speaking
+uv run qmcp cookbook voice                     # the voice path checked end to end, no hardware
 ```
 
 The first is the one to read. Model output reaches the human queue through one
 door, and `docs/human_in_loop.md` says what that door does and does not enforce.
-The last needs the `vox` submodule and a running speech engine;
-`docs/integrations/voice.md` is its page, and `quickstart.md` §5 is its
-shortest proof.
+`human voice` needs the `vox` submodule and a running speech engine;
+`cookbook voice` needs neither, and `cookbook voice --live` asks one question
+aloud through both. `docs/integrations/voice.md` is the page, and
+`quickstart.md` §5 is the shortest path.
 
 ## Adoption and Onboarding
 

@@ -406,6 +406,51 @@ def list_recipes() -> None:
     click.echo("  dev <recipe>        Start server + run a recipe (Docker)")
     click.echo("  docker simple-plan  Run simple-plan in Docker (explicit)")
     click.echo("  serve               Start the MCP server for Docker flows")
+    click.echo("  voice               HITL approval answered by voice; offline, or --live (host)")
+
+
+@cookbook.command("voice")
+@click.option("--live", is_flag=True,
+              help="ask one question aloud through the configured server and a running engine")
+@click.option("--base-url", default=None,
+              help="qmcp server URL for --live (default: this machine's configured host:port)")
+@click.option("--engine", default="joe", help="which vox.adapters entry to use, for --live")
+@click.option("--engine-url", default=None,
+              help="where that engine listens, for --live (default: the adapter's own)")
+def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: str | None) -> None:
+    """The voice HITL check: a request queued, answered by voice, read back.
+
+    Offline by default: a qmcp server on an ephemeral port over a database
+    made for the run, and vox's deterministic engine in place of a speech
+    engine. Four scripted answers go through the real path (a yes, an option
+    by name, a mismatch, and silence), and each ending is checked. No
+    microphone, speakers or model are needed, and the configured queue is not
+    touched.
+
+    `--live` asks one question aloud ("Voice check. Say approve or hold.")
+    through the configured server and a running engine, and reports what was
+    recorded. It queues one request, `voice-check-<time>`, which expires in
+    five minutes.
+    """
+    from qmcp.integrations.voice.check import run_live, run_offline
+
+    if not live:
+        _load_vox(engine, "cookbook voice")
+        if not run_offline(echo=click.echo):
+            raise SystemExit(1)
+        return
+
+    HttpSTT, Pyttsx3TTS, adapter, contract = _load_vox(engine, "cookbook voice --live")
+    from qmcp.client import MCPClient
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    resolved_engine = engine_url or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000")
+    _voice_preflight(client.base_url, resolved_engine, contract, engine)
+    click.echo(f"qmcp:    {client.base_url}")
+    click.echo(f"engine:  {resolved_engine} ({engine})")
+    with HttpSTT(resolved_engine, contract=contract) as stt:
+        if not run_live(client, stt, Pyttsx3TTS(), echo=click.echo):
+            raise SystemExit(1)
 
 
 @cookbook.group("docker")
@@ -1620,36 +1665,7 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
     answered. vox and its synthesizer install with the default dependencies:
     `git submodule update --init vendor/vox`, then `uv sync`.
     """
-    try:
-        import importlib
-
-        from vox import HttpSTT
-        from vox.adapters.pyttsx3 import Pyttsx3TTS
-    except ImportError:
-        shadow = _vox_shadowed_by()
-        if shadow:
-            raise SystemExit(
-                "vox is shadowed: `import vox` resolves to the directory"
-                f" {shadow}, which is not the package, so vox's own names are"
-                " missing. That is a leftover top-level `vox/` directory -- the"
-                " submodule lives at vendor/vox. Delete the stray directory and"
-                " run this again."
-            )
-        raise SystemExit(
-            "vox is not importable. It installs with the default dependencies:"
-            " `git submodule update --init vendor/vox`, then `uv sync`. While a server"
-            " started from this clone's console script is running, a sync"
-            " cannot replace `qmcp.exe`; either add the packages without a"
-            " sync (`uv pip install -e ./vendor/vox pyttsx3`) or run this command"
-            " in an environment of its own:"
-            " `uvx --from . --with ./vendor/vox --with pyttsx3 qmcp human voice ...`."
-        )
-
-    try:
-        adapter = importlib.import_module(f"vox.adapters.{engine}")
-        contract = getattr(adapter, engine.upper())
-    except (ImportError, AttributeError):
-        raise SystemExit(f"No vox engine adapter named {engine!r}.")
+    HttpSTT, Pyttsx3TTS, adapter, contract = _load_vox(engine, "human voice")
 
     from qmcp.client import HumanRequestExpiredError, MCPClient, MCPClientError
     from qmcp.integrations.voice import UnclearResponse, VoiceApprovalLoop
@@ -1664,7 +1680,6 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
         max_retries=max_retries,
         listen_duration=duration,
     )
-
     if forever:
         click.echo("Listening for pending requests by voice. Ctrl+C to stop.")
         try:
@@ -1698,6 +1713,45 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
         raise SystemExit(str(exc))
 
     click.echo(f"  {request_id} answered {response.response!r} (by voice).")
+
+
+def _load_vox(engine: str, command: str):
+    """vox's client and synthesizer, and the named engine's adapter and contract.
+
+    Exits with the remedy when vox cannot be imported, naming a shadowing
+    directory where one is the cause.
+    """
+    try:
+        import importlib
+
+        from vox import HttpSTT
+        from vox.adapters.pyttsx3 import Pyttsx3TTS
+    except ImportError:
+        shadow = _vox_shadowed_by()
+        if shadow:
+            raise SystemExit(
+                "vox is shadowed: `import vox` resolves to the directory"
+                f" {shadow}, which is not the package, so vox's own names are"
+                " missing. That is a leftover top-level `vox/` directory -- the"
+                " submodule lives at vendor/vox. Delete the stray directory and"
+                " run this again."
+            )
+        raise SystemExit(
+            "vox is not importable. It installs with the default dependencies:"
+            " `git submodule update --init vendor/vox`, then `uv sync`. While a server"
+            " started from this clone's console script is running, a sync"
+            " cannot replace `qmcp.exe`; either add the packages without a"
+            " sync (`uv pip install -e ./vendor/vox pyttsx3`) or run this command"
+            " in an environment of its own:"
+            f" `uvx --from . --with ./vendor/vox --with pyttsx3 qmcp {command} ...`."
+        )
+
+    try:
+        adapter = importlib.import_module(f"vox.adapters.{engine}")
+        contract = getattr(adapter, engine.upper())
+    except (ImportError, AttributeError):
+        raise SystemExit(f"No vox engine adapter named {engine!r}.")
+    return HttpSTT, Pyttsx3TTS, adapter, contract
 
 
 @cli.group("threads")
