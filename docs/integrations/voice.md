@@ -105,9 +105,14 @@ One command, in the engine's own checkout — the engine owns its microphone:
 uv run joe voice setup
 ```
 
-It counts down, tries every input while you keep talking, saves the loudest
-one that heard you, and finishes by transcribing a sentence you say. The
-choice is saved in the engine's checkout and read at record time, so a
+It counts down and tries every input while you keep talking. Loudness picks
+the microphone; among that microphone's entries, the host API decides. WDM-KS
+bypasses the system mixer and so reads loudest, and it is also where inputs
+open and return garbage, so it is tried last. It finishes by transcribing a
+sentence you say, and saves only an entry that recorded it, moving on to the
+next entry that heard you when one cannot open.
+
+The choice is saved in the engine's checkout and read at record time, so a
 running backend uses it on its next recording with no restart and no
 environment variable. `uv run joe voice devices` marks it; `JOE_INPUT_DEVICE`,
 where set in the backend's environment, still overrides it.

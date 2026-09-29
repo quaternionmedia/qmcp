@@ -35,8 +35,8 @@ it is the account holder proving they are the account holder.
 
 ## 2. Unpack it into the cache
 
-    uv run qmcp threads import ~/Downloads/claude-export.zip
-    uv run qmcp threads import ~/Downloads/chatgpt-export.zip
+    uv run qmcp threads import claude-export.zip
+    uv run qmcp threads import chatgpt-export.zip
 
 Which service wrote a conversation is read from its shape rather than its
 filename — a filename is what somebody renamed:
