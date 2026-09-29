@@ -31,6 +31,7 @@ from qmcp.middleware import RequestTracingMiddleware
 from qmcp.orchestration_service import register as register_orchestration
 from qmcp.threads.cache import DEFAULT_ROOT as THREAD_CACHE
 from qmcp.threads.service import register as register_threads
+from qmcp.integrations.voice.service import register as register_voice
 from qmcp.topology_designs import register as register_topology_designs
 from qmcp.topology_service import register as register_topology
 from qmcp.topology_service import register_readings as register_topology_readings
@@ -140,6 +141,10 @@ def create_app() -> FastAPI:
     if is_loopback(settings.host):
         register_threads(app, THREAD_CACHE)
         register_topology_readings(app, THREAD_CACHE)
+        # Speaking and listening happen on this machine; nobody elsewhere
+        # may start them.
+        app.state.voice_runs = register_voice(
+            app, settings.voice_engine, settings.voice_engine_url)
     else:
         logger.info(
             "thread_archive_not_served",

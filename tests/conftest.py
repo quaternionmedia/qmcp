@@ -34,6 +34,11 @@ def client(monkeypatch):
             self.host = "127.0.0.1"
             self.port = 3333
             self.log_level = "WARNING"
+            # Every field the app reads. Whether `create_app` sees this stand-in
+            # or the real settings depends on which test imported
+            # `qmcp.server` first, so a missing field fails in one order only.
+            self.voice_engine = "joe"
+            self.voice_engine_url = None
 
     test_settings = TestSettings(db_url)
 
