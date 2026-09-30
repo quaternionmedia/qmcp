@@ -17,26 +17,24 @@ default set: on a fresh clone with the submodule empty, any `uv sync` exits
 
 ## 2) Start the server
 
-For a quick look, either form works. For a server you will **leave
-running**, use the module form — it opens no `qmcp.exe`, so `uv sync` and
-plain `uv run` keep working beside it (Windows will not replace a running
-executable):
-
 ```bash
-uv run python -m qmcp serve     # the form for a server left running
-uv run qmcp serve               # fine for a short-lived look
+uv run qmcp serve
 ```
+
+Every command here is `uv run qmcp <command>`; `uv run qmcp --help` lists
+them. Starting `serve` while a healthy server already holds the port says so
+and exits, rather than failing at the bind.
 
 For Docker-based flows, use the cookbook wrapper (binds to all interfaces by default):
 ```bash
 uv run qmcp cookbook serve
 ```
 
-If a console-script server (`uv run qmcp serve`) is already running from
-this clone, give every further `uv` command here `--no-sync`, or add
-packages with `uv pip install` — a sync cannot replace the running exe and
-aborts partway. Starting `serve` while a healthy server already holds the
-port says so and exits, rather than failing at the bind.
+On Windows, a running server holds `Scripts/qmcp.exe`. A sync that has to
+reinstall qmcp — after pulling a change to its own dependencies — then fails
+with *os error 32*. A sync with nothing to reinstall does not touch the file.
+The running server is on the code from before that change anyway, so the
+remedy is the restart it needed: stop it, and run the command again.
 
 ## 3) Call the server (curl)
 
@@ -108,5 +106,4 @@ a spoken answer maps onto a request's own options.
 - Run example flows in `examples/flows/`.
 - Run `qmcp cookbook dev simple-plan` to start the server and flow together.
 - Or run `qmcp cookbook run simple-plan` (requires Docker Desktop).
-- Windows fallback: `uv run --no-sync python -m qmcp cookbook run simple-plan`.
 - Other recipes: `qmcp cookbook run approved-deploy --service "api-gateway"`.

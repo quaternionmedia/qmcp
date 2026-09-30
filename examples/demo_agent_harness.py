@@ -79,7 +79,7 @@ def harness() -> Iterator[Any]:
 
         from fastapi.testclient import TestClient
 
-        from qmcp.logging import configure_logging
+        from qmcp.log import configure_logging
         from qmcp.server import create_app
 
         app = create_app()

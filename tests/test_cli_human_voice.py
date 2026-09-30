@@ -199,10 +199,10 @@ def test_human_voice_without_vox_installed_fails_clearly(monkeypatch):
 
     assert result.exit_code != 0
     assert "vox is not importable" in result.output
-    # Both named remedies work while a running console-script server holds
-    # `qmcp.exe`, which is exactly when a plain `uv sync` cannot.
-    assert "uv pip install -e ./vendor/vox pyttsx3" in result.output
-    assert "uvx --from ." in result.output
+    assert "git submodule update --init vendor/vox" in result.output
+    # The one declared form, and what a failed sync means while a server runs.
+    assert "`uv run qmcp human voice` again" in result.output
+    assert "os error 32" in result.output
 
 
 def test_serve_refuses_to_race_a_healthy_server(monkeypatch):
@@ -230,8 +230,11 @@ def test_serve_starts_when_nothing_answers(monkeypatch):
     started.assert_called_once()
 
 
-def test_serve_warns_when_started_through_the_console_script(monkeypatch):
-    """The exe shim is what a later `uv sync` cannot replace on Windows."""
+def test_serve_started_the_declared_way_names_no_other_way(monkeypatch):
+    """`uv run qmcp serve` is the declared form. It used to print a note sending
+    the person to a second one, and the second one was then typed wrongly --
+    `python qmcp serve` -- which is how the standard-library shadowing that
+    `test_entry_points.py` guards was found."""
     monkeypatch.setattr(cli, "_qmcp_already_serving", lambda host, port: None)
     monkeypatch.setattr(cli.uvicorn, "run", MagicMock())
     monkeypatch.setattr(cli.sys, "argv", [r"C:\x\.venv\Scripts\qmcp.exe", "serve"])
@@ -239,7 +242,7 @@ def test_serve_warns_when_started_through_the_console_script(monkeypatch):
     result = CliRunner().invoke(cli.cli, ["serve"])
 
     assert result.exit_code == 0
-    assert "python -m qmcp serve" in result.output
+    assert "python -m" not in result.output
 
 
 def test_human_voice_names_a_shadowing_directory(monkeypatch):
@@ -281,7 +284,7 @@ def test_preflight_names_the_command_when_qmcp_is_down(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "joe")
     assert "No qmcp server answers at http://127.0.0.1:3141" in str(exc.value)
-    assert "uv run python -m qmcp serve" in str(exc.value)
+    assert "uv run qmcp serve" in str(exc.value)
 
 
 def test_preflight_names_the_command_when_the_engine_is_down(monkeypatch):

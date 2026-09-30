@@ -1,7 +1,7 @@
 """QMCP - Model Context Protocol Server.
 
 This module provides backward compatibility.
-Use `qmcp serve` or `python -m qmcp.cli` instead.
+Use `uv run qmcp <command>` instead; `uv run qmcp --help` lists them.
 """
 
 from qmcp.cli import main

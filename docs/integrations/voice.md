@@ -47,18 +47,11 @@ code regression rather than as a missing dependency. The submodule line
 comes first either way: `vox` is a path dependency, and a sync on a fresh
 clone exits 2 while the directory is empty.
 
-While a server started from this clone's **console script** is running,
-Windows will not let a sync replace `Scripts/qmcp.exe`, and the sync dies
-partway. A server left running belongs on the module form, which opens no
-exe and syncs fine beside it:
-
-```bash
-uv run python -m qmcp serve
-```
-
-With a console-script server already up, add missing packages without a
-sync (`uv pip install -e ./vendor/vox pyttsx3`), or run the CLI in an environment
-of its own: `uvx --from . --with ./vendor/vox --with pyttsx3 qmcp human voice ...`.
+On Windows, a server started with `uv run qmcp serve` holds
+`Scripts/qmcp.exe`, so a sync that has to reinstall qmcp fails with *os
+error 32* while it runs. That happens after pulling a change to qmcp's own
+dependencies, when the server needs restarting anyway: stop it, sync, and
+start it again.
 
 `qmcp.integrations.voice` is structurally typed against vox's shape and does
 not import it, so qmcp imports even where vox is absent. Only running
@@ -106,6 +99,11 @@ synthesizer gets a process's main thread, which it needs on Windows. One runs
 at a time. `QMCP_VOICE_ENGINE` and `QMCP_VOICE_ENGINE_URL` choose the engine.
 Both routes are served only when the server is bound to loopback: a caller
 elsewhere has no business making this machine speak and listen.
+
+**Typed to answer by voice: two commands**, one per server — `uv run joe dev`
+in joe's checkout and `uv run qmcp serve` here. Everything after that happens
+in joe's page. The count is kept here because a rise without a stated reason is
+a regression (`governance/qm/records/DRAFT-clis-are-for-machines-and-debugging.md`).
 
 ## Which microphone
 
