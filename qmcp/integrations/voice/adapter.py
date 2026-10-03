@@ -48,9 +48,10 @@ _YES_PHRASES = ("go ahead", "do it", "sounds good")
 _NO_PHRASES = ("do not", "dont", "hold off", "not now")
 _UNCLEAR_PHRASES = ("not sure", "not certain", "dont know")
 
-# The grammar of an open question's read-back. A yes maps onto the first and
-# a no onto the second through `choose_option`'s positional fallback, since
-# neither word is in the yes/no vocabulary.
+# The grammar of an open question's read-back, in the order it is spoken.
+# `_ask_open` parses the confirmation with `parse_yes_no` and `match_option`:
+# a yes or `record` records the answer, a no or `again` asks the question
+# again. Neither word is in the yes/no vocabulary.
 _CONFIRM = ["record", "again"]
 
 
@@ -226,7 +227,9 @@ class VoiceApprovalLoop:
                     continue
                 decision = parse_yes_no(heard)
                 named = match_option(heard, _CONFIRM)
-                if decision is True or named == "record":
+                # The decision is consulted before the option named, as `_ask`
+                # does: "don't record" names record and is a no.
+                if decision is True or (decision is None and named == "record"):
                     return answer
                 if decision is False or named == "again":
                     reask, reason, answer = prompt, "again", None

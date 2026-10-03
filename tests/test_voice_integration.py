@@ -355,11 +355,15 @@ def test_three_or_more_options_are_spoken_as_a_list():
 # Each test here was seen red against a mutation of the adapter: `run_once`
 # given back its `request.options or ["approve", "reject"]` fallback fails
 # every one of them except the closed-choice test; `return heard.strip()`
-# in place of the read-back fails the record, again, no, nomatch, again-budget
-# and announcement tests; dropping the `decision is False or named == "again"`
-# branch fails the again, no, again-budget and announcement tests; and
-# `return answer or heard.strip()` in place of the raise after the loop fails
-# the two exhaustion tests.
+# in place of the read-back fails the record, again, no, nomatch, again-budget,
+# announcement and both route-around tests; dropping the
+# `decision is False or named == "again"` branch fails the again, no,
+# again-budget, announcement and names-record tests; `return answer or
+# heard.strip()` in place of the raise after the loop fails the two exhaustion
+# tests; `decision is True or named == "record"` in place of the
+# confirmation's test fails the negated-record test on every confirmation;
+# and the three reason mutations named in the reasons test's docstring each
+# fail that test alone.
 
 OPEN_PROMPT = "What should the branch be called?"
 READBACK = "I heard: {}. Say record or again."
@@ -482,6 +486,24 @@ def test_exhausting_the_budget_with_silence_raises_and_submits_nothing():
     assert tts.spoken == [OPEN_PROMPT, f"I didn't hear anything. {OPEN_PROMPT}"]
 
 
+@pytest.mark.parametrize(
+    "confirmation", ["don't record", "no, record", "do not record that", "cancel the record"]
+)
+def test_a_negated_record_on_the_read_back_listens_again(confirmation):
+    """Routing around the read-back: a no that names the option it negates is
+    a no. Seen red with the read-back testing `named == "record"` before the
+    yes/no decision, which recorded "main" on every one of these."""
+    client = FakeClient()
+    client.add_pending("name-12", OPEN_PROMPT)
+    stt = ScriptedSTT(["main", confirmation, "trunk", "record"])
+
+    result = VoiceApprovalLoop(stt=stt, tts=RecordingTTS(), client=client).run_once("name-12")
+
+    assert result.response == "trunk"
+    assert client.submitted == [("name-12", "trunk")]
+    assert stt.calls == 4
+
+
 def test_an_answer_that_names_record_is_still_read_back():
     """Routing around the read-back: the first transcript is always the answer,
     so saying "record" inside it records nothing until it has been read back."""
@@ -582,6 +604,31 @@ def test_an_open_question_announces_its_read_back_as_a_confirmation():
         ("speaking", READBACK.format("trunk"), "confirm"),
         ("recorded", "trunk", None),
     ]
+
+
+def test_each_open_question_reask_is_announced_with_its_reason():
+    """Silence before the answer and silence or an unusable phrase on the
+    read-back each re-ask under their own reason, and the answer survives a
+    re-asked read-back. Seen red against each of three mutations: the open
+    question's noinput reason changed to nomatch, the read-back's nomatch
+    reason changed to noinput, and the read-back's silence branch deleted so
+    silence fell to the nomatch text."""
+    client = FakeClient()
+    client.add_pending("name-13", OPEN_PROMPT)
+    stt = AnnouncingSTT(["", "main", "", "banana", "record"])
+
+    VoiceApprovalLoop(stt=stt, tts=RecordingTTS(), client=client,
+                      max_retries=3).run_once("name-13")
+
+    assert stt.announced == [
+        ("speaking", OPEN_PROMPT, None),
+        ("speaking", f"I didn't hear anything. {OPEN_PROMPT}", "noinput"),
+        ("speaking", READBACK.format("main"), "confirm"),
+        ("speaking", "I didn't hear anything. Say record or again.", "noinput"),
+        ("speaking", "I heard: banana. Say record or again.", "nomatch"),
+        ("recorded", "main", None),
+    ]
+    assert client.submitted == [("name-13", "main")]
 
 
 def test_a_display_that_fails_costs_the_dialog_nothing():
