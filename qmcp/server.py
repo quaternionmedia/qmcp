@@ -25,7 +25,7 @@ from qmcp.config import get_settings
 from qmcp.db import HumanRequest, HumanResponse, ToolInvocation, get_session, init_db
 from qmcp.db.engine import close_db
 from qmcp.db.models import HumanRequestStatus, InvocationStatus
-from qmcp.logging import configure_logging, get_logger
+from qmcp.log import configure_logging, get_logger
 from qmcp.metrics import metrics, record_hitl_request, record_tool_invocation
 from qmcp.middleware import RequestTracingMiddleware
 from qmcp.orchestration_service import register as register_orchestration

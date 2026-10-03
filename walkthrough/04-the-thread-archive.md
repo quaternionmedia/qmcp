@@ -250,7 +250,7 @@ unfamiliar string stops guarding the first time somebody names an interface.
 
 **In the control panel, and only there.**
 
-    uv run python -m qmcp serve        # here, on loopback
+    uv run qmcp serve                  # here, on loopback
     uv run dossier dashboard           # there, the Threads tab
 
 This project rendered a second view of the archive — a self-contained HTML page
@@ -271,7 +271,7 @@ debugging, which is what `qmcp threads list` and `--check` are.
     uv run qmcp threads import claude-export.zip
     uv run qmcp threads index --write
     uv run qmcp threads list --diverged
-    uv run python -m qmcp serve            # serves /v1/threads on loopback
+    uv run qmcp serve                      # serves /v1/threads on loopback
     uv run dossier dashboard               # the Threads tab reads it
 
 Requesting the export is the one step nothing automates:

@@ -175,9 +175,6 @@ qmcp cookbook dev local-qc-gauntlet --change-summary "Add audit fields" --target
 # Run a cookbook flow in Docker explicitly
 qmcp cookbook docker simple-plan --goal "Deploy a web service"
 
-# If the qmcp shim cannot be installed (Windows)
-uv run --no-sync python -m qmcp cookbook run simple-plan --goal "Deploy a web service"
-
 # Run tests with auto setup/teardown
 qmcp test [-v] [--coverage] [TEST_PATH]
 ```

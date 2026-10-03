@@ -201,15 +201,12 @@ this platform cannot**: `import metaflow` fails on Windows at `import fcntl`,
 so every flow test skips here and runs there. The first CI run found a broken
 import in `examples/flows/approved_deploy.py` that no local run could reach.
 
-**For a dev server you leave running, start it as a module:**
-
-```
-uv run python -m qmcp serve
-```
-
-not `uv run qmcp serve`. The console script is `Scripts/qmcp.exe`, and Windows
-locks a running executable, so any `uv sync` that reinstalls the package fails
-until the server is stopped.
+**Every command is `uv run qmcp <command>`**, the server included
+(`uv run qmcp serve`); `uv run qmcp --help` lists them. `python -m qmcp` and
+`python qmcp` start the same CLI and are not documented as alternatives. On
+Windows a running server holds `Scripts/qmcp.exe`, so a sync that reinstalls
+qmcp fails with os error 32 until the server is stopped -- which a change to
+qmcp's own dependencies needs anyway.
 
 ## The tag is the human gate, and nothing else is
 

@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from qmcp.logging import bind_context, clear_context, get_logger
+from qmcp.log import bind_context, clear_context, get_logger
 from qmcp.metrics import record_request
 
 logger = get_logger(__name__)

@@ -343,17 +343,13 @@ def cli() -> None:
 @click.option("--port", "-p", default=None, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
 def serve(host: str | None, port: int | None, reload: bool) -> None:
-    """Start the MCP server.
+    """Start the MCP server: `uv run qmcp serve`.
 
-    FOR A DEV SERVER LEFT RUNNING, START IT AS A MODULE:
-
-        uv run python -m qmcp serve
-
-    not `uv run qmcp serve`. The console script is `Scripts/qmcp.exe`, and
-    Windows locks a running executable -- so any `uv sync` that reinstalls the
-    package fails with "The process cannot access the file because it is being
-    used by another process" until the server is stopped. Running the module
-    never opens that file, and `uv sync` works with the server up.
+    On Windows a running console script holds `Scripts/qmcp.exe`, so a sync
+    that reinstalls qmcp -- after pulling a change to its own dependencies --
+    fails with os error 32 while this runs. A no-op sync does not touch the
+    file. The server is running the code from before that change anyway, so
+    the remedy is the restart it needed: stop it, and run the command again.
     """
     _run_server(host, port, reload)
 
@@ -489,7 +485,7 @@ def _voice_preflight(qmcp_url: str, engine_url: str, contract, engine: str) -> N
     except httpx.HTTPError:
         raise SystemExit(
             f"No qmcp server answers at {qmcp_url}. Start one from this clone"
-            " with `uv run python -m qmcp serve`, then run this again."
+            " with `uv run qmcp serve`, then run this again."
         )
     try:
         httpx.get(contract.url(engine_url, contract.health), timeout=3).raise_for_status()
@@ -559,15 +555,6 @@ def _run_server(host: str | None, port: int | None, reload: bool) -> None:
             " and every CLI command talks to it over HTTP -- a second server"
             " is not needed. To run another beside it, pass a different"
             " --port."
-        )
-
-    if sys.argv and sys.argv[0].lower().endswith("qmcp.exe"):
-        click.echo(
-            "note: started via the console script. While this process runs,"
-            " `uv sync` cannot replace Scripts/qmcp.exe. For a server left"
-            " running, use `uv run python -m qmcp serve` instead; a sync then"
-            " works with the server up.",
-            err=True,
         )
 
     click.echo(f"Starting QMCP server on {actual_host}:{actual_port}")
@@ -1738,12 +1725,10 @@ def _load_vox(engine: str, command: str):
             )
         raise SystemExit(
             "vox is not importable. It installs with the default dependencies:"
-            " `git submodule update --init vendor/vox`, then `uv sync`. While a server"
-            " started from this clone's console script is running, a sync"
-            " cannot replace `qmcp.exe`; either add the packages without a"
-            " sync (`uv pip install -e ./vendor/vox pyttsx3`) or run this command"
-            " in an environment of its own:"
-            f" `uvx --from . --with ./vendor/vox --with pyttsx3 qmcp {command} ...`."
+            " `git submodule update --init vendor/vox`, then `uv sync`, then"
+            f" `uv run qmcp {command}` again. If the sync fails with os error 32,"
+            " a server started with `uv run qmcp serve` holds `qmcp.exe`: stop it"
+            " first."
         )
 
     try:
@@ -1933,7 +1918,7 @@ def threads_dashboard() -> None:
     """
     click.echo("  The archive is read in the control panel:")
     click.echo("")
-    click.echo("    uv run python -m qmcp serve        # here, on loopback")
+    click.echo("    uv run qmcp serve                  # here, on loopback")
     click.echo("    uv run dossier dashboard           # there, the Threads tab")
     click.echo("")
     click.echo("  It reads this harness over HTTP and imports nothing from it.")
