@@ -482,6 +482,19 @@ def test_exhausting_the_budget_with_silence_raises_and_submits_nothing():
     assert tts.spoken == [OPEN_PROMPT, f"I didn't hear anything. {OPEN_PROMPT}"]
 
 
+def test_an_answer_that_names_record_is_still_read_back():
+    """Routing around the read-back: the first transcript is always the answer,
+    so saying "record" inside it records nothing until it has been read back."""
+    client = FakeClient()
+    client.add_pending("name-11", OPEN_PROMPT)
+    stt = ScriptedSTT(["record it as main", "again", "main", "yes"])
+
+    result = VoiceApprovalLoop(stt=stt, tts=RecordingTTS(), client=client).run_once("name-11")
+
+    assert result.response == "main"
+    assert client.submitted == [("name-11", "main")]
+
+
 def test_a_request_with_options_is_still_a_closed_choice():
     """The yes/no fast path is untouched: one listen, no read-back."""
     client = FakeClient()
