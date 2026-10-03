@@ -10,7 +10,9 @@ tracking work it is better than either web export, because of what it already
 knows:
 
     gitBranch       which branch the session was working on
-    cwd             which checkout
+    cwd             which checkout, carried on every record and kept in order
+                    of latest appearance, so the last entry is where the
+                    session most recently ran
     pr-link         which pull requests the session produced, by number and
                     repository
 
@@ -274,6 +276,11 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
     """One session file as a thread, plus what it knows about its work."""
     turns: list[Turn] = []
     branches: set[str] = set()
+    # A list rather than a set, because a session that moved between checkouts
+    # has a *latest* one, and `recall` names it. A checkout seen again moves to
+    # the end: a session that went A, B, A is in A, and a list kept in order
+    # of first appearance would have said B.
+    cwds: list[str] = []
     repositories: list[str] = []
     pulls: set[tuple[str, int]] = set()
     title: str | None = None
@@ -290,6 +297,11 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
 
         if record.get("gitBranch"):
             branches.add(str(record["gitBranch"]))
+        if record.get("cwd"):
+            cwd = str(record["cwd"])
+            if cwd in cwds:
+                cwds.remove(cwd)
+            cwds.append(cwd)
 
         if kind == "ai-title" and record.get("aiTitle"):
             title = str(record["aiTitle"])
@@ -324,6 +336,7 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
         turns=tuple(turns),
     ), {
         "branches": branches,
+        "cwds": cwds,
         "repositories": repositories,
         "pulls": pulls,
         # What this file was a sidechain of, so the subagent's thread can be

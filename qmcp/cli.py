@@ -1702,11 +1702,13 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
     click.echo(f"  {request_id} answered {response.response!r} (by voice).")
 
 
-def _load_vox(engine: str, command: str):
+def _load_vox(engine: str | None, command: str):
     """vox's client and synthesizer, and the named engine's adapter and contract.
 
     Exits with the remedy when vox cannot be imported, naming a shadowing
-    directory where one is the cause.
+    directory where one is the cause. With `engine` None only the synthesizer
+    is wanted -- a command that speaks and never listens -- and the adapter
+    and contract come back None rather than an engine nobody asked for.
     """
     try:
         import importlib
@@ -1731,6 +1733,8 @@ def _load_vox(engine: str, command: str):
             " first."
         )
 
+    if engine is None:
+        return HttpSTT, Pyttsx3TTS, None, None
     try:
         adapter = importlib.import_module(f"vox.adapters.{engine}")
         contract = getattr(adapter, engine.upper())
@@ -1963,6 +1967,46 @@ def threads_consolidate(root: Path | None, sessions: Path | None,
         click.echo("")
         for project, found in sorted(reading.by_project().items()):
             click.echo(f"  {project}: {len(found)} thread(s)")
+
+
+@threads.command("recall")
+@click.argument("project")
+@click.option("--root", type=click.Path(path_type=Path), default=None,
+              help="the export cache to read instead of the default")
+@click.option("--sessions", type=click.Path(path_type=Path), default=None,
+              help="the Claude Code session store to read instead of the default")
+@click.option("--corpus", type=click.Path(path_type=Path), default=None,
+              help="the corpus whose workspace names the projects "
+                   "(default: the one this repository embeds)")
+@click.option("--speak", is_flag=True,
+              help="say the answer through the synthesizer, as `human voice` does")
+@click.option("--json", "as_json", is_flag=True, help="print the answer as data")
+def threads_recall(project: str, root: Path | None, sessions: Path | None,
+                   corpus: Path | None, speak: bool, as_json: bool) -> None:
+    """Where was I? The latest session about PROJECT, from the archive.
+
+    Reads the stores on this disk and spends nothing; no agent runs. PROJECT is
+    a roster name such as `qmcp`. The answer is a few sentences -- the branch,
+    the checkout and whether it is still there, the pull requests opened, the
+    last turn -- or a sentence saying nothing in the archive is about it.
+
+    --speak says the same sentences aloud and does nothing else: no engine is
+    contacted and nothing is listened for.
+    """
+    import json as json_module
+
+    from qmcp.threads import recall as recall_module
+
+    found = recall_module.recall(project, _sources(_root(root), sessions),
+                                 recall_module.names_for(project, corpus))
+    if as_json:
+        click.echo(json_module.dumps(found.as_dict(), indent=2))
+    else:
+        click.echo(found.spoken())
+
+    if speak:
+        _, Pyttsx3TTS, _, _ = _load_vox(None, "threads recall --speak")
+        Pyttsx3TTS().speak(found.spoken())
 
 
 @threads.command("list")

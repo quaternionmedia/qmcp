@@ -80,6 +80,11 @@ qmcp human voice --forever      # keep answering; Ctrl+C to stop
 qmcp human voice --engine joe   # which vox.adapters entry to talk to
 ```
 
+The same synthesizer answers "where was I": `qmcp threads recall <project>
+--speak` reads a project's latest session from the thread archive -- branch,
+checkout, pull requests, last turn -- and says it, contacting no engine and
+listening for nothing; `qmcp/threads/recall.py` is the whole of it.
+
 The engine must be reachable. `vox doctor` reports which of the three
 preconditions is missing — engine unreachable, no microphone on the engine's
 machine, or synthesis failing — rather than failing partway through a
