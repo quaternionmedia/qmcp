@@ -20,11 +20,12 @@ asking the repository:
    now, in other repositories, for the same reviewer;
    `governance/qm/handbook/async-contract.md` is the set of rules that exist only
    because of that, and it is short.
-4. **Which gates exist**, and what each cannot see:
-   `python governance/qm/project-seed/ci/run_workflows_locally.py`.
+4. **Which gates exist**, and what each cannot see: `uv run qmcp preflight`
+   runs their actual steps, and `uv run qmcp preflight --help` is the runner's
+   own page.
 
 Those are the invariants. **How** you gather them is yours to choose — read the
-repository, run the scripts above, or use an adapter if one exists for your
+repository, run the commands above, or use an adapter if one exists for your
 tooling. `governance/qm/adapters/` holds any that do, each named for the product
 it targets and none of them required. This file names no vendor, and neither
 should anything you add to it.
@@ -209,23 +210,19 @@ qmcp fails with os error 32 until the server is stopped -- which a change to
 qmcp's own dependencies needs anyway.
 
 **Every gate runs locally, and `uv run qmcp preflight` is the command.** It
-routes to `governance/qm/project-seed/ci/run_workflows_locally.py` with its
-arguments unchanged (`--event`, `--ref`, `--base-ref`, `--head-ref`,
-`--workflows`, and `--help`, which is the script's own) and exits with that
-script's status, so a pull request is run through the workflows' actual steps
-before anybody claims they are green. The hosted runs under
-`.github/workflows/` mirror this and are not the only place the gates run. A
-pass is evidence and not proof: `uses:` steps are not run and the working tree
-stands in for them, and the runner image is not reproduced, so a step can pass
-here and fail there. One step is red through this route on every uv-managed
-checkout and green under a system interpreter: `reuse-lint.yml`'s `Install
-REUSE` runs `python -m pip install reuse`, `uv run` puts the project's virtual
-environment first on `PATH`, and a uv-created environment ships no `pip`. That
-is the workflow depending on whichever interpreter is first on `PATH`, and the
-repair belongs to the workflow -- a seed file, so to its copy under
-`project-seed/ci/` in the governance repository and then here -- not to this
-command, which decides nothing. The script's own docstring is the full list
-of what it cannot see.
+routes to the seed runner, `governance/qm/project-seed/ci/run_workflows_locally.py`,
+with its arguments unchanged and exits with that script's status, so a pull
+request is run through the workflows' actual steps before anybody claims they
+are green; the hosted runs under `.github/workflows/` mirror this. It is not
+`selfcheck`: that runs this repository's gate scripts and records each as an
+invocation, where `preflight` simulates the workflows as the hosted runner
+would and records nothing. A pass is evidence and not proof, and the runner's
+own docstring is the list of what it cannot see. One thing it does see is
+`PATH`: a `run:` step that invokes `python` by name gets whichever interpreter
+leads `PATH`, and under `uv run` that is the project's virtual environment,
+which ships no `pip`. A step that `python -m pip install`s is therefore red
+through this route and may be green through the path -- the same workflow,
+answered by a different interpreter.
 
 ## The tag is the human gate, and nothing else is
 
