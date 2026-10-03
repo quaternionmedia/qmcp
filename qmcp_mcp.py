@@ -1,8 +1,17 @@
 """Meta-MCP server for interacting with the qmcp repository.
 
 Exposes tools for running flows, querying the persistence database,
-interacting with the live qmcp server, and running tests — all accessible
-from any MCP client (Claude Desktop, Claude Code, etc.).
+interacting with the live qmcp server, putting a question on the human queue
+and waiting for its answer, and running tests — all accessible from any MCP
+client (Claude Desktop, Claude Code, etc.).
+
+An agent asks through three tools. `create_human_request` puts a question on
+the queue; `await_human_response` waits for it to be answered or to expire;
+`ask_human` is the two composed, and is the call an agent makes. The wait
+polls the pending listing, which has no side effects, and reads the request
+itself exactly once after it has left that listing: reading a pending request
+past its expiry is what expires it, so a loop over the detail route would
+expire the questions it was waiting on.
 
 Usage (stdio transport):
     uv run python qmcp_mcp.py
@@ -29,6 +38,8 @@ import os
 import sqlite3
 import subprocess
 import sys
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -506,6 +517,198 @@ def list_human_requests(
         return [{"error": f"Cannot connect to {server_url}"}]
     except Exception as exc:
         return [{"error": str(exc)}]
+
+
+# ---------------------------------------------------------------------------
+# An agent asks
+# ---------------------------------------------------------------------------
+
+
+def _request_id() -> str:
+    """An id for a question whose caller gave none.
+
+    Readable in a listing and ordered by creation. The milliseconds keep two
+    questions asked within one second apart, which the server would otherwise
+    refuse as a duplicate id.
+    """
+    return "ask-" + datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")[:-3]
+
+
+# One page of the pending listing. Any size the server accepts is correct,
+# because paging stops on a short page rather than on this number; a size the
+# server refuses fails loudly in `_pending_ids` rather than reading as empty.
+_PENDING_PAGE = 100
+
+
+def _pending_ids(server_url: str) -> set[str]:
+    """Every id the server lists as pending, across every page.
+
+    The listing applies no expiry and changes nothing, so it can be read as
+    often as a wait needs. It is paged to the end: a queue deeper than one
+    page would otherwise leave a still-pending id off the first page, and the
+    wait would read that as the question having been answered.
+    """
+    ids: set[str] = set()
+    offset = 0
+    while True:
+        r = httpx.get(
+            f"{server_url}/v1/human/requests",
+            params={"status": "pending", "limit": _PENDING_PAGE, "offset": offset},
+            timeout=10.0,
+        )
+        r.raise_for_status()
+        page = r.json()["requests"]
+        ids.update(item["id"] for item in page)
+        if len(page) < _PENDING_PAGE:
+            return ids
+        offset += _PENDING_PAGE
+
+
+@mcp.tool()
+def create_human_request(
+    prompt: str,
+    options: list[str] | None = None,
+    request_type: str = "approval",
+    request_id: str | None = None,
+    expires_in_seconds: int = 600,
+    context: dict[str, Any] | None = None,
+    server_url: str = DEFAULT_SERVER_URL,
+) -> dict[str, Any]:
+    """Put a question on the qmcp human queue, for a person to answer.
+
+    Args:
+        prompt: The question, as it will be shown or spoken.
+        options: The allowed answers. Leave unset for an open question, whose
+                 answer is whatever the person says or types.
+        request_type: "approval", "input" or "review".
+        request_id: An id of the caller's choosing; a readable, time-derived
+                    one is made when none is given.
+        expires_in_seconds: How long the question stays answerable. The
+                            server holds the floor and the ceiling.
+        context: Anything else to show beside the prompt.
+        server_url: Base URL of the qmcp server.
+
+    Returns:
+        The created request as the server returns it (id, request_type,
+        prompt, status, created_at, expires_at), or an error dict.
+    """
+    payload: dict[str, Any] = {
+        "id": request_id or _request_id(),
+        "request_type": request_type,
+        "prompt": prompt,
+        "timeout_seconds": expires_in_seconds,
+        "context": context or {},
+    }
+    if options is not None:
+        payload["options"] = options
+
+    try:
+        r = httpx.post(f"{server_url}/v1/human/requests", json=payload, timeout=10.0)
+        if r.status_code == 409:
+            return {"error": f"Request '{payload['id']}' already exists"}
+        if r.status_code == 422:
+            # The server's own words for what it refused -- the expiry outside
+            # its bounds, usually -- rather than the bare status line.
+            return {"error": str(r.json().get("detail", r.text))}
+        r.raise_for_status()
+        return r.json()
+    except httpx.ConnectError:
+        return {"error": f"Cannot connect to {server_url}"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def await_human_response(
+    request_id: str,
+    timeout_seconds: float = 600,
+    poll_seconds: float = 2.0,
+    server_url: str = DEFAULT_SERVER_URL,
+) -> dict[str, Any]:
+    """Wait for a question on the human queue to be answered, or to expire.
+
+    While the id is in the pending listing the wait sleeps and looks again,
+    and reads nothing else: `GET /v1/human/requests/{id}` expires a pending
+    request that is past its expiry, so polling it would expire the question
+    being waited on. Once the id has left the listing, the request is read
+    once, for its answer or its expired state. A timeout reads nothing.
+
+    Args:
+        request_id: The id returned by create_human_request.
+        timeout_seconds: How long to wait before giving up.
+        poll_seconds: How long to sleep between looks at the listing.
+        server_url: Base URL of the qmcp server.
+
+    Returns:
+        Dict with status -- "answered", "expired" or "timeout", or the
+        server's own word for any other state -- the request_id, and
+        response: the response record when answered, else None.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while request_id in _pending_ids(server_url):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return {"status": "timeout", "request_id": request_id, "response": None}
+            time.sleep(min(poll_seconds, remaining))
+
+        r = httpx.get(f"{server_url}/v1/human/requests/{request_id}", timeout=10.0)
+        if r.status_code == 404:
+            return {"status": "error", "error": f"Request '{request_id}' not found"}
+        r.raise_for_status()
+        body = r.json()
+        status = body["request"]["status"]
+        return {
+            "status": "answered" if status == "responded" else status,
+            "request_id": request_id,
+            "response": body.get("response"),
+        }
+    except httpx.ConnectError:
+        return {"status": "error", "error": f"Cannot connect to {server_url}"}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+@mcp.tool()
+def ask_human(
+    prompt: str,
+    options: list[str] | None = None,
+    timeout_seconds: int = 600,
+    poll_seconds: float = 2.0,
+    server_url: str = DEFAULT_SERVER_URL,
+) -> dict[str, Any]:
+    """Ask a person a question and wait for the answer.
+
+    create_human_request followed by await_human_response, with the question
+    answerable for as long as the caller waits. With options it is an
+    "approval"; without, an "input" whose answer is free text.
+
+    Args:
+        prompt: The question.
+        options: The allowed answers, or unset for an open question.
+        timeout_seconds: How long to wait, and how long the question stays
+                         answerable. The server holds the floor on the latter.
+        poll_seconds: How long to sleep between looks at the listing.
+        server_url: Base URL of the qmcp server.
+
+    Returns:
+        await_human_response's dict, or create_human_request's error dict.
+    """
+    created = create_human_request(
+        prompt,
+        options=options,
+        request_type="approval" if options else "input",
+        expires_in_seconds=timeout_seconds,
+        server_url=server_url,
+    )
+    if "error" in created:
+        return created
+    return await_human_response(
+        created["id"],
+        timeout_seconds=timeout_seconds,
+        poll_seconds=poll_seconds,
+        server_url=server_url,
+    )
 
 
 # ---------------------------------------------------------------------------
