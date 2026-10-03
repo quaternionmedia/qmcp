@@ -168,7 +168,7 @@ def throwaway_server(database: Path) -> Iterator[str]:
 
 
 def _outcome(client, request_id: str) -> tuple[str | None, str | None]:
-    """(the option recorded, who recorded it), or (None, None)."""
+    """(the answer recorded, who recorded it), or (None, None)."""
     _, response = client.get_human_request(request_id)
     if response is None:
         return None, None
@@ -223,7 +223,7 @@ def run_offline(echo: Callable[[str], None] = print, cases=OFFLINE_CASES) -> boo
             if recorded is not None and by != "vox":
                 problems.append(f"recorded by {by!r}, expected 'vox'")
             if case.reasked and not any(s.startswith(case.reasked) for s in tts.spoken[1:]):
-                problems.append(f"no re-ask beginning {case.reasked!r}")
+                problems.append(f"no turn beginning {case.reasked!r}")
 
             heard = '"' + '", "'.join((case.heard, *case.then)) + '"'
             if recorded is not None:

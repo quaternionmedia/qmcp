@@ -68,7 +68,7 @@ def test_the_offline_check_fails_when_an_open_answer_is_recorded_unconfirmed(mon
 
     assert result.exit_code == 1, result.output
     assert '[FAIL] heard "release candidate", "record"' in result.output
-    assert "no re-ask beginning 'I heard: release candidate. Say record or again.'" in result.output
+    assert "no turn beginning 'I heard: release candidate. Say record or again.'" in result.output
 
 
 def test_the_offline_check_fails_when_the_prompt_omits_the_options(monkeypatch):
