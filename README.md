@@ -238,7 +238,7 @@ uv run qmcp test --coverage
 # Run linter
 uv run ruff check .
 
-# Run the GitHub Actions workflows locally (a pass is evidence, not proof)
+# Run the workflows under .github/workflows locally (a pass is evidence, not proof)
 uv run qmcp preflight --event pull_request --base-ref main
 ```
 

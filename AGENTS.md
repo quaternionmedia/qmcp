@@ -211,12 +211,20 @@ qmcp's own dependencies needs anyway.
 **Every gate runs locally, and `uv run qmcp preflight` is the command.** It
 routes to `governance/qm/project-seed/ci/run_workflows_locally.py` with its
 arguments unchanged (`--event`, `--ref`, `--base-ref`, `--head-ref`,
-`--workflows`) and exits with that script's status, so a pull request is run
-through the workflows' actual steps before anybody claims they are green. The
-hosted runs under `.github/workflows/` mirror this and are not the only place
-the gates run. A pass is evidence and not proof: `uses:` steps stand in for
-nothing but the working tree, and the runner image is not reproduced, so a
-step can pass here and fail there. The script's own docstring is the full list
+`--workflows`, and `--help`, which is the script's own) and exits with that
+script's status, so a pull request is run through the workflows' actual steps
+before anybody claims they are green. The hosted runs under
+`.github/workflows/` mirror this and are not the only place the gates run. A
+pass is evidence and not proof: `uses:` steps are not run and the working tree
+stands in for them, and the runner image is not reproduced, so a step can pass
+here and fail there. One step is red through this route on every uv-managed
+checkout and green under a system interpreter: `reuse-lint.yml`'s `Install
+REUSE` runs `python -m pip install reuse`, `uv run` puts the project's virtual
+environment first on `PATH`, and a uv-created environment ships no `pip`. That
+is the workflow depending on whichever interpreter is first on `PATH`, and the
+repair belongs to the workflow -- a seed file, so to its copy under
+`project-seed/ci/` in the governance repository and then here -- not to this
+command, which decides nothing. The script's own docstring is the full list
 of what it cannot see.
 
 ## The tag is the human gate, and nothing else is
