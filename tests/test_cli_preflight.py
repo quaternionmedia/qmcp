@@ -91,7 +91,7 @@ def test_preflight_exits_with_the_runner_status(monkeypatch) -> None:
 
 
 def test_preflight_refuses_without_the_governance_submodule(monkeypatch, tmp_path) -> None:
-    # Mutations seen red: the `script.exists()` guard removed -- the fake runner
+    # Mutations seen red: the `script.is_file()` guard removed -- the fake runner
     # was called and the exit code read 0 against a tree with no submodule;
     # `err=True` removed from the refusal's echo -- the refusal moved to stdout
     # and the stderr assertion found it empty. `result.output` merges the two
@@ -107,3 +107,21 @@ def test_preflight_refuses_without_the_governance_submodule(monkeypatch, tmp_pat
     assert result.stdout == ""
     assert "governance submodule is not checked out" in result.stderr
     assert "git submodule update --init governance/qm" in result.stderr
+
+
+def test_preflight_refuses_a_directory_at_the_runner_path(monkeypatch, tmp_path) -> None:
+    # Mutation seen red: `script.is_file()` replaced with `script.exists()` --
+    # the directory satisfied the guard, the fake runner was called with the
+    # directory as its script, and the exit code read 0. With the real
+    # interpreter that is a "can't find '__main__' module" error standing where
+    # the refusal should be.
+    calls: list[dict] = []
+    monkeypatch.setattr(cli.subprocess, "run", _fake_run(calls, 0))
+    monkeypatch.setattr(cli, "_package_repo_root", lambda: tmp_path)
+    (tmp_path / cli._PREFLIGHT_RUNNER).mkdir(parents=True)
+
+    result = CliRunner().invoke(cli.cli, ["preflight"])
+
+    assert result.exit_code == 2
+    assert calls == []
+    assert "the runner is not at" in result.stderr

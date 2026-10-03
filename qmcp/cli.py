@@ -2130,10 +2130,10 @@ def preflight(ctx: click.Context, args: tuple[str, ...]) -> None:
     every argument is passed through unchanged (`--event`, `--ref`,
     `--base-ref`, `--head-ref`, `--workflows`, and `--help`, which is the
     runner's), the script runs under this interpreter from the repository
-    root, and its exit status is this command's. A leading `--` is the
-    argument separator and is consumed before the runner sees it. Nothing is
-    decided here, and the only line printed here is the one saying the runner
-    is not in the tree.
+    root, and its exit status is this command's. The first `--` is the
+    argument separator and is consumed before the runner sees it, wherever it
+    stands. Nothing is decided here, and the only line printed here is the one
+    saying the runner is not in the tree.
 
         uv run qmcp preflight                              # a PR into main
         uv run qmcp preflight --event push --ref main
@@ -2145,14 +2145,17 @@ def preflight(ctx: click.Context, args: tuple[str, ...]) -> None:
     """
     repo = _package_repo_root()
     script = repo / _PREFLIGHT_RUNNER
-    if not script.exists():
-        # The existence check cannot tell an unchecked-out submodule from one
-        # pinned before the runner existed; the message names both, and the
-        # command it gives is right for the first and harmless for the second.
+    if not script.is_file():
+        # `is_file`, not `exists`: a directory at the runner's path would pass
+        # an existence check and leave the interpreter to report that it found
+        # no module there. The check cannot tell an unchecked-out submodule
+        # from one pinned before the runner existed; the message names both,
+        # and the command it gives is right for the first and harmless for the
+        # second.
         click.echo(
-            f"{_PREFLIGHT_RUNNER.as_posix()} is missing: the governance submodule "
-            "is not checked out, or is pinned before the runner existed. "
-            "Run `git submodule update --init governance/qm`.",
+            f"the runner is not at {_PREFLIGHT_RUNNER.as_posix()}: the governance "
+            "submodule is not checked out, or is pinned before the runner "
+            "existed. Run `git submodule update --init governance/qm`.",
             err=True,
         )
         ctx.exit(2)
