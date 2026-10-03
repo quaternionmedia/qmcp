@@ -198,6 +198,8 @@ def run_offline(echo: Callable[[str], None] = print, cases=OFFLINE_CASES) -> boo
         passed = 0
         for number, case in enumerate(cases, 1):
             request_id = f"voice-check-{number}"
+            # The type is the queue's record of what was asked; the loop reads
+            # only `options`, so the verdict below does not depend on it.
             client.create_human_request(
                 request_id=request_id,
                 request_type="approval" if case.options else "input",
