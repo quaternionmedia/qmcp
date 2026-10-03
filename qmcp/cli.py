@@ -2039,7 +2039,7 @@ def selfcheck(database: Path | None, project: str | None, as_deltas: bool,
     from qmcp.db.models import HumanRequest, HumanResponse
     from qmcp.selfcheck import checks, render, run_check, to_delta
 
-    repo = Path(__file__).resolve().parent.parent
+    repo = _package_repo_root()
     owner_repo = project or DEFAULT_PROJECT
     target = database or _configured_database()
 
@@ -2114,7 +2114,13 @@ def _package_repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-@cli.command("preflight", context_settings={"ignore_unknown_options": True})
+# `help_option_names=[]` removes click's own `--help` from this command, so it
+# reaches the runner like every other argument: the runner's options are this
+# command's options, and its help page is the one that describes them.
+@cli.command("preflight", context_settings={
+    "ignore_unknown_options": True,
+    "help_option_names": [],
+})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
 def preflight(ctx: click.Context, args: tuple[str, ...]) -> None:
@@ -2122,10 +2128,12 @@ def preflight(ctx: click.Context, args: tuple[str, ...]) -> None:
 
     A thin route to `governance/qm/project-seed/ci/run_workflows_locally.py`:
     every argument is passed through unchanged (`--event`, `--ref`,
-    `--base-ref`, `--head-ref`, `--workflows`), the script runs under this
-    interpreter from the repository root, and its exit status is this
-    command's. Nothing is decided here, and the only line printed here is the
-    one saying the governance submodule is not checked out.
+    `--base-ref`, `--head-ref`, `--workflows`, and `--help`, which is the
+    runner's), the script runs under this interpreter from the repository
+    root, and its exit status is this command's. A leading `--` is the
+    argument separator and is consumed before the runner sees it. Nothing is
+    decided here, and the only line printed here is the one saying the runner
+    is not in the tree.
 
         uv run qmcp preflight                              # a PR into main
         uv run qmcp preflight --event push --ref main
@@ -2138,9 +2146,13 @@ def preflight(ctx: click.Context, args: tuple[str, ...]) -> None:
     repo = _package_repo_root()
     script = repo / _PREFLIGHT_RUNNER
     if not script.exists():
+        # The existence check cannot tell an unchecked-out submodule from one
+        # pinned before the runner existed; the message names both, and the
+        # command it gives is right for the first and harmless for the second.
         click.echo(
             f"{_PREFLIGHT_RUNNER.as_posix()} is missing: the governance submodule "
-            "is not checked out. Run `git submodule update --init governance/qm`.",
+            "is not checked out, or is pinned before the runner existed. "
+            "Run `git submodule update --init governance/qm`.",
             err=True,
         )
         ctx.exit(2)
