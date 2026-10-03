@@ -51,11 +51,13 @@ def store(tmp_path):
 
     Session   about   last turn            branch        cwd
     s-old     qmcp    2026-09-30 10:00     feat/old      <exists>
-    s-new     qmcp    2026-10-02 09:00     feat/recall   <does not exist>
+    s-new     qmcp    2026-10-02 09:30     feat/recall   <does not exist>
+                      (its newest turn is a tool call with no text)
     s-vox     vox     2026-10-02 18:00     main          <exists>
     s-both    both    2026-10-01 12:00     fix/seam      <exists>
     s-survey  all     2026-10-03 08:00     main          <exists>  (a roster sweep)
     s-undated qmcp    (no timestamps)      -             -
+    s-new/agent-a1  qmcp  2026-10-03 10:00  feat/recall  <exists>  (a sidechain)
     """
     here = tmp_path / "checkout"
     here.mkdir()
@@ -73,9 +75,23 @@ def store(tmp_path):
                "2026-10-01T08:00:00Z", "feat/recall", gone),
         record("n2", "the qmcp route is registered before the source route",
                "s-new", "2026-10-02T09:00:00Z", "feat/recall", gone),
+        # A tool call, newest of all, with no text block: what a live session's
+        # last record almost always is.
+        {"type": "assistant", "uuid": "n3", "sessionId": "s-new",
+         "timestamp": "2026-10-02T09:30:00Z", "gitBranch": "feat/recall",
+         "cwd": str(gone),
+         "message": {"content": [{"type": "tool_use", "name": "Bash"}]}},
         {"type": "pr-link", "sessionId": "s-new",
          "prRepository": "quaternionmedia/qmcp", "prNumber": 55},
         {"type": "ai-title", "sessionId": "s-new", "aiTitle": "Where was I"},
+    ])
+    write(sessions, "side.jsonl", [
+        dict(record("a1", "qmcp: the subagent reads the store", "s-new",
+                    "2026-10-03T09:00:00Z", "feat/recall", here),
+             agentId="a1", isSidechain=True),
+        dict(record("a2", "qmcp route tested", "s-new",
+                    "2026-10-03T10:00:00Z", "feat/recall", here),
+             agentId="a1", isSidechain=True),
     ])
     write(sessions, "vox.jsonl", [
         record("v1", "vox pause parameter", "s-vox",
@@ -142,7 +158,7 @@ def test_the_latest_session_is_the_one_whose_last_turn_is_latest(store):
     found = recalled(store, "qmcp")
     assert found.chosen
     assert found.thread == "s-new"
-    assert found.last_activity == "2026-10-02T09:00:00Z"
+    assert found.last_activity == "2026-10-02T09:30:00Z"
 
 
 def test_a_workspace_survey_is_not_the_latest_work_in_a_project(store):
@@ -156,6 +172,20 @@ def test_a_workspace_survey_is_not_the_latest_work_in_a_project(store):
     assert recalled(store, "vox").thread == "s-vox"
 
 
+def test_a_subagent_s_sidechain_is_a_step_and_not_where_the_person_was(store):
+    """`s-new/agent-a1` is the newest thread about qmcp in the store and is a
+    subagent's conversation. The person was in `s-new`, which launched it;
+    "where was I" names the session and not the step it ran. On a real store
+    the newest thread about a project was a sidechain of the very session
+    asking the question.
+
+    Mutation: drop the `sidechain` check and this chooses `s-new/agent-a1`.
+    """
+    found = recalled(store, "qmcp")
+    assert found.thread == "s-new"
+    assert "/agent-" not in found.thread
+
+
 def test_a_session_about_two_projects_is_a_candidate_for_each(store):
     """`s-both` is about qmcp and vox. With the two dedicated sessions removed
     it is what each project recalls."""
@@ -167,10 +197,11 @@ def test_a_session_about_two_projects_is_a_candidate_for_each(store):
 
 
 def test_how_many_were_considered_is_reported_beside_how_many_were_read(store):
-    """Three sessions are about qmcp (`s-old`, `s-new`, `s-both`, plus the
-    undated one makes four); the survey is not one of them; six were read."""
+    """Four sessions are about qmcp: `s-old`, `s-new`, `s-both` and the undated
+    one. The survey and the sidechain are not counted among them; every thread
+    in the store was read to find them."""
     found = recalled(store, "qmcp")
-    assert found.read == 6
+    assert found.read == 7
     assert found.considered == 4
 
 
@@ -194,7 +225,7 @@ def test_nothing_about_the_project_is_an_answer_not_an_error(store):
     found = recalled(store, "rad")
     assert not found.chosen
     assert found.thread is None
-    assert found.read == 6
+    assert found.read == 7
     assert found.considered == 0
     assert "Nothing in the archive is about rad" in found.spoken()
     assert found.rule in found.spoken()
@@ -208,7 +239,8 @@ def test_the_rule_is_consolidate_s_rule_and_is_reported(store):
 
     found = recalled(store, "qmcp")
     assert found.rule.startswith(about(Thread(id="-"), NAMES).rule)
-    assert "surveying the workspace is passed over" in found.rule
+    assert "surveying the workspace" in found.rule
+    assert "sidechain" in found.rule
 
 
 # --- what the chosen session carries ------------------------------------------
@@ -243,7 +275,14 @@ def test_no_checkout_means_no_claim_about_one(store):
     assert found.cwd_exists is None
 
 
-def test_the_last_turns_are_the_last_few_flattened_for_speech(store):
+def test_the_last_turns_are_the_last_few_that_said_something(store):
+    """`s-new`'s newest record is a tool call with no text. Taking the last
+    turns by position quoted an empty string -- "Its last turn said: ." was
+    what the first run on a real store spoke.
+
+    Mutation: slice `thread.turns[-turns:]` without dropping empty text and
+    the last entry is "".
+    """
     found = recalled(store, "qmcp")
     assert [said.text for said in found.last_turns] == [
         "qmcp recall: read the store",
@@ -277,7 +316,7 @@ def test_spoken_names_branch_checkout_pull_request_and_last_turn(store):
     assert "which is no longer on disk" in said
     assert "It opened pull request 55 in quaternionmedia/qmcp." in said
     assert "Its last turn said: the qmcp route is registered before the source route." in said
-    assert said.endswith("4 sessions about qmcp were read, of 6 in all.")
+    assert said.endswith("4 sessions about qmcp were read, of 7 in all.")
 
 
 def test_spoken_says_when_a_checkout_is_still_there_by_saying_nothing(store):

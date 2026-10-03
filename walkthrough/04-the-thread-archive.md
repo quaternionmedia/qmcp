@@ -305,8 +305,8 @@ What a synthesizer says, in full:
 Three were read -- the two from earlier on this page are still in the store --
 and one was about `qmcp`. A project nothing is about is an answer, not an error:
 
-    >>> recall("vox", [ClaudeCodeThreads(root=sessions)], names, now).spoken()
-    'Nothing in the archive is about vox. 3 threads were read; the rule was: named in the title, or in at least 2 turns; a thread surveying the workspace is passed over.'
+    >>> print(recall("vox", [ClaudeCodeThreads(root=sessions)], names, now).spoken())
+    Nothing in the archive is about vox. 3 threads were read; the rule was: named in the title, or in at least 2 turns; a thread surveying the workspace, and a subagent's sidechain, are passed over.
 
 The same answer is served on loopback, and a literal segment beats the
 two-parameter route beside it because it was registered first:

@@ -239,11 +239,20 @@ def recall(project: str, sources: Iterable[Any], names: Iterable[str],
             # relate it to any of them. The same reading applies here.
             if project not in reading.projects or reading.relation is None:
                 continue
+            # A subagent's sidechain is, from the session's perspective, a
+            # step -- `claudecode.py` says why it is a thread of its own. The
+            # person was never in that conversation, so "where was I" names
+            # the session that launched it and not the step it ran. On a real
+            # store the newest thread about a project was a sidechain of the
+            # session asking, which is the question answering itself.
+            if getattr(source, "context", {}).get(thread.id, {}).get("sidechain"):
+                continue
             candidates.append((_last_activity(thread), thread.id, thread, source))
 
     if not rule:
         rule = about(Thread(id="-"), known).rule
-    rule += "; a thread surveying the workspace is passed over"
+    rule += ("; a thread surveying the workspace, and a subagent's sidechain, "
+             "are passed over")
 
     if not candidates:
         return Recall(project=project, rule=rule, read=read, considered=0,
@@ -276,7 +285,7 @@ def recall(project: str, sources: Iterable[Any], names: Iterable[str],
         # that directory is still there is a fact about this machine today.
         cwd_exists=Path(cwd).is_dir() if cwd else None,
         pulls=tuple(sorted(context.get("pulls") or [])),
-        last_turns=tuple(_said(turn, chars) for turn in thread.turns[-turns:]),
+        last_turns=_last_said(thread, turns, chars),
     )
 
 
@@ -348,3 +357,17 @@ def for_speech(text: str, chars: int = SPEECH_CHARS) -> tuple[str, bool]:
 def _said(turn: Any, chars: int) -> Said:
     text, truncated = for_speech(turn.text, chars)
     return Said(role=turn.role, at=turn.at, text=text, truncated=truncated)
+
+
+def _last_said(thread: Thread, turns: int, chars: int) -> tuple[Said, ...]:
+    """The last few turns that *said* something, in order.
+
+    A live session's newest turn is very often a tool call with no text block
+    -- `claudecode._text_of` skips those on purpose -- and a recall that took
+    the last turns by position read "Its last turn said:" and then nothing. A
+    turn with no words is not a turn a speaker can quote, so the window is the
+    last `turns` that have any.
+    """
+    said = [_said(turn, chars) for turn in thread.turns]
+    spoken = [s for s in said if s.text]
+    return tuple(spoken[-turns:])
