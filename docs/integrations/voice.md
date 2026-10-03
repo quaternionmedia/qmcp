@@ -191,11 +191,11 @@ The loop announces its own states to the STT backend as it goes: `speaking`
 before each question or re-ask (a re-ask carries `reason`, `noinput` or
 `nomatch`; an open question's read-back carries `confirm`, and the question
 re-spoken after `again` carries `again`), `recorded` with the answer once it
-is submitted, and `gave_up` with what was last heard. vox's `HttpSTT.announce` posts them to the engine's
-`conversation` route when its contract names one. joe's does, and joe's front
-end shows the whole turn live: the question, the open microphone, the person
-speaking, the pause, the reading, and the answer. The engine reports the
-microphone's states itself.
+is submitted, and `gave_up` with what was last heard. vox's `HttpSTT.announce`
+posts them to the engine's `conversation` route when its contract names one.
+joe's does, and joe's front end shows the whole turn live: the question, the
+open microphone, the person speaking, the pause, the reading, and the answer.
+The engine reports the microphone's states itself.
 
 Announcing is optional on both sides. A backend without `announce`, or an
 engine without the route, changes nothing, and an announcement that fails is

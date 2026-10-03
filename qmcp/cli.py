@@ -1641,10 +1641,10 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
 
     Speaks the prompt through a synthesizer, listens via a running speech
     engine, and submits the answer: one of the request's options, or for a
-    request with none, the transcript read back and confirmed. Unlike `human list` and
-    `human respond`, this goes over HTTP rather than straight to the
-    database: recognition only exists behind a running `qmcp serve` and a
-    running engine, so there is no offline path here to preserve.
+    request with none, the transcript read back and confirmed. Unlike
+    `human list` and `human respond`, this goes over HTTP rather than straight
+    to the database: recognition only exists behind a running `qmcp serve` and
+    a running engine, so there is no offline path here to preserve.
 
     --engine names a module in `vox.adapters`; vox states the contract and
     names no engine of its own.
