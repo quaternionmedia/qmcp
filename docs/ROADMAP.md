@@ -347,9 +347,54 @@ this server.
 
 ---
 
+## Phase 10: The Spoken Instruction
+
+The voice loop answers questions an agent asks: a closed choice, spoken and
+recorded on the human queue (`docs/integrations/voice.md`). This phase runs the
+other direction. A person speaks an instruction, it is recorded against a
+project, an agent acts on it in that project's clone, and the result is spoken
+back -- so work continues across sessions and repositories from the record this
+server keeps, not from whichever conversation happens to be open.
+
+What it composes already exists: joe records until the speaker stops and
+transcribes (`/api/voice/listen`, with the cap and the pause both adjustable);
+vox carries the engine contract and the synthesizer; the human queue holds
+consent; `qmcp.spend` and `qmcp.governed` refuse unconsented spending; and the
+thread archive (`/v1/threads`, `qmcp threads consolidate`) reads which session
+worked in which checkout, on which branch, toward which pull requests, and which
+projects a thread is about.
+
+### Deliverables
+
+One pull request each, in this order; each is useful before the next exists.
+
+- [ ] **Free-text answers by voice.** `run_once` asks every request as a closed choice and gives a request without `options` the options approve and reject, so an `input` request answered "yes" records `approve`. A request without options takes the transcript as its answer, read back once for confirmation
+- [ ] **An agent can ask.** `qmcp_mcp.py` lists and answers the human queue but cannot create a request or wait on one. A tool that creates one and then polls the pending listing -- which expires nothing -- until it is answered or expires lets a session in any repository put a question to the voice loop
+- [ ] **"Where was I?"** A spoken summary of a project's latest work, read from the thread archive: the session, its branch, its pull requests, its last turn. Read-only; no agent runs and nothing is spent
+- [ ] **An instruction inbox.** `/v1/instructions` (POST, GET), loopback-only as the voice routes are, records an utterance, the project it resolved to, and its source. Recording executes nothing. Resolution reuses `consolidate`'s roster matching, and an ambiguous or unmatched name is asked back as a closed choice rather than guessed. joe's page offers it beside "Answer by voice"
+- [ ] **Acting on an instruction.** A worker takes an instruction, declares its spend, asks consent on the human queue -- the existing voice approval -- and runs an agent in the project's clone, continuing the session the archive names where there is one. The agent runtime sits behind an adapter, as speech engines do behind `vox.adapters`. This is Phase 9's execution route or its sibling, through the same governed seam
+- [ ] **The result, spoken.** The outcome is recorded against the instruction and spoken as a short summary; the full result stays in the record. Progress uses the announcement states joe's conversation panel already reads
+
+### Acceptance Criteria
+
+- [ ] An instruction spoken at joe's page appears in `/v1/instructions` with its project, and nothing runs until consent is given
+- [ ] A refused or unanswered consent spends nothing, and a walkthrough shows it
+- [ ] "Where was I?" about a project gives the same answer after every process has restarted
+- [ ] A cookbook check in the shape of `qmcp cookbook voice` runs the path offline on vox's deterministic engine, and has been seen to go red
+
+### Constraints going in
+
+- **Endpointing is tuned for short answers.** The listen route ends a take `silence_ms` after the speaker stops (default 800), and an instruction has pauses mid-thought. The route already accepts a longer pause and cap, so this is a parameter rather than new code. joe's `/api/capture/start` and `/stop` would serve as push-to-talk, but their docstring says they record from the default device rather than the microphone `joe voice setup` saved; establish which before relying on them
+- **Whether project names transcribe reliably is unmeasured.** Resolution confirms rather than trusts, so it does not have to be
+- **Latency on a sentence-length utterance is unmeasured.** The faster-whisper comparison in `governance/qm/perspectives/2026-09-28-the-voice-loop-meets-the-field.md` bears on it, and is evidence rather than a decision
+- **`run_forever` has no bound on an idle queue**, and a standing worker needs one
+- **One conversation at a time, on loopback, with synthesis in a process of its own** (the synthesizer needs a main thread on Windows). An instruction and its consent question share that slot
+
+---
+
 ## Current Sprint
 
-Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
+Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work, and Phase 10 is planned. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
 
 **Phase Summary:**
 | Phase | Description | Tests |
