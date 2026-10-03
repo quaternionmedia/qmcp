@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 # qmcp_mcp imports the MCP SDK at module level, and that SDK is an optional
@@ -496,16 +497,22 @@ class _Queue:
     """A scripted server for the asking tools, standing in for httpx.get.
 
     `looks` is what the pending listing holds at each look, in order; the last
-    entry repeats, so a question that stays pending stays pending. The listing
-    honours `offset` and `limit` the way the server does, so paging is real.
-    `detail` is what reading the one request returns. Every GET is recorded
-    with its URL, so a test can say which routes were read and how often.
+    entry repeats, so a question that stays pending stays pending. A look is
+    one page, not one poll: the listing honours `offset` and `limit` the way
+    the server does, so paging is real, and a queue that changes between two
+    pages of one poll is scripted as two looks. `detail` is what reading the
+    one request returns -- one body, or a list of bodies served in order with
+    the last repeating. Every GET is recorded with its URL, so a test can say
+    which routes were read and how often. A `listing_status` of 4xx or 5xx is
+    a listing the server refuses, and its `raise_for_status` raises the way
+    httpx's does -- a MagicMock's raises nothing, which is why it is set here.
     """
 
-    def __init__(self, looks, detail=None, detail_status=200):
+    def __init__(self, looks, detail=None, detail_status=200, listing_status=200):
         self.looks = list(looks)
-        self.detail = detail
+        self.details = list(detail) if isinstance(detail, list) else [detail]
         self.detail_status = detail_status
+        self.listing_status = listing_status
         self.calls: list[tuple[str, dict | None]] = []
 
     def get(self, url, params=None, timeout=None):
@@ -516,11 +523,16 @@ class _Queue:
             pending = self.looks.pop(0) if len(self.looks) > 1 else self.looks[0]
             offset, limit = params["offset"], params["limit"]
             page = [{"id": rid, "status": "pending"} for rid in pending[offset:offset + limit]]
-            resp.status_code = 200
+            resp.status_code = self.listing_status
             resp.json.return_value = {"requests": page, "count": len(page)}
+            if self.listing_status >= 400:
+                resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+                    f"{self.listing_status} on the listing", request=MagicMock(), response=resp
+                )
         else:
             resp.status_code = self.detail_status
-            resp.json.return_value = self.detail
+            served = self.details.pop(0) if len(self.details) > 1 else self.details[0]
+            resp.json.return_value = served
         return resp
 
     def listing_reads(self) -> int:
@@ -539,6 +551,10 @@ def _answered(request_id: str, answer: str, by: str = "vox") -> dict:
 
 def _expired(request_id: str) -> dict:
     return {"request": {"id": request_id, "status": "expired"}, "response": None}
+
+
+def _pending(request_id: str) -> dict:
+    return {"request": {"id": request_id, "status": "pending"}, "response": None}
 
 
 class TestCreateHumanRequest:
@@ -571,12 +587,26 @@ class TestCreateHumanRequest:
 
     def test_open_question_sends_no_options(self):
         # Seen to fail: with options sent unconditionally (as null), the
-        # "not in" below went red.
+        # "not in" below went red; with `context` sent as given (null when
+        # none was given, which the server refuses as a 422), the equality
+        # went red.
         mock_resp = MagicMock(status_code=201)
         mock_resp.json.return_value = {"id": "q-2"}
 
         with patch("qmcp_mcp.httpx.post", return_value=mock_resp) as post:
             mcp_mod.create_human_request("Which branch?", request_id="q-2")
+
+        assert "options" not in post.call_args.kwargs["json"]
+        assert post.call_args.kwargs["json"]["context"] == {}
+
+    def test_an_empty_option_list_is_an_open_question(self):
+        # Seen to fail: with options sent whenever not None, the body carried
+        # "options": [] and the "not in" below went red.
+        mock_resp = MagicMock(status_code=201)
+        mock_resp.json.return_value = {"id": "q-5"}
+
+        with patch("qmcp_mcp.httpx.post", return_value=mock_resp) as post:
+            mcp_mod.create_human_request("Which branch?", options=[], request_id="q-5")
 
         assert "options" not in post.call_args.kwargs["json"]
 
@@ -606,7 +636,9 @@ class TestCreateHumanRequest:
         # Seen to fail: with the 422 branch removed, raise_for_status on a
         # MagicMock raises nothing and the result had no "error" key.
         mock_resp = MagicMock(status_code=422)
-        mock_resp.json.return_value = {"detail": [{"loc": ["body", "timeout_seconds"], "msg": "too short"}]}
+        mock_resp.json.return_value = {
+            "detail": [{"loc": ["body", "timeout_seconds"], "msg": "too short"}]
+        }
 
         with patch("qmcp_mcp.httpx.post", return_value=mock_resp):
             result = mcp_mod.create_human_request("Quick?", request_id="q-3", expires_in_seconds=1)
@@ -638,7 +670,9 @@ class TestAwaitHumanResponse:
         # Three looks at the listing, then one read -- and nothing read
         # while the id was still listed.
         routes = [url.rsplit("/v1/", 1)[1] for url, _ in queue.calls]
-        assert routes == ["human/requests", "human/requests", "human/requests", "human/requests/q-1"]
+        assert routes == [
+            "human/requests", "human/requests", "human/requests", "human/requests/q-1",
+        ]
         assert sleep.call_count == 2
 
     def test_the_single_read_happens_exactly_once(self):
@@ -670,7 +704,8 @@ class TestAwaitHumanResponse:
         # would expire a question somebody could still have answered.
         queue = _Queue(looks=[["q-1"]], detail=_answered("q-1", "approve"))
 
-        with patch("qmcp_mcp.httpx.get", side_effect=queue.get), patch("qmcp_mcp.time.sleep") as sleep:
+        with patch("qmcp_mcp.httpx.get", side_effect=queue.get), \
+             patch("qmcp_mcp.time.sleep") as sleep:
             result = mcp_mod.await_human_response("q-1", timeout_seconds=0)
 
         assert result == {"status": "timeout", "request_id": "q-1", "response": None}
@@ -705,6 +740,83 @@ class TestAwaitHumanResponse:
         assert queue.detail_reads() == 0
         offsets = [params["offset"] for _, params in queue.calls]
         assert offsets == [0, mcp_mod._PENDING_PAGE]
+
+    def test_an_id_on_the_first_page_of_a_deep_listing_is_kept(self):
+        # Seen to fail: with `_pending_ids` building its set afresh from each
+        # page (`ids = {...}` for `ids.update(...)`), so that every page but
+        # the last was dropped, the id on page one was taken as answered, the
+        # detail was read, and the status below read "answered". The test
+        # above cannot see that: its only datum sits on page two.
+        deep = ["q-1"] + [f"other-{n}" for n in range(mcp_mod._PENDING_PAGE)]
+        queue = _Queue(looks=[deep], detail=_answered("q-1", "approve"))
+
+        with patch("qmcp_mcp.httpx.get", side_effect=queue.get), patch("qmcp_mcp.time.sleep"):
+            result = mcp_mod.await_human_response("q-1", timeout_seconds=0)
+
+        assert result["status"] == "timeout"
+        assert queue.detail_reads() == 0
+        offsets = [params["offset"] for _, params in queue.calls]
+        assert offsets == [0, mcp_mod._PENDING_PAGE]
+
+    def test_an_id_that_slips_between_two_pages_is_still_waited_on(self):
+        # Seen to fail: with the one read's "pending" returned as the result,
+        # the status below read "pending" and the response was None -- the
+        # wait had ended early and handed an unanswered question back as its
+        # final word.
+        #
+        # The queue is deeper than one page and an older question is answered
+        # between the wait's first page and its second, so the awaited id
+        # moves from the first slot of page two to the last slot of page one
+        # and is on neither page the wait read.
+        others = [f"other-{n}" for n in range(mcp_mod._PENDING_PAGE)]
+        looks = [others + ["q-1"], others[1:] + ["q-1"], []]
+        queue = _Queue(looks=looks, detail=[_pending("q-1"), _answered("q-1", "approve")])
+
+        with patch("qmcp_mcp.httpx.get", side_effect=queue.get), \
+             patch("qmcp_mcp.time.sleep") as sleep:
+            result = mcp_mod.await_human_response("q-1", timeout_seconds=60, poll_seconds=2.0)
+
+        assert result["status"] == "answered"
+        assert result["response"]["response"] == "approve"
+        # Two pages, the read that found it still pending, a sleep, one more
+        # look at the listing (now empty) and the read that found the answer.
+        routes = [url.rsplit("/v1/", 1)[1] for url, _ in queue.calls]
+        assert routes == [
+            "human/requests", "human/requests", "human/requests/q-1",
+            "human/requests", "human/requests/q-1",
+        ]
+        assert sleep.call_count == 1
+
+    def test_a_pending_read_at_the_deadline_is_a_timeout(self):
+        # Seen to fail: with the wait resuming after a "pending" read without
+        # looking at the clock, the listing was read again after the deadline
+        # and the sleep count was 1.
+        others = [f"other-{n}" for n in range(mcp_mod._PENDING_PAGE)]
+        looks = [others + ["q-1"], others[1:] + ["q-1"]]
+        queue = _Queue(looks=looks, detail=_pending("q-1"))
+
+        with patch("qmcp_mcp.httpx.get", side_effect=queue.get), \
+             patch("qmcp_mcp.time.sleep") as sleep:
+            result = mcp_mod.await_human_response("q-1", timeout_seconds=0)
+
+        assert result == {"status": "timeout", "request_id": "q-1", "response": None}
+        assert queue.detail_reads() == 1
+        assert sleep.call_count == 0
+
+    def test_a_listing_the_server_refuses_is_an_error(self):
+        # Seen to fail: with `raise_for_status` dropped from `_pending_ids`,
+        # the refused page was read as if the server had accepted it and the
+        # wait ran on to its deadline, so the status below read "timeout" --
+        # the comment at `_PENDING_PAGE` says a refusal fails loudly, and
+        # this is what holds it to that.
+        queue = _Queue(looks=[["q-1"]], detail=_answered("q-1", "approve"), listing_status=422)
+
+        with patch("qmcp_mcp.httpx.get", side_effect=queue.get), patch("qmcp_mcp.time.sleep"):
+            result = mcp_mod.await_human_response("q-1", timeout_seconds=0)
+
+        assert result["status"] == "error"
+        assert "422" in result["error"]
+        assert queue.detail_reads() == 0
 
     def test_not_found(self):
         queue = _Queue(looks=[[]], detail=None, detail_status=404)

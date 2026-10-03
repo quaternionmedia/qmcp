@@ -5,13 +5,8 @@ interacting with the live qmcp server, putting a question on the human queue
 and waiting for its answer, and running tests — all accessible from any MCP
 client (Claude Desktop, Claude Code, etc.).
 
-An agent asks through three tools. `create_human_request` puts a question on
-the queue; `await_human_response` waits for it to be answered or to expire;
-`ask_human` is the two composed, and is the call an agent makes. The wait
-polls the pending listing, which has no side effects, and reads the request
-itself exactly once after it has left that listing: reading a pending request
-past its expiry is what expires it, so a loop over the detail route would
-expire the questions it was waiting on.
+An agent asks through three tools: `create_human_request`,
+`await_human_response`, and `ask_human`, which is the two composed.
 
 Usage (stdio transport):
     uv run python qmcp_mcp.py
@@ -578,8 +573,8 @@ def create_human_request(
 
     Args:
         prompt: The question, as it will be shown or spoken.
-        options: The allowed answers. Leave unset for an open question, whose
-                 answer is whatever the person says or types.
+        options: The allowed answers. Leave unset, or empty, for an open
+                 question, whose answer is whatever the person says or types.
         request_type: "approval", "input" or "review".
         request_id: An id of the caller's choosing; a readable, time-derived
                     one is made when none is given.
@@ -599,7 +594,9 @@ def create_human_request(
         "timeout_seconds": expires_in_seconds,
         "context": context or {},
     }
-    if options is not None:
+    # An empty list is an open question too, so the body carries options only
+    # when there is one to constrain the answer to.
+    if options:
         payload["options"] = options
 
     try:
@@ -628,10 +625,10 @@ def await_human_response(
     """Wait for a question on the human queue to be answered, or to expire.
 
     While the id is in the pending listing the wait sleeps and looks again,
-    and reads nothing else: `GET /v1/human/requests/{id}` expires a pending
-    request that is past its expiry, so polling it would expire the question
-    being waited on. Once the id has left the listing, the request is read
-    once, for its answer or its expired state. A timeout reads nothing.
+    and reads nothing else; once the id has left the listing the request is
+    read, for its answer or its expired state. A timeout reads nothing. The
+    listing is the only route that can be polled -- AGENTS.md, "One read in
+    this API is a write".
 
     Args:
         request_id: The id returned by create_human_request.
@@ -646,23 +643,35 @@ def await_human_response(
     """
     deadline = time.monotonic() + timeout_seconds
     try:
-        while request_id in _pending_ids(server_url):
+        while True:
+            while request_id in _pending_ids(server_url):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return {"status": "timeout", "request_id": request_id, "response": None}
+                time.sleep(min(poll_seconds, remaining))
+
+            r = httpx.get(f"{server_url}/v1/human/requests/{request_id}", timeout=10.0)
+            if r.status_code == 404:
+                return {"status": "error", "error": f"Request '{request_id}' not found"}
+            r.raise_for_status()
+            body = r.json()
+            status = body["request"]["status"]
+            if status != "pending":
+                return {
+                    "status": "answered" if status == "responded" else status,
+                    "request_id": request_id,
+                    "response": body.get("response"),
+                }
+            # Still pending, so it was on neither page the listing was read
+            # from: the listing is paged by offset, and an older question
+            # answered between two pages moves this one across the page
+            # boundary. The read changed nothing, because a pending request
+            # the listing hides is past its expiry and comes back "expired",
+            # not "pending". The wait resumes.
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return {"status": "timeout", "request_id": request_id, "response": None}
             time.sleep(min(poll_seconds, remaining))
-
-        r = httpx.get(f"{server_url}/v1/human/requests/{request_id}", timeout=10.0)
-        if r.status_code == 404:
-            return {"status": "error", "error": f"Request '{request_id}' not found"}
-        r.raise_for_status()
-        body = r.json()
-        status = body["request"]["status"]
-        return {
-            "status": "answered" if status == "responded" else status,
-            "request_id": request_id,
-            "response": body.get("response"),
-        }
     except httpx.ConnectError:
         return {"status": "error", "error": f"Cannot connect to {server_url}"}
     except Exception as exc:
@@ -681,7 +690,10 @@ def ask_human(
 
     create_human_request followed by await_human_response, with the question
     answerable for as long as the caller waits. With options it is an
-    "approval"; without, an "input" whose answer is free text.
+    "approval"; without, an "input" whose answer is free text. A question
+    nobody answers ordinarily comes back "expired" rather than "timeout": its
+    expiry is counted from creation and the wait's deadline from after it, so
+    the question leaves the pending listing first and the one read expires it.
 
     Args:
         prompt: The question.

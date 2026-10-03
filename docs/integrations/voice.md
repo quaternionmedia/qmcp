@@ -112,10 +112,9 @@ assistant connects to, can put a question on it and wait for the answer, so a
 session in any repository can ask the person at the speaker: `ask_human`
 creates the request and waits; `create_human_request` and
 `await_human_response` are the two halves, for a caller that wants to do
-something between them. The wait polls the pending listing, which expires
-nothing, and reads the request once after it has left that listing. The answer
-may arrive by voice or by a typed `qmcp human respond`, and the tool cannot
-tell which except by `responded_by`: the voice loop records `vox`.
+something between them. The answer may arrive by voice or by a typed
+`qmcp human respond`, and the tool cannot tell which except by `responded_by`:
+the voice loop records `vox`.
 `walkthrough/08-an-agent-asks.md` runs it.
 
 ## Which microphone
