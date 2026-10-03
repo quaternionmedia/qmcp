@@ -105,6 +105,18 @@ in joe's checkout and `uv run qmcp serve` here. Everything after that happens
 in joe's page. The count is kept here because a rise without a stated reason is
 a regression (`governance/qm/records/DRAFT-clis-are-for-machines-and-debugging.md`).
 
+## An agent asks
+
+The same queue runs the other way. `qmcp_mcp.py`, the MCP server a coding
+assistant connects to, can put a question on it and wait for the answer, so a
+session in any repository can ask the person at the speaker: `ask_human`
+creates the request and waits; `create_human_request` and
+`await_human_response` are the two halves, for a caller that wants to do
+something between them. The answer may arrive by voice or by a typed
+`qmcp human respond`, and the tool cannot tell which except by `responded_by`:
+the voice loop records `vox`.
+`walkthrough/08-an-agent-asks.md` runs it.
+
 ## Which microphone
 
 Recording happens on the engine's machine, and its default input is often
