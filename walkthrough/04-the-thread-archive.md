@@ -48,7 +48,8 @@ archive:
 
 A Claude Code session, because it is the one that carries the joins:
 
-    >>> def session(turns, session_id="s-1", agent=None, branch=None, pr=None):
+    >>> def session(turns, session_id="s-1", agent=None, branch=None, pr=None,
+    ...             cwd=None, at=None):
     ...     records = []
     ...     for uid, text in turns:
     ...         record = {"type": "assistant", "uuid": uid,
@@ -56,6 +57,8 @@ A Claude Code session, because it is the one that carries the joins:
     ...                   "message": {"content": [{"type": "text", "text": text}]}}
     ...         if agent: record["agentId"] = agent
     ...         if branch: record["gitBranch"] = branch
+    ...         if cwd: record["cwd"] = str(cwd)
+    ...         if at: record["timestamp"] = at
     ...         records.append(record)
     ...     if pr:
     ...         records.append({"type": "pr-link", "sessionId": session_id,
@@ -246,7 +249,75 @@ and refusing, because a 403 still tells a caller the archive is there:
 Anything unrecognised is treated as remote. A guard that fails open on an
 unfamiliar string stops guarding the first time somebody names an interface.
 
-## 7. Look at it
+## 7. Where was I?
+
+A person with several sessions open, in several repositories, asks where they
+were in one of them. The answer is in none of the windows; it is in the store,
+which already knows each session's branch, checkout and pull requests. `recall`
+reads it and says the latest of it. Read-only, and nothing is spent.
+
+Two more sessions, both about `qmcp`. The older one opened a pull request from a
+worktree that has since been removed; the newer one is still going:
+
+    >>> gone = root / "worktree-removed"
+    >>> _ = (sessions / "proj" / "recall-a.jsonl").write_text(session(
+    ...     [("r-1", "qmcp: reading the session store"),
+    ...      ("r-2", "the qmcp route is registered before the source route")],
+    ...     session_id="s-recall-a", branch="feat/threads-recall", cwd=gone,
+    ...     at="2026-10-02T09:00:00Z", pr=("quaternionmedia/qmcp", 55)),
+    ...     encoding="utf-8")
+    >>> _ = (sessions / "proj" / "recall-b.jsonl").write_text(session(
+    ...     [("r-3", "qmcp cookbook voice, offline"),
+    ...      ("r-4", "the qmcp check went red on the mutation, then green")],
+    ...     session_id="s-recall-b", branch="fix/voice-check", cwd=root,
+    ...     at="2026-10-03T08:00:00Z"), encoding="utf-8")
+
+The roster is what `consolidate` reads threads against, and `recall` reuses that
+reading rather than matching on its own:
+
+    >>> from datetime import datetime, UTC
+    >>> from qmcp.threads.recall import recall
+    >>> names = {"qmcp": "quaternionmedia/qmcp", "vox": "quaternionmedia/vox"}
+    >>> now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    >>> found = recall("qmcp", [ClaudeCodeThreads(root=sessions)], names, now)
+    >>> found.thread, found.branches, found.pulls
+    ('s-recall-b', ('fix/voice-check',), ())
+
+The newer session is chosen by its **last turn**, not by when it started. Its
+checkout is reported twice, and the second time is measured:
+
+    >>> found.cwd == str(root), found.cwd_exists
+    (True, True)
+
+The one before it ran somewhere that no longer exists, and the answer says so
+rather than sending anybody there:
+
+    >>> _ = (sessions / "proj" / "recall-b.jsonl").unlink()
+    >>> found = recall("qmcp", [ClaudeCodeThreads(root=sessions)], names, now)
+    >>> found.thread, found.cwd_exists, found.pulls
+    ('s-recall-a', False, (('quaternionmedia/qmcp', 55),))
+
+What a synthesizer says, in full:
+
+    >>> print(found.spoken().replace(str(gone), "<the removed worktree>"))
+    In qmcp, the last session was 1 day ago on branch feat/threads-recall in <the removed worktree>, which is no longer on disk. It opened pull request 55 in quaternionmedia/qmcp. Its last turn said: the qmcp route is registered before the source route. 1 session about qmcp was read, of 3 in all.
+
+Three were read -- the two from earlier on this page are still in the store --
+and one was about `qmcp`. A project nothing is about is an answer, not an error:
+
+    >>> recall("vox", [ClaudeCodeThreads(root=sessions)], names, now).spoken()
+    'Nothing in the archive is about vox. 3 threads were read; the rule was: named in the title, or in at least 2 turns; a thread surveying the workspace is passed over.'
+
+The same answer is served on loopback, and a literal segment beats the
+two-parameter route beside it because it was registered first:
+
+    >>> client.get("/v1/threads/recall/qmcp").json()["thread"]
+    's-recall-a'
+
+    uv run qmcp threads recall qmcp            # printed
+    uv run qmcp threads recall qmcp --speak    # said aloud, and nothing else
+
+## 8. Look at it
 
 **In the control panel, and only there.**
 

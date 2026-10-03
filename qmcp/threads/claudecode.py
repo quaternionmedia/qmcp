@@ -10,7 +10,8 @@ tracking work it is better than either web export, because of what it already
 knows:
 
     gitBranch       which branch the session was working on
-    cwd             which checkout
+    cwd             which checkout, carried on every record and kept in order
+                    of first appearance
     pr-link         which pull requests the session produced, by number and
                     repository
 
@@ -274,6 +275,9 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
     """One session file as a thread, plus what it knows about its work."""
     turns: list[Turn] = []
     branches: set[str] = set()
+    # In order of first appearance rather than a set, because a session that
+    # moved between checkouts has a *latest* one, and `recall` names it.
+    cwds: list[str] = []
     repositories: list[str] = []
     pulls: set[tuple[str, int]] = set()
     title: str | None = None
@@ -290,6 +294,8 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
 
         if record.get("gitBranch"):
             branches.add(str(record["gitBranch"]))
+        if record.get("cwd") and str(record["cwd"]) not in cwds:
+            cwds.append(str(record["cwd"]))
 
         if kind == "ai-title" and record.get("aiTitle"):
             title = str(record["aiTitle"])
@@ -324,6 +330,7 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
         turns=tuple(turns),
     ), {
         "branches": branches,
+        "cwds": cwds,
         "repositories": repositories,
         "pulls": pulls,
         # What this file was a sidechain of, so the subagent's thread can be

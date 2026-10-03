@@ -2,6 +2,7 @@
 
     GET /v1/threads                       what is indexed
     GET /v1/threads/diverged              exports disagreeing with an earlier record
+    GET /v1/threads/recall/{project}      where a project's last session left off
     GET /v1/threads/{source}/{id}         one thread
     GET /v1/threads/{source}/{id}/deltas  what it settled
 
@@ -300,12 +301,16 @@ def _reindex(root: Path, sessions: Path | None) -> dict[str, Any]:
     }
 
 
-def register(app: Any, root: Path, sessions: Path | None = None) -> None:
+def register(app: Any, root: Path, sessions: Path | None = None,
+             corpus: Path | None = None) -> None:
     """Attach the read-only routes to a FastAPI app.
 
     Takes the app rather than creating one, so the archive is served by the
     same process that already serves tools and the human queue -- one thing to
     start, one port, one place bound to loopback.
+
+    `corpus` is where the roster is read from for `recall`; None means the
+    corpus this repository embeds.
     """
     from fastapi import HTTPException
 
@@ -335,6 +340,25 @@ def register(app: Any, root: Path, sessions: Path | None = None) -> None:
                      "somebody editing history, or an id being reused. Nothing "
                      "here is repaired."),
         }
+
+    # REGISTERED BEFORE `/v1/threads/{source}/{identifier}`, AND THE ORDER IS
+    # THE ROUTE. Routes match in the order they were added, so a literal
+    # segment declared after the two-parameter route would never be reached:
+    # `recall` would be read as a source name, refused as one nobody declared,
+    # and the 404 would look exactly like an archive with nothing in it.
+    @app.get("/v1/threads/recall/{project}")
+    async def recall_project(project: str) -> dict[str, Any]:
+        """Where a project's last session left off, from the store, read-only.
+
+        `qmcp.threads.recall` is the whole of it; this is the same answer over
+        a socket, on loopback only like every route here, so a page or a voice
+        loop can ask without becoming this process.
+        """
+        from qmcp.threads.recall import names_for, recall
+
+        found = recall(project, sources_for(root, sessions).values(),
+                       names_for(project, corpus))
+        return found.as_dict()
 
     @app.post("/v1/threads/reindex")
     async def reindex_only(body: dict[str, Any] | None = None) -> dict[str, Any]:
