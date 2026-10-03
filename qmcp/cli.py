@@ -418,10 +418,10 @@ def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: st
 
     Offline by default: a qmcp server on an ephemeral port over a database
     made for the run, and vox's deterministic engine in place of a speech
-    engine. Four scripted answers go through the real path (a yes, an option
-    by name, a mismatch, and silence), and each ending is checked. No
-    microphone, speakers or model are needed, and the configured queue is not
-    touched.
+    engine. Scripted answers go through the real path (a yes, an option by
+    name, a mismatch, silence, and an open question read back and recorded),
+    and each ending is checked. No microphone, speakers or model are needed,
+    and the configured queue is not touched.
 
     `--live` asks one question aloud ("Voice check. Say approve or hold.")
     through the configured server and a running engine, and reports what was
@@ -1640,7 +1640,8 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
     """Answer one (or, with --forever, every) pending request by voice.
 
     Speaks the prompt through a synthesizer, listens via a running speech
-    engine, and submits the parsed yes/no. Unlike `human list` and
+    engine, and submits the answer: one of the request's options, or for a
+    request with none, the transcript read back and confirmed. Unlike `human list` and
     `human respond`, this goes over HTTP rather than straight to the
     database: recognition only exists behind a running `qmcp serve` and a
     running engine, so there is no offline path here to preserve.

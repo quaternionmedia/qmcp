@@ -174,12 +174,24 @@ noinput), or *"I heard: banana."* when something was heard and was unusable
 repeats the options. Exhausting the budget raises `UnclearResponse` and
 submits nothing: an ambiguous answer is never guessed at.
 
+A request with no `options` is an open question, and the transcript is the
+answer: *"What should the branch be called?"* is spoken as it is, and what is
+heard is read back once as a closed choice — *"I heard: release candidate. Say
+record or again."* The read-back goes through the same helpers, so a yes
+records and a no listens again; `again` re-speaks the question; silence and a
+confirmation that matches neither are re-asked as noinput and nomatch. One
+budget covers the dialog: each turn the speaker has to be asked a second time,
+whether for the answer or for the confirmation, costs a retry, and exhausting
+it raises and submits nothing. An `input` request answered "yes" therefore
+records `yes`, not `approve`; a request with options is unaffected.
+
 ## Watching the exchange
 
 The loop announces its own states to the STT backend as it goes: `speaking`
 before each question or re-ask (a re-ask carries `reason`, `noinput` or
-`nomatch`), `recorded` with the option once it is submitted, and `gave_up`
-with what was last heard. vox's `HttpSTT.announce` posts them to the engine's
+`nomatch`; an open question's read-back carries `confirm`, and the question
+re-spoken after `again` carries `again`), `recorded` with the answer once it
+is submitted, and `gave_up` with what was last heard. vox's `HttpSTT.announce` posts them to the engine's
 `conversation` route when its contract names one. joe's does, and joe's front
 end shows the whole turn live: the question, the open microphone, the person
 speaking, the pause, the reading, and the answer. The engine reports the
@@ -222,10 +234,10 @@ uv run qmcp cookbook voice --live   # a person at this machine is heard
 
 **Offline**, a qmcp server is started on an ephemeral port over a database
 made for the run, and vox's deterministic engine stands in for the speech
-engine. Four scripted answers go through the real path: the request created
-over HTTP, the prompt synthesized to a file, the answer returned over the
-engine contract, and the response submitted and read back. Each ending is
-checked against its script:
+engine. Scripted answers go through the real path: the request created over
+HTTP, the prompt synthesized to a file, the answer returned over the engine
+contract, and the response submitted and read back. Each ending is checked
+against its script:
 
 | heard | the queue afterwards |
 |---|---|
@@ -233,6 +245,7 @@ checked against its script:
 | "Hold." | `hold`, by `vox`: an option by name |
 | "banana" | nothing; re-asked "I heard: banana." |
 | (silence) | nothing; re-asked "I didn't hear anything." |
+| "release candidate", then "record" | `release candidate`, by `vox`: an open question, read back and confirmed |
 
 The configured queue is not touched, and no microphone, speaker or model is
 needed. `tests/test_cookbook_voice.py` runs it and makes sure it can fail: a
