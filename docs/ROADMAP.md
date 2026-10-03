@@ -20,7 +20,7 @@ This document outlines the phased implementation plan for building a production-
 - ✅ 4 built-in tools
 - ✅ Agent framework schemas + mixins
 - ✅ PydanticAI integration for agent execution
-- ✅ 148+ passing tests
+- ✅ A test suite that runs under `uv run pytest -q` and in `tests.yml`; a reader who wants the count runs it
 
 ---
 
@@ -337,7 +337,7 @@ this server.
 - [x] The `topology` address kind, ahead of the corpus's grammar; the shared-vectors test reads the corpus's vector once it exists
 - [ ] **An execution route.** Run a shape whose plane status is `runs` against declared workers and a declared budget, through the governed seam; the spend declared and consented here (`records/DRAFT-no-unattended-spending.md` in the corpus), the refusal asked of `orchestration.refuses` at run. Nothing a window sends turns a draft into a decision
 - [ ] **An event stream** (`/v1/events`), after the window's polling overlay exists -- one more surface to govern, so it comes second by decision
-- [ ] Answering the human queue from a web window is **deferred by decision** in the corpus's plan; build nothing for it until it has been reviewed
+- [ ] Answering the human queue from a web window, in part. A page may **start a spoken answer** -- `POST /v1/human/requests/{id}/voice`, loopback-only, is what joe's "Answer by voice" calls -- and the answer is still spoken and recorded as a voice answer. **Typing an answer into a window remains deferred by decision** in the corpus's plan; build nothing for it until it has been reviewed
 
 ### Acceptance Criteria
 
@@ -384,7 +384,7 @@ One pull request each, in this order; each is useful before the next exists.
 
 ### Constraints going in
 
-- **Endpointing is tuned for short answers.** The listen route ends a take `silence_ms` after the speaker stops (default 800), and an instruction has pauses mid-thought. The route already accepts a longer pause and cap, so this is a parameter rather than new code. joe's `/api/capture/start` and `/stop` would serve as push-to-talk, but their docstring says they record from the default device rather than the microphone `joe voice setup` saved; establish which before relying on them
+- **Endpointing is tuned for short answers.** The listen route ends a take `silence_ms` after the speaker stops (default 800), and an instruction has pauses mid-thought. The pause is a parameter of the engine contract that the engine honours, and the vendored vox must carry it: a `vox` pin whose `HttpSTT.listen` sends only the duration cannot ask for a longer pause, however long the route would accept. joe's `/api/capture/start` and `/stop` would serve as push-to-talk, but their docstring says they record from the default device rather than the microphone `joe voice setup` saved; establish which before relying on them
 - **Whether project names transcribe reliably is unmeasured.** Resolution confirms rather than trusts, so it does not have to be
 - **Latency on a sentence-length utterance is unmeasured.** The faster-whisper comparison in `governance/qm/perspectives/2026-09-28-the-voice-loop-meets-the-field.md` bears on it, and is evidence rather than a decision
 - **`run_forever` has no bound on an idle queue**, and a standing worker needs one
@@ -397,17 +397,18 @@ One pull request each, in this order; each is useful before the next exists.
 Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work, and Phase 10 is planned. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
 
 **Phase Summary:**
-| Phase | Description | Tests |
-|-------|-------------|-------|
-| 1. Foundation | Core MCP server | 20 |
-| 2. Persistence | SQLite audit logging | 6 |
-| 3. HITL | Human-in-the-loop | 15 |
-| 4. Client | Python client + Metaflow | 16 |
-| 5. Hardening | Observability + metrics | 18 |
-| 6. Agent Framework | Schemas + mixins | 47 |
-| 7. PydanticAI | Agent runtime integration | 15 |
-| 8. Cookbook & Runner | Composable modules + MetaflowRunner | 30+ |
-| **Total** | | **167+** |
+| Phase | Description |
+|-------|-------------|
+| 1. Foundation | Core MCP server |
+| 2. Persistence | SQLite audit logging |
+| 3. HITL | Human-in-the-loop |
+| 4. Client | Python client + Metaflow |
+| 5. Hardening | Observability + metrics |
+| 6. Agent Framework | Schemas + mixins |
+| 7. PydanticAI | Agent runtime integration |
+| 8. Cookbook & Runner | Composable modules + MetaflowRunner |
+
+Each phase's tests run with the whole suite under `uv run pytest -q`; the count is the suite's to report.
 
 **Production Features:**
 - Structured JSON logging (structlog)
