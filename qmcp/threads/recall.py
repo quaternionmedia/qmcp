@@ -32,7 +32,9 @@ timestamp at all cannot be latest and sorts last.
 about yet, or whose sessions all surveyed the roster rather than working in it,
 gets a `Recall` with no thread and a sentence saying so. An exception here would
 read, at a speaker, as the archive being broken rather than as the archive
-being empty of this.
+being empty of this. A name that is blank gets the same shape with nothing
+read: the matcher's pattern for an empty word is found in every turn, and an
+answer that chose a session for no project would be the confident wrong kind.
 
 **THE CHECKOUT IS REPORTED TWICE, AND THE SECOND TIME IS MEASURED.** A session
 names its working directory, and that directory may have been a worktree
@@ -150,6 +152,8 @@ class Recall:
         decisive. The count closes it so a listener knows how much was behind
         the answer.
         """
+        if not self.project.strip():
+            return "No project was named, so nothing was read."
         if not self.chosen:
             looked = (f"{self.read} thread{'s' if self.read != 1 else ''} "
                       f"{'were' if self.read != 1 else 'was'} read")
@@ -186,7 +190,9 @@ class Recall:
             quoted = last.text if last.text.endswith((".", "!", "?")) else last.text + "."
             parts.append(f"Its last turn said: {quoted}")
 
-        counted = (f"{self.considered} session{'s' if self.considered != 1 else ''} "
+        # "threads", as in the other branch: `read` counts every source's
+        # threads, and a web export is not a session.
+        counted = (f"{self.considered} thread{'s' if self.considered != 1 else ''} "
                    f"about {self.project} {'were' if self.considered != 1 else 'was'} "
                    f"read, of {self.read} in all.")
         parts.append(counted)
@@ -200,8 +206,8 @@ def names_for(project: str, corpus: Path | None = None) -> dict[str, str]:
     needs to know how many repositories a thread named out of how many exist --
     a thread listing the workspace is not about the project it happened to
     include. Without a roster the project is the only name, and the survey rule
-    cannot fire; that is a weaker reading and the returned rule says what it
-    was read against.
+    cannot fire; that is a weaker reading, and `recall` says in its rule what
+    the names were read against so the weaker reading is visible as one.
     """
     from qmcp.threads.consolidate import roster
 
@@ -227,13 +233,30 @@ def recall(project: str, sources: Iterable[Any], names: Iterable[str],
     moment = now or datetime.now(UTC)
     read = 0
     candidates: list[tuple[datetime | None, str, Thread, Any]] = []
-    rule = ""
+
+    # The rule is `about`'s for a thread that surveys nothing, taken once rather
+    # than from whichever thread was read first: a survey's reading carries a
+    # clause about that survey, and a chosen thread is never a survey, so that
+    # clause would describe the answer wrongly whenever a survey sorted first.
+    rule = about(Thread(id="-"), known).rule
+    rule += ("; a thread surveying the workspace, and a subagent's sidechain, "
+             "are passed over")
+    # What the names were read against, so the weaker reading is visible as
+    # one: with the project as the only name, the survey rule has nothing to
+    # count against and cannot fire.
+    if len(known) > 1:
+        rule += f"; read against a roster of {len(known)} repositories"
+    else:
+        rule += ("; read against the project's name alone, so a sweep of the "
+                 "workspace cannot be told from work in it")
+
+    if not project.strip():
+        return Recall(project=project, rule=rule, as_of=_stamp(moment))
 
     for source in sources:
         for thread in source.fetch([], Budget()):
             read += 1
             reading = about(thread, known)
-            rule = rule or reading.rule
             # `relation` rather than `projects`: a survey of the workspace has
             # projects and no relation, and `consolidate` already declines to
             # relate it to any of them. The same reading applies here.
@@ -249,11 +272,6 @@ def recall(project: str, sources: Iterable[Any], names: Iterable[str],
                 continue
             candidates.append((_last_activity(thread), thread.id, thread, source))
 
-    if not rule:
-        rule = about(Thread(id="-"), known).rule
-    rule += ("; a thread surveying the workspace, and a subagent's sidechain, "
-             "are passed over")
-
     if not candidates:
         return Recall(project=project, rule=rule, read=read, considered=0,
                       as_of=_stamp(moment))
@@ -265,6 +283,8 @@ def recall(project: str, sources: Iterable[Any], names: Iterable[str],
                                    c[1]))
     when, _, thread, source = candidates[0]
     context = getattr(source, "context", {}).get(thread.id, {})
+    # The session reader keeps checkouts in order of latest appearance, so the
+    # last one is where the session most recently ran -- not where it began.
     cwds = list(context.get("cwds") or [])
     cwd = cwds[-1] if cwds else None
 
@@ -296,7 +316,7 @@ def _when(value: str | None) -> datetime | None:
     """An ISO 8601 timestamp as an aware datetime, or None when it is not one.
 
     A naive time is read as UTC rather than refused: the session store writes
-    a trailing `Z`, and a source that wrote none has still said *when*.
+    a trailing `Z`, and a web export that wrote none has still said *when*.
     """
     if not value:
         return None
@@ -314,7 +334,12 @@ def _stamp(moment: datetime) -> str:
 
 
 def _last_activity(thread: Thread) -> datetime | None:
-    """When the thread was last spoken in: the latest turn, else when it began."""
+    """When the thread was last spoken in: the latest turn, else when it began.
+
+    The fall-back is for the web exports, whose threads carry `started_at` and
+    may carry no time on any turn. A session file stamps every turn, so for
+    that source a thread with no turn times has no start either.
+    """
     times = [t for t in (_when(turn.at) for turn in thread.turns) if t is not None]
     if times:
         return max(times)

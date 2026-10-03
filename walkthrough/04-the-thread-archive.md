@@ -4,8 +4,8 @@ Everything on this page runs. It is executed by the ordinary test command, so an
 example that stops being true fails the build rather than sitting here
 misleading somebody.
 
-Three sources, one archive, one index, and four read-only routes. Nothing here
-spends anything or reaches the network.
+Three sources, one archive, one index, and the read-only routes beside them.
+Nothing here spends anything or reaches the network.
 
 ## What the archive is for
 
@@ -300,13 +300,17 @@ rather than sending anybody there:
 What a synthesizer says, in full:
 
     >>> print(found.spoken().replace(str(gone), "<the removed worktree>"))
-    In qmcp, the last session was 1 day ago on branch feat/threads-recall in <the removed worktree>, which is no longer on disk. It opened pull request 55 in quaternionmedia/qmcp. Its last turn said: the qmcp route is registered before the source route. 1 session about qmcp was read, of 3 in all.
+    In qmcp, the last session was 1 day ago on branch feat/threads-recall in <the removed worktree>, which is no longer on disk. It opened pull request 55 in quaternionmedia/qmcp. Its last turn said: the qmcp route is registered before the source route. 1 thread about qmcp was read, of 3 in all.
 
 Three were read -- the two from earlier on this page are still in the store --
 and one was about `qmcp`. A project nothing is about is an answer, not an error:
 
     >>> print(recall("vox", [ClaudeCodeThreads(root=sessions)], names, now).spoken())
-    Nothing in the archive is about vox. 3 threads were read; the rule was: named in the title, or in at least 2 turns; a thread surveying the workspace, and a subagent's sidechain, are passed over.
+    Nothing in the archive is about vox. 3 threads were read; the rule was: named in the title, or in at least 2 turns; a thread surveying the workspace, and a subagent's sidechain, are passed over; read against a roster of 2 repositories.
+
+The rule closes with what the names were read against. Without a roster the
+project is the only name, a sweep of the workspace cannot be told from work in
+it, and the rule says so instead of hiding the weaker reading.
 
 The same answer is served on loopback, and a literal segment beats the
 two-parameter route beside it because it was registered first:

@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from qmcp.threads.claudecode import ClaudeCodeThreads
-from qmcp.threads.recall import Recall, for_speech, names_for, recall
+from qmcp.threads.recall import LAST_TURNS, Recall, for_speech, names_for, recall
 from qmcp.threads.service import register
 
 NAMES = {"qmcp": "quaternionmedia/qmcp", "vox": "quaternionmedia/vox",
@@ -52,7 +52,9 @@ def store(tmp_path):
     Session   about   last turn            branch        cwd
     s-old     qmcp    2026-09-30 10:00     feat/old      <exists>
     s-new     qmcp    2026-10-02 09:30     feat/recall   <does not exist>
-                      (its newest turn is a tool call with no text)
+                      (it stepped into <exists> for two turns and came back;
+                      it has more text turns than the window carries; its
+                      newest turn is a tool call with no text)
     s-vox     vox     2026-10-02 18:00     main          <exists>
     s-both    both    2026-10-01 12:00     fix/seam      <exists>
     s-survey  all     2026-10-03 08:00     main          <exists>  (a roster sweep)
@@ -73,6 +75,12 @@ def store(tmp_path):
     write(sessions, "new.jsonl", [
         record("n1", "qmcp recall: read the store", "s-new",
                "2026-10-01T08:00:00Z", "feat/recall", gone),
+        # Two turns in a sibling checkout, then back: the checkout a recall
+        # names is where the session most recently ran, not where it began.
+        record("n1a", "the qmcp store is read with a budget of nothing", "s-new",
+               "2026-10-01T09:00:00Z", "feat/recall", here),
+        record("n1b", "qmcp reuses consolidate's reading", "s-new",
+               "2026-10-01T10:00:00Z", "feat/recall", here),
         record("n2", "the qmcp route is registered before the source route",
                "s-new", "2026-10-02T09:00:00Z", "feat/recall", gone),
         # A tool call, newest of all, with no text block: what a live session's
@@ -233,7 +241,7 @@ def test_nothing_about_the_project_is_an_answer_not_an_error(store):
 
 def test_the_rule_is_consolidate_s_rule_and_is_reported(store):
     """Matching is `consolidate.about`'s, not a second matcher's. The rule it
-    names is carried through, with the one addition this module makes."""
+    names is carried through, with this module's additions after it."""
     from qmcp.threads.base import Thread
     from qmcp.threads.consolidate import about
 
@@ -241,6 +249,49 @@ def test_the_rule_is_consolidate_s_rule_and_is_reported(store):
     assert found.rule.startswith(about(Thread(id="-"), NAMES).rule)
     assert "surveying the workspace" in found.rule
     assert "sidechain" in found.rule
+
+
+def test_the_rule_is_not_the_first_thread_s_reading(store):
+    """`about` adds a clause to a surveying thread's rule -- "it named 4 of 4
+    repositories, which reads as a survey". A chosen thread is never a survey,
+    so that clause describes the answer wrongly, and it was carried whenever
+    the survey happened to be the first file read.
+
+    Mutation: take `rule` from the first `about(...)` reading instead of from
+    `about(Thread(id="-"), known)` and this fails once the survey sorts first.
+    """
+    (store / "proj" / "survey.jsonl").rename(store / "proj" / "0-survey.jsonl")
+    found = recalled(store, "qmcp")
+    assert found.thread == "s-new"
+    assert "reads as a survey" not in found.rule
+    assert found.rule == recalled(store, "vox").rule
+
+
+def test_the_rule_says_what_the_names_were_read_against(store):
+    """With a roster the survey rule can fire; with the project as the only
+    name it cannot, and that weaker reading is stated rather than hidden.
+
+    Mutation: drop the "read against" clause and both assertions fail.
+    """
+    assert "read against a roster of 4 repositories" in recalled(store, "qmcp").rule
+    alone = recall("qmcp", [ClaudeCodeThreads(root=store)], ["qmcp"], NOW)
+    assert "read against the project's name alone" in alone.rule
+    assert alone.thread == "s-survey"
+
+
+def test_a_blank_project_name_reads_nothing(store):
+    """The matcher's pattern for an empty word is found in every turn, so a
+    blank name would choose whichever session was newest. Nothing is read and
+    the sentence says why.
+
+    Mutation: drop the `project.strip()` guard and every thread is read, one
+    is chosen, and the sentence quotes it.
+    """
+    for blank in ("", "  "):
+        found = recall(blank, [ClaudeCodeThreads(root=store)], NAMES, NOW)
+        assert not found.chosen
+        assert found.read == 0
+        assert found.spoken() == "No project was named, so nothing was read."
 
 
 # --- what the chosen session carries ------------------------------------------
@@ -254,6 +305,22 @@ def test_the_chosen_session_carries_its_branch_checkout_and_pull_requests(store)
     assert found.title == "Where was I"
     assert found.started == "2026-10-01T08:00:00Z"
     assert found.source == "claude-code"
+
+
+def test_the_checkout_is_where_the_session_most_recently_ran(store):
+    """`s-new` began in the removed worktree, stepped into the checkout that
+    still exists for two turns, and came back. The checkout named is the one
+    its latest record carries, and the reader keeps them in that order.
+
+    Mutation: in `claudecode._session`, keep `cwds` in order of first
+    appearance (`if cwd not in cwds: cwds.append(cwd)`) and this names the
+    sibling checkout the session had already left.
+    """
+    source = ClaudeCodeThreads(root=store)
+    found = recall("qmcp", [source], NAMES, NOW)
+    assert found.cwd is not None and found.cwd.endswith("worktree-removed")
+    assert [c.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+            for c in source.context["s-new"]["cwds"]] == ["checkout", "worktree-removed"]
 
 
 def test_whether_the_checkout_exists_is_measured_not_assumed(store):
@@ -280,15 +347,26 @@ def test_the_last_turns_are_the_last_few_that_said_something(store):
     turns by position quoted an empty string -- "Its last turn said: ." was
     what the first run on a real store spoke.
 
+    `s-new` has more text turns than the window carries, so the window's
+    direction is tested and not only its filter.
+
     Mutation: slice `thread.turns[-turns:]` without dropping empty text and
-    the last entry is "".
+    the last entry is ""; take `spoken[:turns]` and the first turn is quoted
+    in place of the last.
     """
     found = recalled(store, "qmcp")
     assert [said.text for said in found.last_turns] == [
-        "qmcp recall: read the store",
+        "the qmcp store is read with a budget of nothing",
+        "qmcp reuses consolidate's reading",
         "the qmcp route is registered before the source route",
     ]
     assert all(said.truncated is False for said in found.last_turns)
+    # The window is full: the fixture has more text turns than it carries, so a
+    # window that ignored `turns` would come back longer than this.
+    assert len(found.last_turns) == LAST_TURNS
+    only_one = recall("qmcp", [ClaudeCodeThreads(root=store)], NAMES, NOW, turns=1)
+    assert [said.text for said in only_one.last_turns] == [
+        "the qmcp route is registered before the source route"]
 
 
 def test_a_long_turn_is_cut_on_a_word_and_marked():
@@ -306,6 +384,24 @@ def test_markup_is_not_read_aloud():
     assert text == "Title some code and bold link"
 
 
+def test_a_web_export_s_thread_is_dated_by_its_start_and_a_naive_stamp_is_utc():
+    """The session store stamps every turn with a trailing `Z`; the web exports
+    stamp the thread and may stamp no turn, and may write no zone. Both
+    branches exist for them, and neither is reached through the session
+    fixture.
+
+    Mutation: return `None` from `_last_activity` when no turn is timed, or
+    refuse a naive stamp in `_when`, and this fails.
+    """
+    from qmcp.threads.base import Thread, Turn
+    from qmcp.threads.recall import _last_activity, _when
+
+    assert _when("2026-10-01T08:00:00") == datetime(2026, 10, 1, 8, 0, tzinfo=UTC)
+    exported = Thread(id="web", started_at="2026-10-01T08:00:00",
+                      turns=(Turn(id="t", role="user", text="qmcp"),))
+    assert _last_activity(exported) == datetime(2026, 10, 1, 8, 0, tzinfo=UTC)
+
+
 # --- rendering ----------------------------------------------------------------
 
 
@@ -316,7 +412,7 @@ def test_spoken_names_branch_checkout_pull_request_and_last_turn(store):
     assert "which is no longer on disk" in said
     assert "It opened pull request 55 in quaternionmedia/qmcp." in said
     assert "Its last turn said: the qmcp route is registered before the source route." in said
-    assert said.endswith("4 sessions about qmcp were read, of 7 in all.")
+    assert said.endswith("4 threads about qmcp were read, of 7 in all.")
 
 
 def test_spoken_says_when_a_checkout_is_still_there_by_saying_nothing(store):
@@ -399,6 +495,16 @@ def test_without_a_roster_a_workspace_sweep_cannot_be_told_from_work(store):
     body = client_for(store, store / "no-corpus-here").get(
         "/v1/threads/recall/qmcp").json()
     assert body["thread"] == "s-survey"
+    assert "read against the project's name alone" in body["rule"]
+
+
+def test_the_route_answers_a_blank_name_with_nothing_read(store, corpus):
+    """A path segment of whitespace reaches the route; it is answered as a
+    blank name, not matched against every turn."""
+    body = client_for(store, corpus).get("/v1/threads/recall/%20").json()
+    assert body["chosen"] is False
+    assert body["read"] == 0
+    assert body["spoken"] == "No project was named, so nothing was read."
 
 
 def test_the_route_is_not_swallowed_by_the_source_route(store, corpus):
