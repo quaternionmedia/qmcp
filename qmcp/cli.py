@@ -2098,6 +2098,59 @@ def selfcheck(database: Path | None, project: str | None, as_deltas: bool,
     click.echo(render(findings, owner_repo))
 
 
+# The seed runner is reached through the governance submodule rather than copied
+# into this repository, so a change to how a workflow is simulated lands there
+# once and every fork picks it up on its next pin.
+_PREFLIGHT_RUNNER = Path("governance", "qm", "project-seed", "ci", "run_workflows_locally.py")
+
+
+def _package_repo_root() -> Path:
+    """The checkout this package was imported from, independent of the cwd.
+
+    `_find_repo_root` walks up from the working directory, which is right for a
+    command run inside a project and wrong for one that must act on this
+    repository whatever directory it was started in.
+    """
+    return Path(__file__).resolve().parent.parent
+
+
+@cli.command("preflight", context_settings={"ignore_unknown_options": True})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.pass_context
+def preflight(ctx: click.Context, args: tuple[str, ...]) -> None:
+    """Run this repository's workflows locally, as the runner would.
+
+    A thin route to `governance/qm/project-seed/ci/run_workflows_locally.py`:
+    every argument is passed through unchanged (`--event`, `--ref`,
+    `--base-ref`, `--head-ref`, `--workflows`), the script runs under this
+    interpreter from the repository root, and its exit status is this
+    command's. Nothing is decided here, and the only line printed here is the
+    one saying the governance submodule is not checked out.
+
+        uv run qmcp preflight                              # a PR into main
+        uv run qmcp preflight --event push --ref main
+        uv run qmcp preflight --base-ref origin/main
+
+    The script's own docstring lists what it cannot reproduce -- `uses:` steps
+    and the runner image above all -- which is why a pass is evidence and not
+    proof.
+    """
+    repo = _package_repo_root()
+    script = repo / _PREFLIGHT_RUNNER
+    if not script.exists():
+        click.echo(
+            f"{_PREFLIGHT_RUNNER.as_posix()} is missing: the governance submodule "
+            "is not checked out. Run `git submodule update --init governance/qm`.",
+            err=True,
+        )
+        ctx.exit(2)
+    # Run from the repository root rather than the cwd: the runner's
+    # `--workflows` default is a relative path, and the repository is the
+    # thing being checked whatever directory the command was started in.
+    result = subprocess.run([sys.executable, str(script), *args], cwd=repo)
+    ctx.exit(result.returncode)
+
+
 @cli.command("deltas")
 @click.option("--project", default=None, help="owner/repo these belong to")
 @click.option("--pipeline", default="change_impact", show_default=True,

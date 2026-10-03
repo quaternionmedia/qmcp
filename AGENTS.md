@@ -208,6 +208,17 @@ Windows a running server holds `Scripts/qmcp.exe`, so a sync that reinstalls
 qmcp fails with os error 32 until the server is stopped -- which a change to
 qmcp's own dependencies needs anyway.
 
+**Every gate runs locally, and `uv run qmcp preflight` is the command.** It
+routes to `governance/qm/project-seed/ci/run_workflows_locally.py` with its
+arguments unchanged (`--event`, `--ref`, `--base-ref`, `--head-ref`,
+`--workflows`) and exits with that script's status, so a pull request is run
+through the workflows' actual steps before anybody claims they are green. The
+hosted runs under `.github/workflows/` mirror this and are not the only place
+the gates run. A pass is evidence and not proof: `uses:` steps stand in for
+nothing but the working tree, and the runner image is not reproduced, so a
+step can pass here and fail there. The script's own docstring is the full list
+of what it cannot see.
+
 ## The tag is the human gate, and nothing else is
 
 **There are exactly two human gates in this organisation.** Ratification, for
