@@ -388,6 +388,23 @@ def test_an_open_question_records_the_transcript_after_record():
     assert stt.calls == 2
 
 
+def test_a_transcripts_closing_stop_is_not_doubled_when_read_back():
+    """A transcript ends with its own stop, and the read-back and the re-ask
+    each wrap it in a sentence. Mutation: return the transcript unstripped
+    from `_said` -- red, "I heard: Release candidate.. Say record or again."."""
+    client = FakeClient()
+    client.add_pending("name-9", OPEN_PROMPT)
+    client.add_pending("pick-9", "Ship it?", options=["approve", "hold"])
+    tts = RecordingTTS()
+
+    VoiceApprovalLoop(stt=ScriptedSTT(["Release candidate.", "record"]), tts=tts,
+                      client=client).run_once("name-9")
+    VoiceApprovalLoop(stt=ScriptedSTT(["Banana!", "hold"]), tts=tts, client=client).run_once("pick-9")
+
+    assert READBACK.format("Release candidate") in tts.spoken
+    assert "I heard: Banana. Say approve or hold." in tts.spoken
+
+
 def test_an_open_question_is_not_read_as_a_closed_choice():
     """The defect: "yes" to an open question was recorded as `approve`."""
     client = FakeClient()

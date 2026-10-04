@@ -112,6 +112,12 @@ def match_option(text: str, options: list[str]) -> str | None:
     return named[0] if len(named) == 1 else None
 
 
+def _said(text: str, chars: int | None = None) -> str:
+    """What was heard, to be said back inside a sentence. A transcript carries
+    its own closing stop, which the sentence around it would double."""
+    return text.strip()[:chars].rstrip(".!?")
+
+
 def say_options(options: list[str]) -> str:
     """The spoken grammar: "Say approve or hold." / "Say red, green, or blue."."""
     if len(options) == 1:
@@ -186,7 +192,7 @@ class VoiceApprovalLoop:
                 if not heard.strip():
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {heard.strip()[:80]}. {grammar}", "nomatch"
+                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
                 self._announce("speaking", reask, reason=reason)
                 self.tts.speak(reask)
         self._announce("gave_up", heard.strip())
@@ -221,7 +227,7 @@ class VoiceApprovalLoop:
                         reask, reason = f"I didn't hear anything. {prompt}", "noinput"
                         break
                     answer = heard.strip()
-                    readback = f"I heard: {answer}. {grammar}"
+                    readback = f"I heard: {_said(answer)}. {grammar}"
                     self._announce("speaking", readback, reason="confirm")
                     self.tts.speak(readback)
                     continue
@@ -236,7 +242,7 @@ class VoiceApprovalLoop:
                 elif not heard.strip():
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {heard.strip()[:80]}. {grammar}", "nomatch"
+                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
                 break
             if reasks < self.max_retries:
                 self._announce("speaking", reask, reason=reason)
