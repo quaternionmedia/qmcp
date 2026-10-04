@@ -112,7 +112,14 @@ def say_options(options: list[str]) -> str:
 
 
 class SpeechToText(Protocol):
-    def listen(self, duration: float = 5.0) -> tuple[str, str]: ...
+    def listen(self, duration: float = 5.0, *, pause_ms: int | None = None) -> tuple[str, str]:
+        """Up to `duration` seconds, transcribed; `pause_ms` is how long a pause
+        ends the take early, for a backend that stops when the speaker does.
+
+        The closed-choice dialog never passes it, so a backend's own default
+        serves a one-word answer. An instruction has pauses mid-thought and
+        asks for a longer one (`qmcp.instructions.dialog`)."""
+        ...
 
 
 class TextToSpeech(Protocol):

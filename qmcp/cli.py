@@ -403,6 +403,7 @@ def list_recipes() -> None:
     click.echo("  docker simple-plan  Run simple-plan in Docker (explicit)")
     click.echo("  serve               Start the MCP server for Docker flows")
     click.echo("  voice               HITL approval answered by voice; offline, or --live (host)")
+    click.echo("  instruct            an instruction taken by voice and recorded, not run; offline")
 
 
 @cookbook.command("voice")
@@ -447,6 +448,25 @@ def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: st
     with HttpSTT(resolved_engine, contract=contract) as stt:
         if not run_live(client, stt, Pyttsx3TTS(), echo=click.echo):
             raise SystemExit(1)
+
+
+@cookbook.command("instruct")
+def cookbook_instruct() -> None:
+    """The spoken-instruction check: asked, confirmed, resolved, recorded, read back.
+
+    Offline, and only offline: a qmcp server on an ephemeral port over a
+    database made for the run, and vox's deterministic engine in place of a
+    speech engine. Each scripted dialog goes through the real path -- the
+    prompt synthesized to a file, every take returned over the engine
+    contract, the row recorded over HTTP and read back -- and each ending is
+    checked against its script. No microphone, speakers or model are needed,
+    and the configured inbox is not touched.
+    """
+    from qmcp.instructions.check import run_offline
+
+    _load_vox("joe", "cookbook instruct")
+    if not run_offline(echo=click.echo):
+        raise SystemExit(1)
 
 
 @cookbook.group("docker")
@@ -1737,6 +1757,133 @@ def _load_vox(engine: str, command: str):
     except (ImportError, AttributeError):
         raise SystemExit(f"No vox engine adapter named {engine!r}.")
     return HttpSTT, Pyttsx3TTS, adapter, contract
+
+
+def _print_instruction(row: dict) -> None:
+    """One row, as `instruct`, `instructions list` and `instructions show` print it."""
+    mark = "[=]" if row.get("status") == "recorded" else "[?]"
+    project = row.get("project") or "unresolved"
+    when = (row.get("created_at") or "")[:16].replace("T", " ")
+    click.echo(f"  {mark} {row['id']}  {project}  {row.get('source')}  {when}")
+    click.echo(f"      {row['text']}")
+    detail = row.get("detail") or {}
+    if row.get("status") != "recorded":
+        candidates = detail.get("candidates") or []
+        click.echo("      candidates: " + (", ".join(candidates) if candidates else "none")
+                   + f"  ({detail.get('rule')})")
+
+
+@cli.command("instruct")
+@click.argument("text", required=False)
+@click.option("--project", default=None,
+              help="the project it is for, stated outright; skips the matching")
+@click.option("--source", type=click.Choice(["typed", "page"]), default="typed",
+              show_default=True, help="how a typed instruction arrived")
+@click.option("--voice", is_flag=True, help="speak the instruction instead of typing it")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+@click.option("--engine", default="joe",
+              help="which vox.adapters entry to use for speech recognition, with --voice")
+@click.option("--engine-url", default=None,
+              help="where that engine listens, with --voice (default: the adapter's own)")
+@click.option("--duration", default=30.0, type=float, show_default=True,
+              help="seconds an instruction may take: the cap, with --voice")
+@click.option("--pause-ms", default=1500, type=int, show_default=True,
+              help="how long a pause ends the take, with --voice")
+@click.option("--max-retries", default=2, type=int, show_default=True,
+              help="re-asks before giving up on an instruction nobody confirmed")
+def instruct(text: str | None, project: str | None, source: str, voice: bool,
+             base_url: str | None, engine: str, engine_url: str | None,
+             duration: float, pause_ms: int, max_retries: int) -> None:
+    """Record an instruction against a project. Recording executes nothing.
+
+    Typed, TEXT is recorded over HTTP and the row is printed: which project
+    it resolved to, by whole-word match against the roster in governance/qm,
+    or `unresolved` with the candidates when none or several matched.
+    --project states it outright and skips the matching.
+
+    --voice asks "What should be done?" aloud, listens with a long cap and a
+    long pause (an instruction has pauses mid-thought), reads the transcript
+    back ("I heard: ... Say record or again."), and records on a yes. An
+    ambiguous project is asked back as a closed choice by name; a missing
+    one is asked for once. The engine must be reachable, as for
+    `qmcp human voice`.
+    """
+    from qmcp.client import MCPClient
+
+    if voice and text is not None:
+        raise click.UsageError("TEXT and --voice are two ways to give one instruction; pass one.")
+    if not voice and text is None:
+        raise click.UsageError("Pass the instruction as TEXT, or --voice to speak it.")
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    if not voice:
+        _print_instruction(client.create_instruction(text, source=source, project=project))
+        return
+
+    HttpSTT, Pyttsx3TTS, adapter, contract = _load_vox(engine, "instruct --voice")
+    from qmcp.instructions import roster_names
+    from qmcp.instructions.dialog import InstructionDialog
+    from qmcp.integrations.voice import UnclearResponse
+
+    resolved_engine = engine_url or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000")
+    _voice_preflight(client.base_url, resolved_engine, contract, engine)
+    with HttpSTT(resolved_engine, contract=contract) as stt:
+        dialog = InstructionDialog(stt=stt, tts=Pyttsx3TTS(), client=client,
+                                   names=roster_names(), max_retries=max_retries,
+                                   listen_duration=duration, pause_ms=pause_ms)
+        try:
+            row = dialog.run_once()
+        except UnclearResponse as exc:
+            raise SystemExit(str(exc))
+    _print_instruction(row)
+
+
+@cli.group("instructions")
+def instructions() -> None:
+    """The instruction inbox: what people have asked for, and for which project.
+
+    Over HTTP, like `instruct`: the inbox is the server's record.
+    """
+
+
+@instructions.command("list")
+@click.option("--status", "status_filter", type=click.Choice(["recorded", "unresolved"]),
+              default=None, help="only rows in this state")
+@click.option("--limit", default=50, type=int, show_default=True)
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+def instructions_list(status_filter: str | None, limit: int, base_url: str | None) -> None:
+    """What has been recorded, newest first. Nothing listed here is running."""
+    from qmcp.client import MCPClient
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    rows = client.list_instructions(status=status_filter, limit=limit)
+    if not rows:
+        click.echo("  Nothing recorded" + (f" as {status_filter}." if status_filter else "."))
+        return
+    for row in rows:
+        _print_instruction(row)
+    click.echo(f"  {len(rows)} instruction(s).")
+
+
+@instructions.command("show")
+@click.argument("instruction_id")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+def instructions_show(instruction_id: str, base_url: str | None) -> None:
+    """One instruction, with the evidence for its project."""
+    import json as _json
+
+    from qmcp.client import MCPClient, MCPClientError
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    try:
+        row = client.get_instruction(instruction_id)
+    except MCPClientError as exc:
+        raise SystemExit(str(exc))
+    _print_instruction(row)
+    click.echo("      detail: " + _json.dumps(row.get("detail") or {}, sort_keys=True))
 
 
 @cli.group("threads")

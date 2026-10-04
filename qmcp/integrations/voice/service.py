@@ -12,8 +12,12 @@ carries the preflight, the dialog and every message a person needs when the
 engine is down or the answer never came.
 
 One conversation at a time: there is one microphone and one pair of speakers.
-The routes are registered only on loopback, like the thread archive, because
-a caller elsewhere has no business making this machine speak and listen.
+`VoiceRuns` is that fact as an object, and it is shared: the instruction inbox
+(`qmcp.instructions.service`) starts `qmcp instruct --voice` through the same
+tracker, so an approval being asked and an instruction being taken cannot
+overlap, and either route's status names whichever is running. The routes are
+registered only on loopback, like the thread archive, because a caller
+elsewhere has no business making this machine speak and listen.
 """
 
 from __future__ import annotations
@@ -43,41 +47,51 @@ class VoiceRuns:
         self._popen = popen
         self._log_dir = log_dir or Path(tempfile.gettempdir())
         self._process = None
+        # What the conversation is: `approval` for a request on the human
+        # queue, `instruction` for one being taken. The request id is set only
+        # for the first, and stays in the status for the second so a reader of
+        # the payload sees one shape.
+        self._kind: str | None = None
         self._request_id: str | None = None
         self._log: Path | None = None
         self._started: float | None = None
 
     def running(self) -> str | None:
-        """The request being asked right now, or None."""
+        """What is being asked right now -- the request id, or the kind when the
+        conversation has no request -- or None."""
         with self._lock:
             if self._process is not None and self._process.poll() is None:
-                return self._request_id
+                return self._request_id or self._kind
             return None
 
-    def start(self, request_id: str, argv: list[str]) -> dict[str, Any]:
-        """Start asking `request_id`. Raises RuntimeError if one is running."""
+    def start(self, argv: list[str], kind: str = "approval",
+              request_id: str | None = None) -> dict[str, Any]:
+        """Start a conversation. Raises RuntimeError, naming what runs, if one is."""
         with self._lock:
             if self._process is not None and self._process.poll() is None:
-                raise RuntimeError(self._request_id or "")
+                raise RuntimeError(self._request_id or self._kind or "")
             self._log = self._log_dir / f"qmcp-voice-{os.getpid()}.log"
             with open(self._log, "w", encoding="utf-8") as out:
                 self._process = self._popen(
                     argv, stdout=out, stderr=subprocess.STDOUT,
                     env={**os.environ, "PYTHONIOENCODING": "utf-8"},
                 )
+            self._kind = kind
             self._request_id = request_id
             self._started = time.time()
-            return {"request_id": request_id, "running": True, "started_at": self._when()}
+            return {"kind": kind, "request_id": request_id, "running": True,
+                    "started_at": self._when()}
 
     def status(self) -> dict[str, Any]:
         """Whether a conversation is running, and how the last one ended."""
         with self._lock:
             if self._process is None:
-                return {"running": False, "request_id": None, "exit_code": None,
-                        "output": [], "started_at": None}
+                return {"running": False, "kind": None, "request_id": None,
+                        "exit_code": None, "output": [], "started_at": None}
             code = self._process.poll()
             return {
                 "running": code is None,
+                "kind": self._kind,
                 "request_id": self._request_id,
                 "exit_code": code,
                 "output": self._tail(),
@@ -139,7 +153,7 @@ def register(app: Any, engine: str, engine_url: str | None,
         if engine_url:
             argv += ["--engine-url", engine_url]
         try:
-            return runs.start(request_id, argv)
+            return runs.start(argv, kind="approval", request_id=request_id)
         except RuntimeError as exc:
             raise HTTPException(
                 status_code=409,
