@@ -347,9 +347,82 @@ this server.
 
 ---
 
+## Phase 10: The Spoken Instruction
+
+The voice loop answers questions an agent asks: a closed choice, spoken and
+recorded on the human queue (`docs/integrations/voice.md`). This phase runs the
+other direction. A person speaks an instruction, it is recorded against a
+project, the local model this server stands up reads that project's clone after
+a spoken approval, and the answer is spoken back. **Continuity comes from qmcp,
+not the model**: each instruction is handed the project's earlier instructions
+and what they found, from this server's own record, so the work continues
+across sessions and projects whichever runtime carries it.
+
+What it composes already exists: joe records until the speaker stops and
+transcribes; vox carries the engine contract and the synthesizer; the human
+queue holds consent; `qmcp.spend` and `qmcp.governed` refuse unconsented
+spending; and `qmcp.localmodel` pins the local model and plans its install.
+
+### Deliverables
+
+One pull request each, in this order; each is useful before the next exists.
+
+- [ ] **Free-text answers by voice.** `run_once` asks every request as a closed choice and gives a request without `options` the options approve and reject, so an `input` request answered "yes" records `approve`. A request without options takes the transcript as its answer, read back once for confirmation
+- [ ] **An instruction inbox.** `/v1/instructions` (POST, GET), loopback-only as the voice routes are, records an utterance, the project it resolved to, and its source. Recording executes nothing. Resolution reuses `consolidate`'s roster matching, and an ambiguous or unmatched name is asked back as a closed choice rather than guessed. joe's page offers it beside "Answer by voice"
+- [ ] **Acting on an instruction.** A worker takes an instruction, declares its spend, asks consent on the human queue -- the existing voice approval -- and hands a runtime a brief: the instruction, the clone, and the project's earlier instructions and outcomes from qmcp's record. `local`, the model `qmcp.localmodel` stands up, reads the clone with tools that cannot write and spends nothing; a coding assistant's command line sits behind the same contract and is given the same brief; no runtime resumes a conversation of its own. The clone is given once and remembered for the project
+- [ ] **The result, spoken.** The outcome is recorded against the instruction and spoken as a short summary; the full result stays in the record. Progress uses the announcement states joe's conversation panel already reads
+
+### Acceptance Criteria
+
+- [ ] An instruction spoken at joe's page appears in `/v1/instructions` with its project, and nothing runs until consent is given
+- [ ] A refused or unanswered consent spends nothing, and a walkthrough shows it
+- [ ] A second instruction in a project is told what the first one found, by a different runtime, after every process has restarted -- the history is in the record, not in the runtime
+- [ ] A cookbook check in the shape of `qmcp cookbook voice` runs the path offline on vox's deterministic engine, and has been seen to go red
+
+### Constraints going in
+
+- **Endpointing is tuned for short answers.** The engine ends a take a set pause after the speaker stops, and an instruction has pauses mid-thought. The pause is a parameter of vox's engine contract, sent only on the instruction's take, so the vendored vox must carry it
+- **Whether project names transcribe reliably is unmeasured.** Resolution confirms rather than trusts, so it does not have to be
+- **Latency on a sentence-length utterance is unmeasured.** The faster-whisper comparison in `governance/qm/perspectives/2026-09-28-the-voice-loop-meets-the-field.md` bears on it, and is evidence rather than a decision
+- **A small local model is a quick reader, not a reviewer.** It reads a few files and answers; the person who said approve hears what it found and judges it. Against the service it was built on, the model did not use the service's tool field, so its tools are a protocol stated in its prompt
+- **The local model service can stall.** On this phase's live runs a generation that reused a cached prompt prefix stopped producing tokens until its call's cap cancelled it, and later calls queued behind it until the model was unloaded. Every call is capped, so a stall is a failed run that names the endpoint, not a hang
+- **`run_forever` has no bound on an idle queue**, and a standing worker needs one
+- **One conversation at a time, on loopback, with synthesis in a process of its own** (the synthesizer needs a main thread on Windows). An instruction and its consent question share that slot
+
+---
+
+## Phase 11: Habits into Auto-Approvals
+
+Every act is asked, for every runtime, the local model included. A person who
+answers the same question the same way, again and again, has a habit; this
+phase lets them turn it into a rule they wrote, so the loop asks less without
+deciding anything on its own. It comes after Phase 10 has been used, because a
+habit is something the record shows, not something designed in advance.
+
+### Deliverables
+
+- [ ] **The habit, read from the record.** How each kind of consent has been answered -- by project, runtime, and whether the run could write -- with the counts and the most recent holds. Read-only
+- [ ] **A rule a person writes.** An auto-approval names its project, its runtime and a ceiling, is created by a person and never inferred, and is shown beside the habit that suggested it
+- [ ] **A rule that says when it acted.** An act a rule approves records the rule as its approver, so the record tells a person's consent from a rule's
+- [ ] **A rule that ends.** Every rule expires, and one command withdraws it; anything outside a rule's terms is asked as before
+
+### Acceptance Criteria
+
+- [ ] No rule exists that a person did not create, and a walkthrough shows a habit offered as a rule and declined
+- [ ] An act approved by a rule is told apart from one a person approved, on the row and on the queue
+- [ ] A run that spends, or that can write, is never approved by a rule written for one that does neither
+
+### Constraints going in
+
+- **A rule covers only runs that spend nothing.** `governance/qm/records/DRAFT-no-unattended-spending.md` clause 5 says consent to a paid call does not carry forward: no remembered permission and no session-level grant. The local model makes no paid call; a runtime that does is asked every time, whatever rule exists
+- **A standing approval is the case that record names as its revision trigger** -- "anybody proposing a remembered approval" -- and its rejected alternatives call the same mechanism the way a careful rule becomes a habit of clicking through. This phase is that proposal for runs that spend nothing, and is built only after the corpus has read it
+- **A read is not harmless by being free.** A rule's terms include whether the runtime can write, because a run that spends nothing can still change a clone
+
+---
+
 ## Current Sprint
 
-Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
+Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work, Phase 10 is built on open pull requests, and Phase 11 follows its use. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
 
 **Phase Summary:**
 | Phase | Description | Tests |
