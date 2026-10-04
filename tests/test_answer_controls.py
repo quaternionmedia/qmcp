@@ -220,8 +220,8 @@ def test_anything_else_offers_yes_or_no_and_hints_the_take_that_answers_it():
 
     asked = [a for a in stt.announced if a["text"] == ANYTHING_ELSE]
     assert asked and asked[0]["options"] == ["yes", "no"]
-    # Takes: the instruction (no hint), the answer to "Anything else?", the stop.
-    assert stt.hints[0] is None and stt.hints[1] == ["yes", "no"]
+    # Takes: the instruction, the answer to "Anything else?", the stop.
+    assert stt.hints[1][:2] == ["yes", "no"]
 
 
 def test_an_answer_by_key_needs_no_wake_word():
@@ -275,3 +275,60 @@ def test_a_request_s_spoken_form_is_what_is_said_and_its_prompt_otherwise():
         tts = _TTS()
         VoiceApprovalLoop(_STT("approve"), tts, client=Client(context)).run_once("r")
         assert tts.spoken[0] == said
+
+
+# --- the names an instruction is likely to carry ---------------------------------------
+
+
+def test_an_instruction_s_take_is_hinted_with_recent_projects_then_the_roster():
+    """Measured on a real take: "camcp" without the names, "qmcp" with them.
+    Mutation: hint the conversation's takes with the question's options only -- red."""
+
+    class Client:
+        def list_human_requests(self, **kw):
+            return []
+
+        def list_instructions(self, limit=50):
+            return [{"project": "vox"}, {"project": None}, {"project": "qmcp"}, {"project": "vox"}]
+
+    stt, tts = _STT("stop listening"), _TTS()
+    conversation = Conversation(stt, tts, Client(), runtime=None, names=["qmcp", "joe", "vox", "qm"],
+                                idle_limit=2)
+    conversation.run()
+
+    assert conversation.vocabulary() == ["vox", "qmcp", "joe", "qm"]
+    assert stt.hints[0] == ["vox", "qmcp", "joe", "qm"]
+
+
+def test_after_anything_else_the_take_is_hinted_yes_or_no_and_the_names():
+    stt, _ = _talk("Deploy qmcp.", "no", "stop listening")
+
+    assert stt.hints[1][:2] == ["yes", "no"] and "qmcp" in stt.hints[1]
+
+
+def test_a_record_that_cannot_be_read_leaves_the_roster_s_names():
+    class Client:
+        def list_human_requests(self, **kw):
+            return []
+
+        def list_instructions(self, limit=50):
+            raise ConnectionError("no server")
+
+    conversation = Conversation(_STT(), _TTS(), Client(), runtime=None, names=["qmcp", "vox"])
+
+    assert conversation.vocabulary() == ["qmcp", "vox"]
+
+
+def test_the_dialog_s_long_take_is_hinted_with_its_vocabulary():
+    """Mutation: drop the hint from the long take -- red."""
+    from qmcp.instructions.dialog import InstructionDialog
+
+    class Client:
+        def create_instruction(self, text, source, project, heard):
+            return {"id": "i", "text": text, "project": "qmcp", "status": "recorded"}
+
+    stt = _STT("Deploy qmcp.", "agree")
+    InstructionDialog(stt=stt, tts=_TTS(), client=Client(), names=["qmcp"],
+                      vocabulary=["qmcp", "vox"]).run_once()
+
+    assert stt.hints[0] == ["qmcp", "vox"]

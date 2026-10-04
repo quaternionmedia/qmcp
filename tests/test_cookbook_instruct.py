@@ -471,3 +471,14 @@ def test_the_session_fails_when_a_confident_instruction_is_still_asked(monkeypat
 
     assert result.exit_code == 1, result.output
     assert "the confident second instruction was not agreed to tacitly" in result.output
+
+
+def test_the_session_fails_when_no_instruction_is_hinted_with_the_project_names(monkeypatch):
+    from qmcp.instructions.converse import Conversation
+
+    monkeypatch.setattr(Conversation, "vocabulary", lambda self: [])
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 1, result.output
+    assert "no instruction's take was hinted with the project names" in result.output
