@@ -286,7 +286,8 @@ consent on the human queue, and runs an agent in the project's clone only on
 options `approve` and `hold`, so it is answered wherever approvals are:
 `qmcp human voice`, `qmcp human respond`, a page, or in the command itself with
 `--voice`. Its prompt says the instruction, the project, the clone, the runtime
-and the budget, and it expires in ten minutes. The clone is the checkout of the
+and the budget, and it expires after `CONSENT_SECONDS` in
+`qmcp.instructions.act`. The clone is the checkout of the
 most recently active archive thread about the project, and that thread's
 session is resumed; `--cwd` serves when the archive names none. `--runtime` has
 no default (`QMCP_AGENT_RUNTIME` stands in for it); a product is named only in

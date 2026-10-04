@@ -33,15 +33,18 @@ answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
 page, or by voice in this process when the command is given `--voice`. Its
 prompt says the instruction, the project, the clone, the runtime and the
 declared budget, because the person answering may not be the person who
-recorded it, and it expires in ten minutes: a consent nobody gave within that
-is `unanswered`, and the row says so.
+recorded it, and it expires after `CONSENT_SECONDS`: a consent nobody gave
+within that is `unanswered`, and the row says so.
 
 **THE WAIT READS THE PENDING LISTING AND NOTHING ELSE.** `AGENTS.md` records
 that reading one request expires it when its time has passed, and the listing
 applies no expiry. So the wait watches the listing until the request leaves
 it -- answered, or past its expiry -- and reads the request itself exactly
 once, afterwards, to learn which. Polling the single route would be a wait
-that expires the gate it is waiting on.
+that expires the gate it is waiting on. Behind the listing is a deadline on
+the act's own clock, two polls past the expiry, for a server whose listing
+never drops the request: the act then records `unanswered` and runs nothing,
+while the request may still sit pending there, answerable by anyone.
 
 **THE DECLARATION IS WRITTEN ON EVERY PATH**, as `qmcp.governed.Outcome`
 carries one on every path: a refusal before anything was asked, a hold, an
@@ -175,11 +178,11 @@ def configured_rows() -> Rows:
 
 
 def archive_sources() -> list[Any]:
-    """Every archive source that knows which checkout a thread worked in.
+    """The configured archive stores, as the thread routes read them.
 
-    The configured stores, as the thread routes read them. A source is used
-    when it exposes `context` after a fetch; one that does not has nothing to
-    say about checkouts and is left out rather than asked.
+    Every store, including the web exports that know nothing of checkouts:
+    `clone_for` reads only those that carry a `context`, and never fetches
+    the rest.
     """
     from qmcp.threads.cache import DEFAULT_ROOT
     from qmcp.threads.service import sources_for
@@ -192,17 +195,27 @@ def clone_for(project: str | None, sources: Iterable[Any],
     """The clone the archive names for `project`, or None.
 
     The most recently active thread about the project whose checkout still
-    exists. Threads are read from every source handed in, spending nothing;
-    a thread is about the project by `consolidate.about`'s rule, or because
-    its checkout is a directory named for the project.
+    exists. Threads are read, spending nothing, from every source handed in
+    that carries a `context` -- what `qmcp.threads.claudecode` keeps per
+    thread -- and a source without one is never fetched, because it has
+    nothing to say about checkouts. A thread is about the project when its
+    checkout is a directory named for it (exactly, ignoring case: a sibling
+    carrying the name as a prefix is another checkout), or by
+    `consolidate.about`'s rule for this project alone -- named in the title,
+    or in at least two turns. The roster is not read here, so the survey
+    reading `qmcp threads consolidate` makes across the whole roster is not
+    made, and a thread that surveyed the workspace counts as about each
+    project it named.
     """
     if not project:
         return None
     short = project.rsplit("/", 1)[-1]
     found: list[Clone] = []
     for source in sources:
+        if not hasattr(source, "context"):
+            continue
         threads = source.fetch([], Budget())
-        contexts = getattr(source, "context", None) or {}
+        contexts = source.context or {}
         for thread in threads:
             context = contexts.get(thread.id) or {}
             cwd = context.get("cwd")
@@ -263,6 +276,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
         sources: Iterable[Any] | None = None, stt: Any = None, tts: Any = None,
         on_event: OnEvent | None = None, poll_interval: float = 1.0,
         sleep: Callable[[float], None] | None = None,
+        clock: Callable[[], float] = time.monotonic,
         consent_seconds: int = CONSENT_SECONDS) -> Acted:
     """One instruction through the gate, and through the runtime only on approve.
 
@@ -272,7 +286,9 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
     the archive, defaulting to the configured stores. `stt` and `tts` together
     answer the consent by voice in this process, through the approval loop a
     `qmcp human voice` would run; without them the act waits for the answer to
-    arrive from anywhere.
+    arrive from anywhere. `sleep` and `clock` are the wait and the seconds it
+    is measured in; a test hands in both, so a consent nobody answers ends in
+    its own time rather than the wall's.
 
     Returns an `Acted` on every path a caller can provoke. Raises
     `NoSuchInstruction` for an id that names no row, because there is nothing
@@ -356,9 +372,9 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
 
     # --- the answer -------------------------------------------------------------
     reached.append("answer")
-    deadline = time.monotonic() + consent_seconds + poll_interval * 2
+    deadline = clock() + consent_seconds + poll_interval * 2
     while _is_pending(client, request_id):
-        if time.monotonic() > deadline:
+        if clock() > deadline:
             break
         sleep(poll_interval)
     _, response = client.get_human_request(request_id)

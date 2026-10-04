@@ -128,16 +128,17 @@ other:
 
 The wait watches the pending listing, which applies no expiry, until the
 request leaves it, and reads the request itself once afterwards. A consent
-lives ten minutes, and the server's floor is one, so rather than wait the page
-moves the server's clock past the expiry in place of sleeping between
-listings: the listing drops the request, the one read afterwards is what
-marks it expired, and nothing runs.
+lives `CONSENT_SECONDS`, and the server's floor is a minute, so rather than
+wait the page moves the server's clock past the expiry in place of sleeping
+between listings: the listing drops the request, the one read afterwards is
+what marks it expired, and nothing runs.
 
     >>> from datetime import datetime, timedelta
     >>> import qmcp.server
+    >>> from qmcp.instructions.act import CONSENT_SECONDS
     >>> class Later(datetime):
     ...     @classmethod
-    ...     def now(cls, tz=None): return datetime.now(tz) + timedelta(minutes=11)
+    ...     def now(cls, tz=None): return datetime.now(tz) + timedelta(seconds=CONSENT_SECONDS + 60)
     >>> def nobody_answers(seconds): qmcp.server.datetime = Later
     >>> expired = act("pin-the-vectors", runtime, Budget(authorised=1), client=client,
     ...               rows=rows, sources=[], cwd=clone, sleep=nobody_answers, poll_interval=0.05)

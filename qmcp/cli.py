@@ -22,6 +22,7 @@ import uvicorn
 
 from qmcp import __version__
 from qmcp.config import get_settings
+from qmcp.db.models import InstructionStatus
 
 
 def _find_repo_root() -> Path:
@@ -1759,10 +1760,6 @@ def _load_vox(engine: str, command: str):
     return HttpSTT, Pyttsx3TTS, adapter, contract
 
 
-# The inbox's status vocabulary, for `instructions list --status`. Read from the
-# model so the choice cannot name a state the row cannot hold.
-from qmcp.db.models import InstructionStatus  # noqa: E402
-
 # One mark per kind of state: recorded, unresolved, on the way through consent
 # or a run, ended without running, and ended with a run that succeeded.
 _INSTRUCTION_MARKS = {
@@ -1867,7 +1864,9 @@ def instructions() -> None:
 
 
 @instructions.command("list")
-@click.option("--status", "status_filter", type=click.Choice([s.value for s in InstructionStatus]),
+@click.option("--status", "status_filter",
+              # Read from the model, so the choice cannot name a state the row cannot hold.
+              type=click.Choice([s.value for s in InstructionStatus]),
               default=None, help="only rows in this state")
 @click.option("--limit", default=50, type=int, show_default=True)
 @click.option("--base-url", default=None,
@@ -1935,7 +1934,8 @@ def instructions_act(instruction_id: str, runtime_name: str | None, budget: int,
     the instruction's project, else --cwd; the session that thread was is
     resumed. A consent request `instruction-<id>` with the options approve and
     hold goes on the human queue, saying the instruction, the project, the
-    clone, the runtime and the budget, and expires in ten minutes. Approve runs
+    clone, the runtime and the budget, and expires after a fixed wait
+    (`qmcp.instructions.act.CONSENT_SECONDS`). Approve runs
     the runtime in the clone and records the outcome as `done` or `failed`;
     hold records `refused`; silence records `unanswered`. Nothing runs on any
     path but approve, and the declaration is recorded on every path.

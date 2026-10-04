@@ -39,7 +39,9 @@ class _Queue:
 
     `reads` counts calls to the single-request route, which is the one that
     expires a request as a side effect; `script` says how each request ends
-    once the act is waiting on it.
+    once the act is waiting on it. `clock` is the act's clock, and every
+    wait moves it a minute, so a consent the script never settles runs out
+    the act's deadline in a few listings rather than in real time.
     """
 
     base_url = "http://127.0.0.1:3141"
@@ -52,6 +54,10 @@ class _Queue:
         self.reads_while_pending = 0
         self.listings = 0
         self.script = script or {}
+        self.now = 0.0
+
+    def clock(self) -> float:
+        return self.now
 
     def create_human_request(self, request_id, request_type, prompt, options=None,
                              context=None, timeout_seconds=3600, correlation_id=None):
@@ -100,6 +106,7 @@ class _Queue:
 
     def settle(self, _seconds: float) -> None:
         """Stands in for `sleep`: the person answers while the act waits."""
+        self.now += 60.0
         for request_id, answer in self.script.items():
             if request_id in self.requests and self._pending(request_id):
                 if answer is None:
@@ -161,7 +168,7 @@ def _act(inbox, instruction_id, queue, runtime=None, budget=1, **kw):
     runtime = runtime or ScriptedRuntime(text="pinned", session_ref="s-2")
     kw.setdefault("sources", [])
     return act(instruction_id, runtime, Budget(authorised=budget), client=queue, rows=inbox,
-               sleep=queue.settle, poll_interval=0.0, **kw), runtime
+               sleep=queue.settle, clock=queue.clock, poll_interval=0.0, **kw), runtime
 
 
 # --- the clone ------------------------------------------------------------------------
@@ -169,10 +176,17 @@ def _act(inbox, instruction_id, queue, runtime=None, budget=1, **kw):
 
 def test_the_clone_is_the_newest_threads_checkout_that_exists(tmp_path):
     """Mutation: sort `last_at` ascending -- red on `older`; drop the `exists`
-    check -- red on `gone`."""
+    check -- red on `gone`; `exists=Path.exists` -- red on `as_file`; the
+    named-directory rule as containment (`short in path.name`) -- red on
+    `sibling`, a checkout carrying the name as a prefix."""
     newer, older = tmp_path / PROJECT, tmp_path / "elsewhere" / PROJECT
     newer.mkdir(), older.mkdir(parents=True)
     gone = tmp_path / "deleted" / PROJECT
+    sibling = tmp_path / f"{PROJECT}-old"
+    sibling.mkdir()
+    as_file = tmp_path / "file" / PROJECT
+    as_file.parent.mkdir()
+    as_file.write_text("a file named for the project is not a checkout")
     source = _Source(
         (_thread("old", f"about {PROJECT}", f"{PROJECT} again"),
          {"cwd": str(older), "session": "s-old", "last_at": "2026-09-01T00:00:00Z"}),
@@ -182,12 +196,33 @@ def test_the_clone_is_the_newest_threads_checkout_that_exists(tmp_path):
          {"cwd": str(gone), "session": "s-gone", "last_at": "2026-10-02T00:00:00Z"}),
         (_thread("other", f"{PROJECT} {PROJECT}"),
          {"cwd": str(tmp_path / "vox"), "session": "s-x", "last_at": "2026-10-03T00:00:00Z"}),
+        (_thread("sibling", "nothing named"),
+         {"cwd": str(sibling), "session": "s-sibling", "last_at": "2026-10-04T00:00:00Z"}),
+        (_thread("file", "nothing named"),
+         {"cwd": str(as_file), "session": "s-file", "last_at": "2026-10-05T00:00:00Z"}),
     )
 
     found = clone_for(PROJECT, [source])
 
     assert found == Clone(cwd=newer, session_ref="s-new", rule=RULE_NAMED_DIR,
                           thread_id="new", last_at="2026-10-01T00:00:00Z")
+
+
+def test_a_source_without_a_context_is_never_fetched():
+    """The web exports know nothing of checkouts, and reading them per act
+    would parse every export for nothing. Mutation: drop the `hasattr` check
+    -- red, the source is fetched."""
+    class Export:
+        fetched = 0
+
+        def fetch(self, ids, budget):
+            self.fetched += 1
+            return []
+
+    export = Export()
+
+    assert clone_for(PROJECT, [export]) is None
+    assert export.fetched == 0
 
 
 def test_a_thread_about_the_project_names_its_checkout_whatever_it_is_called(tmp_path):
@@ -392,6 +427,46 @@ def test_hold_runs_nothing(inbox, clone):
     row = inbox.read(instruction_id)
     assert row.status == InstructionStatus.REFUSED and row.declared["made"] == 0
     assert row.acted_at is not None and row.exit_code is None
+
+
+def test_an_answer_outside_the_options_runs_nothing(inbox, clone):
+    """The server refuses a response outside the options, so only the exact
+    word reaches the act; a queue that let one through still runs nothing.
+    Mutation: compare `answer.strip().lower()` -- red on `Approve`."""
+    ids = [inbox.record() for _ in range(3)]
+    queue = _Queue({f"instruction-{ids[0]}": "Approve", f"instruction-{ids[1]}": "approve ",
+                    f"instruction-{ids[2]}": "yes"})
+
+    results = [_act(inbox, i, queue, cwd=clone) for i in ids]
+
+    assert [done.status for done, _ in results] == ["refused"] * 3
+    assert all(runtime.calls == [] for _, runtime in results)
+
+
+def test_a_listing_that_never_drops_the_request_ends_at_the_acts_own_deadline(inbox, clone):
+    """The fallback behind the listing: the act's clock passes the expiry
+    and two polls, the act reads the request once, finds no answer and
+    records `unanswered`, while the request still sits pending on the queue
+    for anyone to answer. Mutation: remove the deadline `break` -- red, the
+    stand-in for `sleep` fails the test at its tenth call rather than
+    letting the wait run forever."""
+    instruction_id = inbox.record()
+    queue = _Queue()  # never settles, never expires
+    waits: list[float] = []
+
+    def wait(seconds):
+        queue.settle(seconds)
+        waits.append(seconds)
+        assert len(waits) < 10, "the wait did not end at the deadline"
+
+    done = act(instruction_id, ScriptedRuntime(), Budget(authorised=1), client=queue, rows=inbox,
+               cwd=clone, sources=[], sleep=wait, clock=queue.clock, poll_interval=0.0,
+               consent_seconds=120)
+
+    assert done.status == "unanswered" and not done.ran
+    assert queue.reads == 1 and queue.reads_while_pending == 1
+    assert queue._pending(f"instruction-{instruction_id}")
+    assert inbox.read(instruction_id).status == InstructionStatus.UNANSWERED
 
 
 def test_expiry_runs_nothing(inbox, clone):
