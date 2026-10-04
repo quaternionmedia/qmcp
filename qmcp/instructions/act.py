@@ -19,10 +19,12 @@ it was (`qmcp.threads.claudecode` reads both). The most recently active thread
 about the instruction's project whose checkout still exists on disk names the
 clone and the session to resume, so an instruction lands in the conversation
 that was already doing the project's work rather than in a fresh one that has
-to rediscover it. `--cwd` serves when the archive names nothing -- a project
+to rediscover it. **An explicit `--cwd` wins, and the archive is not read**: a
+path the person typed is what they meant, and it starts a fresh session there,
+so leaving it out is how to continue the archive's. With neither -- a project
 nobody has worked on here, or an instruction whose project is unresolved --
-and with neither the act refuses, leaves the row as it was, and says what to
-pass. A thread is about a project when `qmcp.threads.consolidate.about` reads
+the act refuses, leaves the row as it was, and says what to pass. A thread is
+about a project when `qmcp.threads.consolidate.about` reads
 it so, or when its checkout is a directory named for the project; the rule
 that chose the clone is kept in the row's `detail`, as the rule that chose
 the project is.
@@ -307,9 +309,10 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
 
     # --- the clone -----------------------------------------------------------
     reached.append("clone")
-    clone = clone_for(project, archive_sources() if sources is None else sources)
-    if clone is None and cwd is not None:
+    if cwd is not None:
         clone = Clone(cwd=Path(cwd), session_ref=None, rule=RULE_CWD)
+    else:
+        clone = clone_for(project, archive_sources() if sources is None else sources)
     if clone is None or not clone.cwd.is_dir():
         reason = (f"no checkout for {project!r} in the thread archive"
                   if project else "the instruction's project is unresolved")

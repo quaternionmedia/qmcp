@@ -287,9 +287,9 @@ options `approve` and `hold`, so it is answered wherever approvals are:
 `qmcp human voice`, `qmcp human respond`, a page, or in the command itself with
 `--voice`. Its prompt says the instruction, the project, the clone, the runtime
 and the budget, and it expires after `CONSENT_SECONDS` in
-`qmcp.instructions.act`. The clone is the checkout of the
-most recently active archive thread about the project, and that thread's
-session is resumed; `--cwd` serves when the archive names none. `--runtime` has
+`qmcp.instructions.act`. The clone is `--cwd` when it is given, in a fresh
+session; without it, the checkout of the most recently active archive thread
+about the project, and that thread's session is resumed. `--runtime` has
 no default (`QMCP_AGENT_RUNTIME` stands in for it); a product is named only in
 its adapter under `qmcp.integrations.agents.adapters`, and `scripted` runs
 nothing and is for checks. `--budget` is runs, and zero -- the default --

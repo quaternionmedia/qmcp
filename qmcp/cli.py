@@ -1930,9 +1930,9 @@ def instructions_act(instruction_id: str, runtime_name: str | None, budget: int,
                      engine_url: str | None, poll_interval: float) -> None:
     """Act on one instruction: declare the spend, ask consent, run only on approve.
 
-    The clone is the checkout of the most recently active archive thread about
-    the instruction's project, else --cwd; the session that thread was is
-    resumed. A consent request `instruction-<id>` with the options approve and
+    The clone is --cwd when it is given, in a fresh session; without it, the
+    checkout of the most recently active archive thread about the
+    instruction's project, whose session is resumed. A consent request `instruction-<id>` with the options approve and
     hold goes on the human queue, saying the instruction, the project, the
     clone, the runtime and the budget, and expires after a fixed wait
     (`qmcp.instructions.act.CONSENT_SECONDS`). Approve runs

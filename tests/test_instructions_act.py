@@ -261,6 +261,35 @@ def test_the_archives_clone_is_used_and_its_session_resumed(inbox, clone):
     assert inbox.read(instruction_id).detail["clone"]["rule"] == RULE_NAMED_DIR
 
 
+def test_cwd_wins_over_the_archive_and_starts_a_fresh_session(inbox, clone, tmp_path):
+    """A path the person typed is what they meant, so the archive is not read.
+    Mutation: consult the archive first and fall back to `cwd` -- red, the run
+    lands in the archive's checkout and resumes its session."""
+    instruction_id = inbox.record()
+    queue = _Queue({f"instruction-{instruction_id}": "approve"})
+    typed = tmp_path / "elsewhere"
+    typed.mkdir()
+
+    class Archive:
+        fetched = 0
+
+        def __init__(self):
+            self.inner = _archive(clone, session="s-7")
+            self.context = self.inner.context
+
+        def fetch(self, ids, budget):
+            self.fetched += 1
+            return self.inner.fetch(ids, budget)
+
+    archive = Archive()
+    done, runtime = _act(inbox, instruction_id, queue, cwd=typed, sources=[archive])
+
+    assert done.cwd == str(typed) and done.status == "done"
+    assert runtime.calls[0]["cwd"] == str(typed) and runtime.calls[0]["resume"] is None
+    assert inbox.read(instruction_id).detail["clone"]["rule"] == RULE_CWD
+    assert archive.fetched == 0
+
+
 def test_cwd_serves_when_the_archives_checkout_is_gone(inbox, clone, tmp_path):
     instruction_id = inbox.record()
     queue = _Queue({f"instruction-{instruction_id}": "approve"})
