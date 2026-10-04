@@ -109,13 +109,12 @@ Nothing runs on any answer but `approve`, and every runtime is asked. The
 nothing; other runtimes sit behind the same contract and are handed the same
 brief. `docs/voice-loop-demo.md` runs the whole loop in three tiers, the first
 two without a microphone, and `uv run qmcp cookbook instruct --runtime local`
-shows continuity on the local model in one command. A project's clone is
-found beside this checkout the first time, or passed once with `--cwd`, and
-remembered for the project.
-`--budget` counts runs and defaults to zero, which declares what would be
-asked and stops; `--runtime` has no default, and `scripted` runs nothing.
-Recording, acting and the summary each have a section in
-`docs/integrations/voice.md`.
+shows continuity on the local model in one command. The conversation finds a
+project's clone beside this checkout the first time; by command it is passed
+once with `--cwd`; either way it is remembered for the project. `--budget`
+counts runs and defaults to zero, which declares what would be asked and
+stops; `--runtime` has no default, and `scripted` runs nothing. Recording,
+acting and the summary each have a section in `docs/integrations/voice.md`.
 
 ## Adoption and Onboarding
 
