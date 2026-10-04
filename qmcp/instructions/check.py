@@ -473,3 +473,119 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
         echo("The second instruction was carried out knowing what the first found."
              if ok else "Continuity was not shown.")
         return ok
+
+
+# --- the conversation ------------------------------------------------------------------
+
+
+WAITING_QUESTION = "Ship the build?"
+
+
+def conversation_script(project: str) -> tuple[str, ...]:
+    """Every take of one spoken session, in order: the waiting question answered,
+    a silence, two instructions each recorded and approved, a yes and a no to
+    "Anything else?", the words that end it, and silence."""
+    return ("approve", "",
+            FIRST_ASK.format(project=project), "record", "approve",
+            "yes",
+            SECOND_ASK.format(project=project), "record", "approve",
+            "no",
+            "stop listening",
+            # Silence after the end: a session that missed its stop runs out on
+            # its idle limit rather than hearing the last words for ever.
+            "")
+
+
+def run_conversation(echo: Callable[[str], None] = print, runtime=None,
+                     clones: Path | None = None, project: str = NAMED) -> bool:
+    """One whole spoken session, with nothing typed: what `qmcp serve --converse` holds.
+
+    A throwaway server and vox's deterministic engine; every take is scripted,
+    standing in for the person. An agent's question waits on the queue before
+    the session starts. The session must ask it and record the answer, wait
+    through a silence, take two instructions -- the first in the clone found
+    beside the others, the second in the remembered one and told what the first
+    found -- go back to waiting on "no", and end on "stop listening". With no
+    runtime it is `scripted`, in a directory made for the run; with `local` it
+    is the model reading a real clone among `clones`.
+    """
+    from vox import HttpSTT
+    from vox.adapters.joe import JOE
+    from vox.engine import EngineState
+    from vox.engine import serve as serve_engine
+    from vox.tts import RecordingTTS
+
+    from qmcp.client import MCPClient
+    from qmcp.instructions import roster_names
+    from qmcp.instructions.act import RULE_RECORD, RULE_SIBLING
+    from qmcp.instructions.converse import STOPPING, Conversation
+    from qmcp.integrations.agents.scripted import ScriptedRuntime
+
+    names = roster_names()
+    if project not in names:
+        echo(f"  [FAIL] {project!r} is not on the roster")
+        return False
+    with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as stack:
+        root = Path(tmp)
+        if runtime is None:
+            runtime = ScriptedRuntime(text="Found it in README.md. It is the local backend.")
+        if clones is None:
+            clones = root / "clones"
+            (clones / project).mkdir(parents=True)
+        database = root / "inbox.db"
+        qmcp_url = stack.enter_context(throwaway_server(database))
+        client = stack.enter_context(MCPClient(base_url=qmcp_url))
+        from sqlmodel import Session, create_engine
+
+        engine = create_engine(f"sqlite:///{database.as_posix()}")
+        stack.callback(engine.dispose)
+        rows = lambda: Session(engine)  # noqa: E731 -- the shape `act` takes
+        client.create_human_request(request_id="agent-question", request_type="approval",
+                                    prompt=WAITING_QUESTION, options=["approve", "hold"],
+                                    timeout_seconds=600)
+        echo(f"qmcp:    {qmcp_url} (a database made for this run)")
+        echo(f"runtime: {runtime.name}; clones looked for in {clones}; every take scripted")
+
+        log: list[tuple[str, str]] = []
+        state = EngineState(audio_dirs=[root], microphone="deterministic engine", contract=JOE)
+        tts = _Said(RecordingTTS(out_dir=str(root / "spoken")), log)
+        with serve_engine(state) as (engine_url, _), HttpSTT(engine_url, contract=JOE) as stt:
+            scripted = _Scripted(stt, state, conversation_script(project), log=log)
+            conversation = Conversation(scripted, tts, client, runtime, names, rows=rows,
+                                        clones=clones, listen_duration=2.0,
+                                        answer_duration=1.0, max_retries=1,
+                                        poll_interval=0.05, idle_limit=3,
+                                        echo=lambda line: log.append(("", line))
+                                        if line.startswith(("recorded:", "read:", "why:",
+                                                            "answered:", "turn failed"))
+                                        else None)
+            ended = conversation.run()
+
+        problems = []
+        _, response = client.get_human_request("agent-question")
+        if ended.answered != ["agent-question"] or response is None \
+                or response.response != "approve":
+            problems.append("the waiting question was not asked and answered by voice")
+        statuses = [turn.status for turn in ended.turns]
+        if statuses != ["done", "done"]:
+            problems.append(f"the instructions ended {statuses}, expected two done")
+        else:
+            first, second = (client.get_instruction(turn.instruction_id) for turn in ended.turns)
+            if first["detail"]["clone"]["rule"] != RULE_SIBLING \
+                    or Path(first["cwd"]).name != project:
+                problems.append("the first instruction did not run in the clone found by name")
+            if second["detail"]["clone"]["rule"] != RULE_RECORD:
+                problems.append("the second instruction did not run in the remembered clone")
+            if ended.turns[1].carried != (ended.turns[0].instruction_id,):
+                problems.append("the second instruction was not told what the first found")
+        if ended.reason != "told to stop" or tts.spoken[-1:] != [STOPPING]:
+            problems.append(f"the session ended {ended.reason!r}, not on being told to stop")
+
+        for kind, line in log:
+            echo(f"    {kind:<6} {line}" if kind else f"    {'':<6} {line}")
+        if problems:
+            echo(f"  [FAIL] {'; '.join(problems)}")
+            return False
+        echo("  [ok]   one spoken session: a question answered, two instructions carried out,"
+             " the second told what the first found, and an end on being told to stop")
+        return True

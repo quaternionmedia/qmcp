@@ -108,9 +108,13 @@ said back -- with each instruction told what the project's earlier ones found.
 microphone:
 
 ```bash
-uv run qmcp cookbook instruct                     # the loop, with nothing real behind it
+uv run qmcp cookbook converse                     # one spoken session, every take scripted
 uv run qmcp cookbook instruct --runtime local     # continuity, on the local model
 ```
+
+With the speech engine running (step 5), `uv run qmcp serve --converse --runtime local`
+in place of step 2's command makes everything after it spoken: qmcp asks what
+should be done, and a person answers.
 
 ## Next Steps
 

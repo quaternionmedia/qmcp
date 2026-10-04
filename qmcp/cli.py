@@ -343,8 +343,23 @@ def cli() -> None:
 @click.option("--host", "-h", default=None, help="Host to bind to")
 @click.option("--port", "-p", default=None, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
-def serve(host: str | None, port: int | None, reload: bool) -> None:
+@click.option("--converse", is_flag=True,
+              help="start the spoken conversation beside the server, on loopback;"
+                   " with the speech engine running, nothing after this is typed")
+@click.option("--runtime", "runtime_name", default=None, envvar="QMCP_AGENT_RUNTIME",
+              help="the runtime the conversation acts with; required with --converse")
+@click.option("--clones", type=click.Path(path_type=Path, file_okay=False), default=None,
+              help="where the conversation looks for a project acted on for the first"
+                   " time, as a directory named for it (default: beside this checkout)")
+@click.option("--wake", default=None,
+              help="a word the conversation's instructions must begin with")
+def serve(host: str | None, port: int | None, reload: bool, converse: bool,
+          runtime_name: str | None, clones: Path | None, wake: str | None) -> None:
     """Start the MCP server: `uv run qmcp serve`.
+
+    With --converse, the spoken conversation (`qmcp converse`) starts beside
+    it once the server is up, waits for the speech engine, and talks until it
+    is told to stop or the server stops.
 
     On Windows a running console script holds `Scripts/qmcp.exe`, so a sync
     that reinstalls qmcp -- after pulling a change to its own dependencies --
@@ -352,7 +367,101 @@ def serve(host: str | None, port: int | None, reload: bool) -> None:
     file. The server is running the code from before that change anyway, so
     the remedy is the restart it needed: stop it, and run the command again.
     """
+    if converse:
+        from qmcp.integrations.agents import runtime_class
+
+        if not runtime_name:
+            raise click.UsageError(
+                "--converse needs --runtime, or QMCP_AGENT_RUNTIME: the conversation acts"
+                " on what it is told, and a default runtime would be one nobody chose.")
+        try:
+            runtime_class(runtime_name)
+        except KeyError as exc:
+            raise click.UsageError(str(exc.args[0]))
+        os.environ["QMCP_CONVERSE_RUNTIME"] = runtime_name
+        if clones is not None:
+            os.environ["QMCP_CONVERSE_CLONES"] = str(clones)
+        if wake:
+            os.environ["QMCP_CONVERSE_WAKE"] = wake
+        # The settings are cached, and the server reads them in this process.
+        get_settings.cache_clear()
+    elif runtime_name and runtime_name != os.environ.get("QMCP_AGENT_RUNTIME"):
+        raise click.UsageError("--runtime is read only with --converse.")
     _run_server(host, port, reload)
+
+
+@cli.command("converse")
+@click.option("--runtime", "runtime_name", default=None, envvar="QMCP_AGENT_RUNTIME",
+              help="the runtime that acts on an approved instruction; required, or set"
+                   " QMCP_AGENT_RUNTIME. `local` is the model `qmcp localmodel` stands up")
+@click.option("--clones", type=click.Path(path_type=Path, file_okay=False), default=None,
+              help="where a project acted on for the first time is looked for, as a"
+                   " directory named for it (default: beside this checkout)")
+@click.option("--wake", default=None,
+              help="a word an instruction must begin with, for a room where people talk")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+@click.option("--engine", default=None,
+              help="which vox.adapters entry the speech engine is (default: the configured one)")
+@click.option("--engine-url", default=None,
+              help="where that engine listens (default: the configured one, or the adapter's own)")
+@click.option("--synth", type=click.Choice(["pyttsx3", "recording"]), default="pyttsx3",
+              show_default=True,
+              help="how it speaks: aloud, or `recording`, which writes each sentence to a"
+                   " file and plays nothing -- for a check run on a machine nobody is at")
+def converse(runtime_name: str | None, clones: Path | None, wake: str | None,
+             base_url: str | None, engine: str | None, engine_url: str | None,
+             synth: str) -> None:
+    """Talk to qmcp: one standing conversation, spoken from end to end.
+
+    It waits for this server and the speech engine, says it is ready, and asks
+    what should be done. Each instruction is read back and recorded on
+    "record", consent is asked aloud, the runtime carries it out on "approve"
+    in the project's clone, and the outcome is said back; questions agents put
+    on the human queue are asked aloud in between. "Stop listening" or
+    "goodbye" ends it. `qmcp serve --converse` starts this beside the server.
+    """
+    from qmcp.client import MCPClient
+    from qmcp.instructions import roster_names
+    from qmcp.instructions.converse import Conversation, wait_for
+    from qmcp.integrations.agents import runtime_named
+
+    if not runtime_name:
+        raise click.UsageError(
+            "--runtime is required and has no default: the conversation acts on what it is"
+            " told, and a default runtime would be one nobody chose. Set QMCP_AGENT_RUNTIME"
+            " or pass --runtime.")
+    try:
+        runtime = runtime_named(runtime_name)
+    except KeyError as exc:
+        raise click.UsageError(str(exc.args[0]))
+    settings = get_settings()
+    engine = engine or settings.voice_engine
+    HttpSTT, Pyttsx3TTS, adapter, contract = _load_vox(engine, "converse")
+    resolved_engine = (engine_url or settings.voice_engine_url
+                       or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000"))
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    if synth == "recording":
+        from vox.tts import RecordingTTS
+
+        tts = RecordingTTS()
+    else:
+        tts = Pyttsx3TTS()
+    stt = HttpSTT(resolved_engine, contract=contract)
+    try:
+        wait_for(client, stt, echo=click.echo)
+        conversation = Conversation(stt, tts, client, runtime, roster_names(),
+                                    clones=clones, wake=wake, echo=click.echo)
+        ready = getattr(runtime, "ready", None)
+        missing = ready() if ready else None
+        if missing:
+            conversation.say(f"The {runtime_name} runtime is not ready: {missing}.")
+        ended = conversation.run()
+        click.echo(f"ended: {ended.reason}; {len(ended.turns)} instruction(s),"
+                   f" {len(ended.answered)} question(s) answered")
+    finally:
+        stt.close()
+        client.close()
 
 
 @cli.group()
@@ -508,6 +617,44 @@ def cookbook_instruct(runtime_name: str | None, clone: Path | None,
     click.echo("")
     loop = run_loop(echo=click.echo)
     if not (inbox and loop):
+        raise SystemExit(1)
+
+
+@cookbook.command("converse")
+@click.option("--runtime", "runtime_name", default=None,
+              help="the runtime the session acts with (default: scripted, which spends"
+                   " nothing); `local` is the model `qmcp localmodel` stands up")
+@click.option("--clones", type=click.Path(path_type=Path, exists=True, file_okay=False),
+              default=None,
+              help="where the session looks for the project's clone (default: a directory"
+                   " made for the run with scripted; beside this checkout otherwise)")
+def cookbook_converse(runtime_name: str | None, clones: Path | None) -> None:
+    """One whole spoken session, with nothing typed: what `serve --converse` holds.
+
+    A throwaway server and vox's deterministic engine, every take scripted in
+    place of the person: an agent's question asked and answered, a silence
+    waited through, two instructions recorded, approved, carried out and said
+    back -- the second in the remembered clone, told what the first found --
+    and an end on "stop listening". The configured inbox is not touched.
+    """
+    from qmcp.instructions.check import run_conversation
+
+    _load_vox("joe", "cookbook converse")
+    runtime = None
+    if runtime_name is not None:
+        from qmcp.instructions.converse import sibling_clones
+        from qmcp.integrations.agents import runtime_named
+
+        try:
+            runtime = runtime_named(runtime_name)
+        except KeyError as exc:
+            raise click.UsageError(str(exc.args[0]))
+        ready = getattr(runtime, "ready", None)
+        missing = ready() if ready else None
+        if missing:
+            raise SystemExit(f"Nothing ran: {missing}.")
+        clones = clones or sibling_clones()
+    if not run_conversation(echo=click.echo, runtime=runtime, clones=clones):
         raise SystemExit(1)
 
 

@@ -102,8 +102,10 @@ elsewhere has no business making this machine speak and listen.
 
 **Typed to answer by voice: two commands**, one per server — `uv run joe dev`
 in joe's checkout and `uv run qmcp serve` here. Everything after that happens
-in joe's page. The count is kept here because a rise without a stated reason is
-a regression (`governance/qm/records/DRAFT-clis-are-for-machines-and-debugging.md`).
+in joe's page. **Typed to talk to qmcp: the same two**, with `--converse` on the
+second; everything after that is spoken ("Talking to qmcp", below). The count is
+kept here because a rise without a stated reason is a regression
+(`governance/qm/records/DRAFT-clis-are-for-machines-and-debugging.md`).
 
 ## Which microphone
 
@@ -357,6 +359,45 @@ spoken and recorded, consent asked aloud and answered `approve`, the
 summary said back -- and a second whose consent is answered `hold`, which runs
 nothing and says so. Each loop prints as the conversation it was, said and
 heard in order, and `tests/test_cookbook_instruct.py` makes sure it can fail.
+
+## Talking to qmcp
+
+```bash
+uv run joe dev                                  # in joe's checkout: the speech engine
+uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
+```
+
+Nothing after those two is typed. The conversation starts with the server,
+waits for the speech engine in either order, says *"Ready. What should be
+done?"*, and from then on is spoken:
+
+| Say | And |
+|---|---|
+| an instruction | it is read back -- *"I heard: ... Say record or again."* |
+| `record` / `again` | it is recorded against its project, or taken again |
+| `approve` / `hold` | to the consent -- what will run, where, and how much history is carried; only `approve` runs |
+| -- | the runtime carries it out, *"Approved. Running in qmcp."*, and the answer is said back |
+| `yes` / `no` | to *"Anything else?"*: asks for the next instruction, or goes back to waiting |
+| `stop listening` / `goodbye` | ends the conversation |
+
+Silence is waited through: the microphone stays open, take after take, and the
+page shows it listening. Before each instruction, questions agents have put on
+the human queue are asked aloud, oldest first, and answered by voice; one
+nobody answers stays pending for anyone. A project acted on for the first time
+runs in a clone named for it beside this checkout, or in `--clones`, and after
+that in the clone its last act ran in, from the record. `--wake WORD` makes an
+instruction begin with a word, for a room where people talk; without it every
+utterance is read back before anything is recorded, and nothing runs without
+`approve`. A turn that fails says so and the conversation goes on.
+
+The conversation holds the one conversation this machine can hold, so the
+page's **Answer by voice** and **Instruct by voice** answer that one is running
+rather than opening the microphone a second time; it ends when the server
+stops. `uv run qmcp converse --runtime local` runs it on its own against a
+running server, and `--synth recording` writes each sentence to a file instead
+of speaking it, for a check on a machine nobody is at. `qmcp.instructions.converse`
+carries the why, and `uv run qmcp cookbook converse` is one whole session
+offline, every take scripted.
 
 ## Testing the integration
 
