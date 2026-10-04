@@ -107,8 +107,9 @@ uv run qmcp instructions say <id>      # what an instruction came to, again
 Nothing runs on any answer but `approve`, and every runtime is asked. The
 `local` runtime reads the clone with tools that cannot write and spends
 nothing; other runtimes sit behind the same contract and are handed the same
-brief. `docs/voice-loop-demo.md` runs the whole loop in three tiers, the first
-two without a microphone, and `uv run qmcp cookbook instruct --runtime local`
+brief. `docs/voice-loop-demo.md` is the loop's onboarding and cookbook: the
+workstation set up once and proved in three tiers, the first two without a
+microphone, then what to say. `uv run qmcp cookbook instruct --runtime local`
 shows continuity on the local model in one command. The conversation finds a
 project's clone beside this checkout the first time; by command it is passed
 once with `--cwd`; either way it is remembered for the project. `--budget`
@@ -131,6 +132,12 @@ Onboarding path:
 2. `uv sync --all-extras`
 3. Run the end-to-end tutorial below.
 4. `uv run qmcp serve` for local exploration.
+
+Onboarding to the voice dev loop is its own path, in `docs/voice-loop-demo.md`:
+both submodules (the roster as well as `vox`), the local model through `uv run
+qmcp localmodel check` and `plan`, joe and its microphone, the projects' clones
+beside this checkout, and then three tiers that each prove one more real thing
+-- ending at a person talking to qmcp. Its cookbook is what to say once it runs.
 
 ### End-to-End Tutorial (HITL approval workflow)
 
