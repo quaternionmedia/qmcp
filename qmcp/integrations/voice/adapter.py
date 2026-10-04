@@ -357,10 +357,14 @@ class VoiceApprovalLoop:
         if existing is not None:
             return existing
 
+        # A request may carry a shorter form for the ear (`context.spoken`):
+        # what a page shows in full can be too long to listen to.
+        spoken = (request.context or {}).get("spoken")
+        prompt = spoken if isinstance(spoken, str) and spoken.strip() else request.prompt
         if request.options:
-            answer = self._ask(request.prompt, request.options)
+            answer = self._ask(prompt, request.options)
         else:
-            answer = self._ask_open(request.prompt)
+            answer = self._ask_open(prompt)
 
         response = self.client.submit_human_response(
             request_id=request_id, response=answer, responded_by="vox"
