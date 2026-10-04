@@ -50,9 +50,11 @@ _UNCLEAR_PHRASES = ("not sure", "not certain", "dont know")
 
 # The grammar of an open question's read-back, in the order it is spoken.
 # `_ask_open` parses the confirmation with `parse_yes_no` and `match_option`:
-# a yes or `record` records the answer, a no or `again` asks the question
+# a yes or `agree` records the answer, a no or `again` asks the question
 # again. Neither word is in the yes/no vocabulary.
-_CONFIRM = ["record", "again"]
+_CONFIRM = ["agree", "again"]
+# Said by someone used to the read-back's earlier word; taken as `agree`, never said.
+_AGREE_ALIASES = ["record"]
 
 
 def parse_yes_no(text: str) -> bool | None:
@@ -205,7 +207,7 @@ class VoiceApprovalLoop:
 
         An open question has no grammar for the answer, so the transcript is
         the answer and the speaker is the only check on it: it is read back
-        as a closed choice between `record` and `again`, parsed with the same
+        as a closed choice between `agree` and `again`, parsed with the same
         helpers as any closed choice, so a yes records and a no re-asks.
 
         One budget covers the whole dialog. Every turn the speaker has to be
@@ -232,10 +234,11 @@ class VoiceApprovalLoop:
                     self.tts.speak(readback)
                     continue
                 decision = parse_yes_no(heard)
-                named = match_option(heard, _CONFIRM)
+                named = match_option(heard, _CONFIRM) or (
+                    "agree" if match_option(heard, _AGREE_ALIASES) else None)
                 # The decision is consulted before the option named, as `_ask`
-                # does: "don't record" names record and is a no.
-                if decision is True or (decision is None and named == "record"):
+                # does: "don't agree" names agree and is a no.
+                if decision is True or (decision is None and named == "agree"):
                     return answer
                 if decision is False or named == "again":
                     reask, reason, answer = prompt, "again", None

@@ -51,7 +51,7 @@ def test_the_offline_check_records_an_open_answer_through_the_real_path():
     result = CliRunner().invoke(cli, ["cookbook", "voice"])
 
     assert result.exit_code == 0, result.output
-    row = '[ok]   heard "release candidate", "record" recorded "release candidate" by vox'
+    row = '[ok]   heard "release candidate", "agree" recorded "release candidate" by vox'
     assert row in result.output
 
 
@@ -67,8 +67,8 @@ def test_the_offline_check_fails_when_an_open_answer_is_recorded_unconfirmed(mon
     result = CliRunner().invoke(cli, ["cookbook", "voice"])
 
     assert result.exit_code == 1, result.output
-    assert '[FAIL] heard "release candidate", "record"' in result.output
-    assert "no turn beginning 'I heard: release candidate. Say record or again.'" in result.output
+    assert '[FAIL] heard "release candidate", "agree"' in result.output
+    assert "no turn beginning 'I heard: release candidate. Say agree or again.'" in result.output
 
 
 def test_the_offline_check_fails_when_the_prompt_omits_the_options(monkeypatch):

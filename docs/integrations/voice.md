@@ -177,7 +177,7 @@ submits nothing: an ambiguous answer is never guessed at.
 A request with no `options` is an open question, and the transcript is the
 answer: *"What should the branch be called?"* is spoken as it is, and what is
 heard is read back once as a closed choice — *"I heard: release candidate. Say
-record or again."* The read-back goes through the same helpers, so a yes
+agree or again."* The read-back goes through the same helpers, so a yes
 records and a no listens again; `again` re-speaks the question; silence and a
 confirmation that matches neither are re-asked as noinput and nomatch. One
 budget covers the dialog: each turn the speaker has to be asked a second time,
@@ -245,7 +245,7 @@ against its script:
 | "Hold." | `hold`, by `vox`: an option by name |
 | "banana" | nothing; re-asked "I heard: banana." |
 | (silence) | nothing; re-asked "I didn't hear anything." |
-| "release candidate", then "record" | `release candidate`, by `vox`: an open question, read back and confirmed |
+| "release candidate", then "agree" | `release candidate`, by `vox`: an open question, read back and confirmed |
 
 The configured queue is not touched, and no microphone, speaker or model is
 needed. `tests/test_cookbook_voice.py` runs it and makes sure it can fail: a

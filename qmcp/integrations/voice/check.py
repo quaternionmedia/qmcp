@@ -63,14 +63,14 @@ class Case:
 
 # One case per way a spoken answer can end. A yes read onto the options, an
 # option named, something heard that matches nothing, nothing heard, and an
-# open question whose transcript is read back and recorded on "record".
+# open question whose transcript is read back and recorded on "agree".
 OFFLINE_CASES = (
     Case("Yes, go ahead.", "approve"),
     Case("Hold.", "hold"),
     Case("banana", None, reasked="I heard: banana."),
     Case("", None, reasked="I didn't hear anything."),
-    Case("release candidate", "release candidate", then=("record",),
-         reasked="I heard: release candidate. Say record or again.",
+    Case("release candidate", "release candidate", then=("agree",),
+         reasked="I heard: release candidate. Say agree or again.",
          prompt=OPEN_PROMPT, options=None),
 )
 
