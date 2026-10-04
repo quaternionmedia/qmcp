@@ -49,9 +49,9 @@ def test_the_offline_check_fails_when_the_long_take_drops_the_pause(monkeypatch)
     about the recorded row would show it."""
     original = dialog.InstructionDialog._listen
 
-    def without_pause(self, *, long):
+    def without_pause(self, *, long, hint=None):
         self.pause_ms = None
-        return original(self, long=long)
+        return original(self, long=long, hint=hint)
 
     monkeypatch.setattr(dialog.InstructionDialog, "_listen", without_pause)
 
@@ -66,7 +66,7 @@ def test_the_offline_check_fails_when_the_confirmation_carries_the_pause(monkeyp
     `run_offline` -- red, the check stays green with the pause on every take."""
     original = dialog.InstructionDialog._listen
 
-    def long_everywhere(self, *, long):
+    def long_everywhere(self, *, long, hint=None):
         return original(self, long=True)
 
     monkeypatch.setattr(dialog.InstructionDialog, "_listen", long_everywhere)
@@ -430,3 +430,33 @@ def test_a_session_on_a_runtime_that_is_not_ready_runs_nothing(monkeypatch):
     result = CliRunner().invoke(cli, ["cookbook", "converse", "--runtime", "local"])
 
     assert result.exit_code != 0 and "Nothing ran: the model is not served." in result.output
+
+
+def test_the_session_fails_when_no_question_hints_its_options(monkeypatch):
+    """The check reads the hints off the engine, over the wire."""
+    from qmcp.instructions import dialog as dialog_module
+    from qmcp.integrations.voice import adapter
+
+    original = adapter.listen_for
+
+    def unhinted(stt, duration, *, pause_ms=None, hint=None):
+        return original(stt, duration, pause_ms=pause_ms)
+
+    monkeypatch.setattr(adapter, "listen_for", unhinted)
+    monkeypatch.setattr(dialog_module, "listen_for", unhinted)
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 1, result.output
+    assert "no listen was hinted 'approve, hold'" in result.output
+
+
+def test_the_session_fails_when_repeat_is_not_honoured(monkeypatch):
+    from qmcp.instructions import dialog as dialog_module
+
+    monkeypatch.setattr(dialog_module, "asks_repeat", lambda text: False)
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 1, result.output
+    assert "the first read-back was said 1 time(s)" in result.output
