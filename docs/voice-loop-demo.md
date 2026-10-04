@@ -152,9 +152,10 @@ and the runner image are not reproduced.
 - **The local model does not answer, or answers late.** `uv run qmcp localmodel
   check` says whether it is installed and served. The model service on the
   machine this was built on was seen to stall partway through a reply, with
-  the GPU busy and later calls queued behind it; every call qmcp makes is
-  capped, so a stall is a failed run naming the endpoint, and unloading the
-  model with the service's own command frees it.
+  the GPU busy and later calls queued behind it. Every call qmcp makes is
+  capped, and a call that stalls unloads the model through the service's own
+  keep-alive and is made once more against a fresh load; a second stall is a
+  failed run naming the endpoint, and the conversation goes on.
 - **The microphone hears nothing.** `uv run joe voice setup` in joe's checkout,
   and `docs/integrations/voice.md`, "Which microphone".
 - **An act refuses for want of a clone.** The conversation looks for a clone
