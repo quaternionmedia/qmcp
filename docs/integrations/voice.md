@@ -222,6 +222,142 @@ dropped rather than stopping the question.
 - **`responded_by` is recorded as `vox`.** A voice answer is attributable as a
   voice answer, and is otherwise an ordinary human response.
 
+## An instruction is recorded, not run
+
+Everything above answers a question an agent asked. The inbox runs the other
+direction: a person speaks or types an instruction, it is recorded against a
+project, and **recording executes nothing**. Recording reaches two statuses,
+`recorded` and `unresolved`, and neither describes a run; acting on an
+instruction is a command a person issues, behind consent on the human queue,
+and is the section after this one. `qmcp.instructions` carries the why, and
+`walkthrough/08-an-instruction-is-recorded-not-run.md` runs the routes.
+
+Two commands:
+
+```bash
+uv run qmcp instruct "Deploy qmcp to the pi."     # typed; prints the row
+uv run qmcp instruct --voice                       # spoken
+uv run qmcp instructions list [--status unresolved]
+uv run qmcp instructions show <id>
+```
+
+The project is read from the text by the whole-word match `qmcp threads
+consolidate` uses, against the roster in `governance/qm`: a substring inside
+another word is not a match, casing is ignored, a name followed by punctuation
+still matches, and a hyphenated name matches as a transcript says it, so `rad
+godot` is `rad-godot` -- and `rad` too, which leaves that text between the two.
+Exactly one match resolves. None or several leaves the row `unresolved` with
+the candidates and the rule in `detail`, and `--project` states the project
+outright, recorded as `stated`; a blank states nothing.
+
+Spoken, the dialog asks *"What should be done?"*, listens with a long cap and a
+long pause (`--duration`, `--pause-ms`; an instruction has pauses mid-thought,
+which is what `pause_ms` on the engine contract is for), and reads the
+transcript back: *"I heard: Deploy qmcp to the pi. Say record or again."* A yes
+or `record` records; a no or `again` listens again; the re-asks are the ones
+above. An instruction naming several projects is asked back as a closed choice
+by name (*"Which project? Say qmcp or vox."*), where a spoken `rad godot`
+chooses `rad-godot` over `rad`; one naming none is asked for the project once.
+A text that named its project is sent for the server to read, so the row
+carries the match; a project the person chose or spoke is `stated`, with the
+answer among the transcripts in `detail.heard`. The states reach the engine's
+conversation route as the approval dialog's do, with `confirm` on the read-back
+and `again` on a second take.
+
+| Route | What it does |
+|---|---|
+| `POST /v1/instructions` | records `{text, source, project?, heard?}`; `201` with the row, `recorded` or `unresolved` |
+| `GET /v1/instructions?status=` | the inbox, newest first |
+| `GET /v1/instructions/{id}` | one row, with its evidence |
+| `POST /v1/instructions/voice` | takes one by voice on this machine, as `qmcp instruct --voice` in a process of its own; `202` once started, `409` while any conversation runs |
+| `GET /v1/instructions/voice` | whether a conversation is running, its kind, and how the last one ended |
+
+The routes are served only on loopback, as the voice routes are. The spoken
+route shares the voice route's tracker, so an approval being asked and an
+instruction being taken cannot overlap: there is one microphone.
+
+`uv run qmcp cookbook instruct` is the check, offline only: a server on an
+ephemeral port over its own database, vox's deterministic engine, and one
+scripted dialog per way a spoken instruction can end, through the real path --
+one project named and recorded; none named, the project asked for and the
+spoken one recorded; several named and chosen by name; and `again`, which takes
+the instruction a second time. It also checks that the instruction's take
+carried the long pause and the confirmation did not, and that each row says how
+its project was settled. `tests/test_cookbook_instruct.py` runs it and makes
+sure it can fail.
+
+## Acting on an instruction
+
+```bash
+uv run qmcp instructions act <id> --runtime NAME [--budget N] [--cwd PATH] [--voice]
+```
+
+A worker takes a recorded instruction, declares what it may spend, asks
+consent on the human queue, and runs it in the project's clone only on
+`approve`. Every runtime is asked, the local model included; growing a habit
+of approval into an automatic one is a later phase. The consent is an ordinary
+approval, `instruction-<id>` with the options `approve` and `hold`, so it is
+answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
+page, or in the command itself with `--voice`. Its prompt says the
+instruction, the project, the clone, the runtime, the budget and how much
+history is carried, and it expires after `CONSENT_SECONDS` in
+`qmcp.instructions.act`.
+
+**Continuity comes from qmcp, not the model.** The runtime is handed a brief:
+the instruction, the project, the clone, and the project's earlier
+instructions that ran, with what each found, read from this server's record
+(`qmcp.instructions.continuity`). No runtime resumes a conversation of its
+own, so the next instruction can go to a different runtime and still know what
+the last one found; the row's `detail` names the turns carried. The clone is
+`--cwd` when it is given; without it, the clone the project's last act ran in,
+so a path given once is remembered.
+
+`--runtime` has no default (`QMCP_AGENT_RUNTIME` stands in for it). `local` is
+the model `qmcp localmodel` stands up on this machine, reading the clone with
+tools that cannot write and spending nothing; a coding assistant's command line
+is another runtime behind the same contract, given the same brief. A product is
+named only in its adapter under `qmcp.integrations.agents.adapters`, and
+`scripted` runs nothing and is for checks. `--budget` is runs, and zero -- the
+default -- declares and stops. The row's status says where the act got to: `asking`,
+then `consented`, `refused` or `unanswered`, then `acting` and `done` or
+`failed`; `declared` is written on every path. `qmcp.instructions.act` carries
+the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
+
+| Route | What it does |
+|---|---|
+| `POST /v1/instructions/{id}/act` | `{runtime, budget?, cwd?, voice?}`; runs the command in a process of its own, as the spoken route does; `202` once started, `404` for no such instruction, `409` while a conversation or an act runs, `422` for a runtime no adapter declares |
+
+`GET /v1/instructions/voice` reports an act as it reports a conversation, with
+`kind: act`.
+
+## The result, spoken
+
+With `--voice`, the act says *"Approved. Running in qmcp."* between the
+approval and the run, so the wait is not silence, and when the run ends it
+says what the row came to: whether it ran, where, and the outcome's first
+sentence -- *"Done in qmcp. Added a health route that answers with the
+version; the suite passes. The rest is on the record."* The whole outcome
+stays on the row. Without `--voice` the same sentence is printed. A held or
+unanswered consent says that nothing ran, and a refusal before anything was
+asked says so without reading out the flags it names.
+
+```bash
+uv run qmcp instructions say <id> [--speak]   # what an instruction came to, again
+```
+
+The summary is announced to the engine's conversation route as `speaking` and
+the turn then ends `idle` carrying it, so joe's panel shows it as the last
+thing said; it is never `recorded`, which the panel shows as an answer
+accepted. `qmcp.instructions.spoken` carries the why.
+
+`uv run qmcp cookbook instruct` is the loop, end to end and offline: after the
+inbox's cases it takes one instruction the whole way in one conversation --
+spoken and recorded, consent asked aloud and answered `approve`, the
+`scripted` runtime run in a directory standing in for the clone, and the
+summary said back -- and a second whose consent is answered `hold`, which runs
+nothing and says so. Each loop prints as the conversation it was, said and
+heard in order, and `tests/test_cookbook_instruct.py` makes sure it can fail.
+
 ## Testing the integration
 
 `qmcp cookbook voice` is the check, in two forms that answer different
