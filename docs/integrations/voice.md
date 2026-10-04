@@ -210,6 +210,70 @@ dropped rather than stopping the question.
 - **`responded_by` is recorded as `vox`.** A voice answer is attributable as a
   voice answer, and is otherwise an ordinary human response.
 
+## An instruction is recorded, not run
+
+Everything above answers a question an agent asked. The inbox runs the other
+direction: a person speaks or types an instruction, it is recorded against a
+project, and **recording executes nothing**. The row has two statuses,
+`recorded` and `unresolved`, and neither describes a run; acting on an
+instruction is a later change, behind consent on the human queue, with
+statuses and a migration of its own. `qmcp.instructions` carries the why, and
+`walkthrough/08-an-instruction-is-recorded-not-run.md` runs the routes.
+
+Two commands:
+
+```bash
+uv run qmcp instruct "Deploy qmcp to the pi."     # typed; prints the row
+uv run qmcp instruct --voice                       # spoken
+uv run qmcp instructions list [--status unresolved]
+uv run qmcp instructions show <id>
+```
+
+The project is read from the text by the whole-word match `qmcp threads
+consolidate` uses, against the roster in `governance/qm`: a substring inside
+another word is not a match, casing is ignored, a name followed by punctuation
+still matches, and a hyphenated name matches as a transcript says it, so `rad
+godot` is `rad-godot` -- and `rad` too, which leaves that text between the two.
+Exactly one match resolves. None or several leaves the row `unresolved` with
+the candidates and the rule in `detail`, and `--project` states the project
+outright, recorded as `stated`; a blank states nothing.
+
+Spoken, the dialog asks *"What should be done?"*, listens with a long cap and a
+long pause (`--duration`, `--pause-ms`; an instruction has pauses mid-thought,
+which is what `pause_ms` on the engine contract is for), and reads the
+transcript back: *"I heard: Deploy qmcp to the pi. Say record or again."* A yes
+or `record` records; a no or `again` listens again; the re-asks are the ones
+above. An instruction naming several projects is asked back as a closed choice
+by name (*"Which project? Say qmcp or vox."*), where a spoken `rad godot`
+chooses `rad-godot` over `rad`; one naming none is asked for the project once.
+A text that named its project is sent for the server to read, so the row
+carries the match; a project the person chose or spoke is `stated`, with the
+answer among the transcripts in `detail.heard`. The states reach the engine's
+conversation route as the approval dialog's do, with `confirm` on the read-back
+and `again` on a second take.
+
+| Route | What it does |
+|---|---|
+| `POST /v1/instructions` | records `{text, source, project?, heard?}`; `201` with the row, `recorded` or `unresolved` |
+| `GET /v1/instructions?status=` | the inbox, newest first |
+| `GET /v1/instructions/{id}` | one row, with its evidence |
+| `POST /v1/instructions/voice` | takes one by voice on this machine, as `qmcp instruct --voice` in a process of its own; `202` once started, `409` while any conversation runs |
+| `GET /v1/instructions/voice` | whether a conversation is running, its kind, and how the last one ended |
+
+The routes are served only on loopback, as the voice routes are. The spoken
+route shares the voice route's tracker, so an approval being asked and an
+instruction being taken cannot overlap: there is one microphone.
+
+`uv run qmcp cookbook instruct` is the check, offline only: a server on an
+ephemeral port over its own database, vox's deterministic engine, and one
+scripted dialog per way a spoken instruction can end, through the real path --
+one project named and recorded; none named, the project asked for and the
+spoken one recorded; several named and chosen by name; and `again`, which takes
+the instruction a second time. It also checks that the instruction's take
+carried the long pause and the confirmation did not, and that each row says how
+its project was settled. `tests/test_cookbook_instruct.py` runs it and makes
+sure it can fail.
+
 ## Testing the integration
 
 `qmcp cookbook voice` is the check, in two forms that answer different

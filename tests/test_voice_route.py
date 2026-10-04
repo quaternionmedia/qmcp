@@ -94,6 +94,31 @@ def test_an_unknown_request_is_not_asked(client, launched):
     assert launched == []
 
 
+def test_the_tracker_names_what_runs(tmp_path):
+    """`running()` is the request id for an approval and the kind for a
+    conversation with no request, and None once the process has exited.
+    Mutation: `return self._request_id` alone -- red on the instruction."""
+    started: list[_Process] = []
+
+    def popen(argv, stdout, stderr, env):
+        process = _Process(argv, stdout, [argv[-1]])
+        started.append(process)
+        return process
+
+    runs = service.VoiceRuns(log_dir=tmp_path, popen=popen)
+    assert runs.running() is None
+
+    runs.start(["approval"], kind="approval", request_id="demo")
+    assert runs.running() == "demo"
+    started[0].code = 0
+    assert runs.running() is None
+
+    runs.start(["instruction"], kind="instruction")
+    assert runs.running() == "instruction"
+    with pytest.raises(RuntimeError, match="instruction"):
+        runs.start(["another"], kind="instruction")
+
+
 def test_an_answered_request_is_not_asked_again(client, launched):
     _queue(client)
     client.post("/v1/human/responses", json={"request_id": "demo", "response": "hold"})
