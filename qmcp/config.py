@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     converse_clones: str | None = None
     converse_wake: str | None = None
     converse_synth: str = "pyttsx3"
+    # How sure the speech engine must be of a spoken instruction for its
+    # read-back to ask nothing, silence agreeing; above 1 always asks.
+    voice_tacit_confidence: float = 0.7
 
 
 @lru_cache

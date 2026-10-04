@@ -178,15 +178,15 @@ def test_text_or_voice_and_not_both(fake_client):
 def test_a_spoken_instruction_is_read_back_and_recorded_on_record(fake_client, monkeypatch):
     """Mutation: skip the read-back and record the first take -- red on
     `tts.spoken[1]` and on `heard`."""
-    result, stt, tts = _spoken(monkeypatch, ["Deploy qmcp to the pi.", "record"])
+    result, stt, tts = _spoken(monkeypatch, ["Deploy qmcp to the pi.", "agree"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[0] == "What should be done?"
-    assert tts.spoken[1] == "I heard: Deploy qmcp to the pi. Say record or again."
+    assert tts.spoken[1] == "I heard: Deploy qmcp to the pi. Say agree or again."
     assert tts.spoken[2] == "Recorded for qmcp."
     assert fake_client.recorded == [{
         "text": "Deploy qmcp to the pi.", "source": "voice", "project": None,
-        "heard": ["Deploy qmcp to the pi.", "record"]}]
+        "heard": ["Deploy qmcp to the pi.", "agree"]}]
     assert "[=] row-1  qmcp  voice" in result.output
 
 
@@ -194,7 +194,7 @@ def test_a_project_the_text_names_is_left_for_the_server_to_read(fake_client, mo
     """The row then carries the match and its rule, as a typed one does, rather
     than `stated` with no candidates. Mutation: send `found.project` whatever
     settled it -- red on `rule`."""
-    result, stt, tts = _spoken(monkeypatch, ["Deploy qmcp to the pi.", "record"])
+    result, stt, tts = _spoken(monkeypatch, ["Deploy qmcp to the pi.", "agree"])
 
     assert result.exit_code == 0, result.output
     assert fake_client.recorded[0]["project"] is None
@@ -207,8 +207,8 @@ def test_a_project_the_person_settled_is_stated(fake_client, monkeypatch):
     """Chosen from the candidates or spoken when asked, the dialog is the
     caller stating it, and the answer is in `heard`. Mutation: send `None`
     for every project -- red, both rows unresolved."""
-    chosen, _, _ = _spoken(monkeypatch, ["Move the vectors from vox into qmcp.", "record", "vox"])
-    asked, _, _ = _spoken(monkeypatch, ["Rotate the logs.", "record", "dossier"])
+    chosen, _, _ = _spoken(monkeypatch, ["Move the vectors from vox into qmcp.", "agree", "vox"])
+    asked, _, _ = _spoken(monkeypatch, ["Rotate the logs.", "agree", "dossier"])
 
     assert chosen.exit_code == 0 and asked.exit_code == 0
     assert [r["project"] for r in fake_client.recorded] == ["vox", "dossier"]
@@ -238,19 +238,19 @@ def test_again_takes_the_instruction_a_second_time(fake_client, monkeypatch):
     """Mutation: treat `again` as a nomatch -- red: the second take is never
     asked for and the first text is recorded."""
     result, stt, tts = _spoken(monkeypatch, [
-        "Deploy qmcp.", "again", "Deploy qmcp to the pi.", "record"])
+        "Deploy qmcp.", "again", "Deploy qmcp to the pi.", "agree"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken == [
         "What should be done?",
-        "I heard: Deploy qmcp. Say record or again.",
+        "I heard: Deploy qmcp. Say agree or again.",
         "What should be done?",
-        "I heard: Deploy qmcp to the pi. Say record or again.",
+        "I heard: Deploy qmcp to the pi. Say agree or again.",
         "Recorded for qmcp.",
     ]
     assert fake_client.recorded[0]["text"] == "Deploy qmcp to the pi."
     assert fake_client.recorded[0]["heard"] == [
-        "Deploy qmcp.", "again", "Deploy qmcp to the pi.", "record"]
+        "Deploy qmcp.", "again", "Deploy qmcp to the pi.", "agree"]
     # Both long takes asked for the pause; neither confirmation did.
     assert [pause for _, pause in stt.takes] == [1500, None, 1500, None]
 
@@ -265,10 +265,10 @@ def test_no_asks_again_as_a_no_does_for_an_approval(fake_client, monkeypatch):
 
 def test_dont_record_is_a_no_although_it_names_record(fake_client, monkeypatch):
     """The decision is read before the option named, as the approval dialog
-    reads it. Mutation: `if named == "record" or decision is True:` -- red,
+    reads it. Mutation: `if named == "agree" or decision is True:` -- red,
     the first take is recorded."""
     result, stt, tts = _spoken(monkeypatch, [
-        "Deploy qmcp.", "don't record", "Deploy qmcp to the pi.", "record"])
+        "Deploy qmcp.", "don't agree", "Deploy qmcp to the pi.", "agree"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[2] == "What should be done?"
@@ -280,7 +280,7 @@ def test_max_retries_is_the_dialogs_budget(fake_client, monkeypatch):
     budget records this same script (`test_again_takes_the_instruction_a_second_time`).
     Mutation: hand the dialog `max_retries=2` instead of the option -- red."""
     result, stt, tts = _spoken(monkeypatch, [
-        "Deploy qmcp.", "again", "Deploy qmcp to the pi.", "record"], "--max-retries", "0")
+        "Deploy qmcp.", "again", "Deploy qmcp to the pi.", "agree"], "--max-retries", "0")
 
     assert result.exit_code != 0
     assert "No usable instruction after 1 attempts" in result.output
@@ -292,7 +292,7 @@ def test_an_ambiguous_project_is_asked_back_as_a_closed_choice(fake_client, monk
     """Mutation: record `candidates[0]` instead of asking -- red on the
     project and on the question."""
     result, stt, tts = _spoken(monkeypatch, [
-        "Move the vectors from vox into qmcp.", "record", "vox"])
+        "Move the vectors from vox into qmcp.", "agree", "vox"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[2] == "Which project? Say qmcp or vox."
@@ -308,7 +308,7 @@ def test_a_hyphenated_project_is_chosen_as_a_transcript_says_it(fake_client, mon
     kept -- red, the choice never matches; drop the covering rule from
     `match_option` -- red, `rad godot` names both and is a nomatch."""
     result, stt, tts = _spoken(monkeypatch, [
-        "Pin rad godot to the vectors.", "record", "rad godot"])
+        "Pin rad godot to the vectors.", "agree", "rad godot"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[2] == "Which project? Say rad or rad-godot."
@@ -321,7 +321,7 @@ def test_yes_chooses_no_project(fake_client, monkeypatch):
     a nomatch, re-asked; the budget spent, the row is recorded unresolved.
     Mutation: fall back to `choose_option` -- red, `qmcp` recorded."""
     result, stt, tts = _spoken(monkeypatch, [
-        "Move the vectors from vox into qmcp.", "record", "yes"], "--max-retries", "1")
+        "Move the vectors from vox into qmcp.", "agree", "yes"], "--max-retries", "1")
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[3] == "I heard: yes. Say qmcp or vox."
@@ -332,7 +332,7 @@ def test_yes_chooses_no_project(fake_client, monkeypatch):
 
 def test_a_missing_project_is_asked_for_once(fake_client, monkeypatch):
     """Mutation: skip `_ask_project_once` -- red on the project."""
-    result, stt, tts = _spoken(monkeypatch, ["Rotate the logs.", "record", "dossier"])
+    result, stt, tts = _spoken(monkeypatch, ["Rotate the logs.", "agree", "dossier"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[2] == "Which project?"
@@ -342,7 +342,7 @@ def test_a_missing_project_is_asked_for_once(fake_client, monkeypatch):
 def test_a_missing_project_that_still_matches_nothing_is_recorded_unresolved(
         fake_client, monkeypatch):
     """Asked once, not twice, and the instruction is kept."""
-    result, stt, tts = _spoken(monkeypatch, ["Rotate the logs.", "record", "the thing"])
+    result, stt, tts = _spoken(monkeypatch, ["Rotate the logs.", "agree", "the thing"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken.count("Which project?") == 1
@@ -352,11 +352,11 @@ def test_a_missing_project_that_still_matches_nothing_is_recorded_unresolved(
 
 
 def test_nothing_heard_is_said_and_the_prompt_repeated(fake_client, monkeypatch):
-    result, stt, tts = _spoken(monkeypatch, ["", "Deploy qmcp.", "record"])
+    result, stt, tts = _spoken(monkeypatch, ["", "Deploy qmcp.", "agree"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[1] == "I didn't hear anything. What should be done?"
-    assert fake_client.recorded[0]["heard"] == ["", "Deploy qmcp.", "record"]
+    assert fake_client.recorded[0]["heard"] == ["", "Deploy qmcp.", "agree"]
 
 
 def test_an_instruction_nobody_confirms_records_nothing(fake_client, monkeypatch):
@@ -366,7 +366,7 @@ def test_an_instruction_nobody_confirms_records_nothing(fake_client, monkeypatch
     assert result.exit_code != 0
     assert "No usable instruction" in result.output
     assert fake_client.recorded == []
-    assert tts.spoken[2] == "I heard: banana. Say record or again."
+    assert tts.spoken[2] == "I heard: banana. Say agree or again."
     assert stt.announced[-1][0] == "gave_up"
 
 
@@ -374,7 +374,7 @@ def test_the_dialog_announces_its_states_with_the_shared_reasons(fake_client, mo
     """`confirm` on the read-back and `again` on a second take, beside the
     `noinput`/`nomatch` the approval dialog uses."""
     result, stt, tts = _spoken(monkeypatch, [
-        "Deploy qmcp.", "again", "", "Deploy qmcp to the pi.", "record"])
+        "Deploy qmcp.", "again", "", "Deploy qmcp to the pi.", "agree"])
 
     assert result.exit_code == 0, result.output
     assert [(state, reason) for state, _, reason in stt.announced] == [
@@ -437,7 +437,7 @@ def test_silence_when_asked_which_project_is_re_asked_with_the_choices(fake_clie
     """Mutation: re-ask silence as a mishearing -- red, the person hears
     "I heard: ." for nothing at all."""
     result, stt, tts = _spoken(monkeypatch, [
-        "Move the vectors from vox into qmcp.", "record", "", "vox"])
+        "Move the vectors from vox into qmcp.", "agree", "", "vox"])
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[2] == "Which project? Say qmcp or vox."

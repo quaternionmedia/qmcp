@@ -213,8 +213,8 @@ last lines. Then it talks:
 ```
 qmcp:   Ready. What should be done?
 you:    Which file in qmcp says what qmcp is?
-qmcp:   I heard: Which file in qmcp says what qmcp is. Say record or again.
-you:    record
+qmcp:   I heard: Which file in qmcp says what qmcp is. Say agree or again.
+you:    agree
 qmcp:   Recorded for qmcp.
 qmcp:   Act on the instruction: ... Project qmcp, clone ..., runtime local, budget 1 run(s). Say approve or hold.
 you:    approve
@@ -247,8 +247,11 @@ is said to it is in quotes; what it says back is in italics.
 ### Ask about a project
 
 Say the instruction with the project's name in it: "Which file in qmcp says
-what qmcp is?" *I heard: ... Say record or again.* Say "record", or "again" to
-say it once more. The consent says what will run: the instruction, the project,
+what qmcp is?" *I heard: ...* -- and when the engine heard it confidently, that
+is all: a moment's silence agrees, and it is recorded. Say anything in that
+moment, or press a key, and it is not taken for agreed: "again" takes it
+again, "agree" records it, and anything else is asked about outright. Heard
+less surely, the read-back asks: *Say agree or again.* The consent says what will run: the instruction, the project,
 the clone, the runtime, a budget of one run, and how many earlier instructions
 it carries. Say "approve". *Approved. Running in qmcp.* -- and when the model
 has read what it needs, the first sentence of what it found, said back. The
@@ -330,10 +333,10 @@ uv run qmcp serve --converse --runtime local --wake qmcp
 
 Everything said to it between turns then begins with the word -- "qmcp, which
 file says what dossier is?", "qmcp, yes", "qmcp, stop listening" -- and
-anything else heard is ignored. Answers to its own questions, "record" and
+anything else heard is ignored. Answers to its own questions, "agree" and
 "approve" among them, need no word. Without `--wake`, every utterance is read
 back before anything is recorded, so talk in the room interrupts but never
-records itself: nothing is recorded without "record", and nothing runs without
+records itself: nothing runs without
 "approve".
 
 ### Hear a result again

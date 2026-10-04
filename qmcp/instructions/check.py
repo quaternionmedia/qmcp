@@ -31,7 +31,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from qmcp.instructions import RULE_ONE, RULE_STATED
-from qmcp.instructions.dialog import CONFIRM, PAUSE_MS, PROMPT, WHICH_PROJECT, InstructionDialog
+from qmcp.instructions.dialog import (
+    CONFIRM,
+    PAUSE_MS,
+    PROMPT,
+    TACIT_ABOVE,
+    WHICH_PROJECT,
+    InstructionDialog,
+)
 from qmcp.integrations.voice.adapter import UnclearResponse, listen_for, say_options
 from qmcp.integrations.voice.check import _Recorded, throwaway_server
 
@@ -68,16 +75,16 @@ class Case:
 # recorded; several named, so a closed choice over them is asked by name; and
 # `again`, which takes the instruction a second time before recording.
 OFFLINE_CASES = (
-    Case(("Deploy qmcp to the pi.", "record"),
+    Case(("Deploy qmcp to the pi.", "agree"),
          "Deploy qmcp to the pi.", NAMED, RULE_ONE),
     Case(("Rotate the logs.", "yes", OTHER),
          "Rotate the logs.", OTHER, RULE_STATED, reasked=WHICH_PROJECT),
     # The project chosen is the one the roster lists second, so a dialog that
     # took the first candidate for anything it could not match is caught here.
-    Case((f"Move the vectors from {OTHER} into {NAMED}.", "record", NAMED),
+    Case((f"Move the vectors from {OTHER} into {NAMED}.", "agree", NAMED),
          f"Move the vectors from {OTHER} into {NAMED}.", NAMED, RULE_STATED,
          reasked=f"{WHICH_PROJECT} Say {OTHER} or {NAMED}."),
-    Case(("Deploy qmcp.", "again", "Deploy qmcp to the pi.", "record"),
+    Case(("Deploy qmcp.", "again", "Deploy qmcp to the pi.", "agree"),
          "Deploy qmcp to the pi.", NAMED, RULE_ONE, reasked=PROMPT),
 )
 
@@ -99,7 +106,9 @@ class _Scripted:
         self.log = log
 
     def listen(self, duration: float = 5.0, *, pause_ms: int | None = None, hint=None):
-        self.state.heard = self.script[min(self.takes, len(self.script) - 1)]
+        take = self.script[min(self.takes, len(self.script) - 1)]
+        # A take may carry how sure the engine is of it: (text, confidence).
+        self.state.heard, self.state.confidence = take if isinstance(take, tuple) else (take, None)
         self.takes += 1
         text, path = listen_for(self.stt, duration, pause_ms=pause_ms, hint=hint)
         if self.log is not None:
@@ -108,6 +117,10 @@ class _Scripted:
 
     def announce(self, state: str, text: str = "", reason: str | None = None, options=None):
         return self.stt.announce(state, text, reason=reason, options=options)
+
+    @property
+    def last_confidence(self):
+        return self.stt.last_confidence
 
 
 def run_offline(echo: Callable[[str], None] = print, cases=OFFLINE_CASES) -> bool:
@@ -223,9 +236,9 @@ OUTCOME = ("Added a health route that answers with the version; the suite passes
 # The two ways a consent ends aloud: approve runs the instruction once and its
 # outcome is said back; hold runs nothing and says so.
 LOOP_CASES = (
-    Loop((f"Add a health check to {NAMED}.", "record", "approve"), "done", True,
+    Loop((f"Add a health check to {NAMED}.", "agree", "approve"), "done", True,
          f"Done in {NAMED}. Added a health route"),
-    Loop((f"Rotate the {NAMED} logs.", "record", "hold"), "refused", False,
+    Loop((f"Rotate the {NAMED} logs.", "agree", "hold"), "refused", False,
          "Held. Nothing ran"),
 )
 
@@ -415,7 +428,7 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
             tts = _Said(RecordingTTS(out_dir=str(root / "spoken")), log)
             done = recorded = summary = None
             with serve_engine(state) as (engine_url, _), HttpSTT(engine_url, contract=JOE) as stt:
-                scripted = _Scripted(stt, state, (text, "record", "approve"), log=log)
+                scripted = _Scripted(stt, state, (text, "agree", "approve"), log=log)
                 dialog = InstructionDialog(stt=scripted, tts=tts, client=client, names=names,
                                            max_retries=1, listen_duration=2.0,
                                            answer_duration=1.0)
@@ -484,12 +497,14 @@ WAITING_QUESTION = "Ship the build?"
 def conversation_script(project: str) -> tuple[str, ...]:
     """Every take of one spoken session, in order: the waiting question answered,
     a silence, two instructions each recorded and approved -- the first read
-    back twice, on being asked to repeat it -- a yes and a no to "Anything
-    else?", the words that end it, and silence."""
+    back twice, on being asked to repeat it, and agreed to; the second heard
+    confidently, read back without a question and agreed to by the silence
+    after it -- a yes and a no to "Anything else?", the words that end it, and
+    silence."""
     return ("approve", "",
-            FIRST_ASK.format(project=project), "repeat", "record", "approve",
+            FIRST_ASK.format(project=project), "repeat", "agree", "approve",
             "yes",
-            SECOND_ASK.format(project=project), "record", "approve",
+            (SECOND_ASK.format(project=project), 0.95), "", "approve",
             "no",
             "stop listening",
             # Silence after the end: a session that missed its stop runs out on
@@ -553,6 +568,7 @@ def run_conversation(echo: Callable[[str], None] = print, runtime=None,
         with serve_engine(state) as (engine_url, _), HttpSTT(engine_url, contract=JOE) as stt:
             scripted = _Scripted(stt, state, conversation_script(project), log=log)
             conversation = Conversation(scripted, tts, client, runtime, names, rows=rows,
+                                        tacit_above=TACIT_ABOVE,
                                         clones=clones, listen_duration=2.0,
                                         answer_duration=1.0, max_retries=1,
                                         poll_interval=0.05, idle_limit=3,
@@ -585,13 +601,17 @@ def run_conversation(echo: Callable[[str], None] = print, runtime=None,
         readbacks = [t for t in tts.spoken if t.startswith("I heard: ") and first_ask in t]
         if len(readbacks) != 2:
             problems.append(f"the first read-back was said {len(readbacks)} time(s), not again on 'repeat'")
+        second_ask = SECOND_ASK.format(project=project)[:20]
+        second = [t for t in tts.spoken if t.startswith("I heard: ") and second_ask in t]
+        if len(second) != 1 or "Say agree or again" in second[0]:
+            problems.append(f"the confident second instruction was not agreed to tacitly: {second}")
         # What reached the engine over the wire: each closed question's
         # options as the hint, and as the options a display can offer.
-        for hint in ("approve, hold", "record, again", "yes, no"):
+        for hint in ("approve, hold", "agree, again", "yes, no"):
             if hint not in state.hints:
                 problems.append(f"no listen was hinted {hint!r}")
         offered = [tuple(a.get("options") or ()) for a in state.announced if a.get("state") == "speaking"]
-        for options in (("approve", "hold"), ("record", "again"), ("yes", "no")):
+        for options in (("approve", "hold"), ("agree", "again"), ("yes", "no")):
             if options not in offered:
                 problems.append(f"no question offered {options}")
 

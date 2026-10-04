@@ -168,7 +168,7 @@ class _Client:
 
 def test_the_read_back_hints_record_or_again_and_repeats_on_request():
     """Mutation: drop the hint on the confirmation -- red."""
-    stt, tts = _STT("repeat", "record"), _TTS()
+    stt, tts = _STT("repeat", "agree"), _TTS()
     dialog = InstructionDialog(stt=stt, tts=tts, client=_Client(), names=["qmcp"], max_retries=0)
 
     row = dialog.run_once(heard="Deploy qmcp.")
