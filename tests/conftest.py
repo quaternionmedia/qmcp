@@ -39,6 +39,7 @@ def client(monkeypatch):
             # `qmcp.server` first, so a missing field fails in one order only.
             self.voice_engine = "joe"
             self.voice_engine_url = None
+            self.converse_runtime = None
 
     test_settings = TestSettings(db_url)
 

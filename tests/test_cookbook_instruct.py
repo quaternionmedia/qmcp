@@ -337,7 +337,7 @@ def test_continuity_fails_when_a_clone_was_chosen_by_the_wrong_rule(monkeypatch,
     from qmcp.instructions import act as act_module
 
     monkeypatch.setattr(act_module, "clone_for",
-                        lambda rows, instruction_id, project, cwd: act_module.Clone(
+                        lambda rows, instruction_id, project, cwd, cwd_rule="": act_module.Clone(
                             cwd=Path(__file__).resolve().parent.parent, rule=rule))
 
     result = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "scripted"])
@@ -362,3 +362,71 @@ def test_continuity_fails_when_something_is_said_after_the_summary(monkeypatch):
 
     assert result.exit_code == 1, result.output
     assert "the summary was not the last thing said" in result.output
+
+
+# --- the conversation ---------------------------------------------------------------------
+
+
+def test_one_spoken_session_runs_with_nothing_typed():
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 0, result.output
+    assert "said   Ready. What should be done?" in result.output
+    assert "answered: agent-question -> approve" in result.output
+    assert "carrying 1 earlier instruction(s) from qmcp's record" in result.output
+    assert "said   Stopping. Start the server again to talk." in result.output
+    assert "[ok]   one spoken session" in result.output
+
+
+def test_the_session_fails_when_the_waiting_question_is_not_asked(monkeypatch):
+    from qmcp.instructions.converse import Conversation
+
+    monkeypatch.setattr(Conversation, "_ask_waiting", lambda self, ended: None)
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 1, result.output
+    assert "the waiting question was not asked and answered by voice" in result.output
+
+
+def test_the_session_fails_when_the_second_instruction_is_not_told_the_first(monkeypatch):
+    monkeypatch.setattr("qmcp.instructions.act.history", lambda *a, **k: ())
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 1, result.output
+    assert "the second instruction was not told what the first found" in result.output
+
+
+def test_the_session_fails_when_the_first_clone_is_not_found_by_name(monkeypatch):
+    from qmcp.instructions.converse import Conversation
+
+    monkeypatch.setattr(Conversation, "_clone_for", lambda self, project, iid: None)
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 1, result.output
+    assert "expected two done" in result.output
+
+
+def test_the_session_fails_when_it_does_not_stop_when_told(monkeypatch):
+    monkeypatch.setattr("qmcp.instructions.converse.STOP", ())
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 1, result.output
+    assert "not on being told to stop" in result.output
+
+
+def test_a_session_on_a_runtime_that_is_not_ready_runs_nothing(monkeypatch):
+    from qmcp.integrations.agents.scripted import ScriptedRuntime
+
+    class Unready(ScriptedRuntime):
+        def ready(self):
+            return "the model is not served"
+
+    monkeypatch.setattr("qmcp.integrations.agents.runtime_named", lambda name, **kw: Unready())
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse", "--runtime", "local"])
+
+    assert result.exit_code != 0 and "Nothing ran: the model is not served." in result.output
