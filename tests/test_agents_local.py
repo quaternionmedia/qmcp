@@ -253,14 +253,30 @@ def test_a_long_file_is_cut_and_says_so(tmp_path):
 
 
 def test_a_model_that_never_stops_reading_is_a_failed_run_at_the_bound(tmp_path):
-    """Mutation: drop the step bound -- red, the stand-in runs out of replies."""
+    """Asked once more for the answer, it asks for a read again. Mutation: drop
+    the step bound -- red, the stand-in runs out of replies."""
     project = _project(tmp_path)
-    service = _Service(*[_reads("list_files", path=".")] * 3)
+    service = _Service(*[_reads("list_files", path=".")] * 4)
 
     outcome = ollama.Runtime(client=service.client(), max_steps=3).run(_brief(project))
 
     assert outcome.exit_code == 1 and "did not finish within 3 calls" in outcome.text
-    assert outcome.detail["model_calls"] == 3
+    assert outcome.detail["model_calls"] == 4
+
+
+def test_a_model_at_the_bound_is_asked_once_for_the_answer_from_what_it_read(tmp_path):
+    """Seen live: a run read the file it needed, kept searching, and ended with
+    nothing at the bound. Mutation: drop the last call -- red, the run fails
+    with the answer one call away."""
+    project = _project(tmp_path)
+    service = _Service(_reads("read_file", path="README.md"), _reads("search", text="qmcp"),
+                       _reads("list_files", path="."), {"content": "qmcp is the local backend."})
+
+    outcome = ollama.Runtime(client=service.client(), max_steps=3).run(_brief(project))
+
+    assert outcome.exit_code == 0 and outcome.text == "qmcp is the local backend."
+    assert service.requests[-1]["messages"][-1] == {"role": "user", "content": ollama.FINAL}
+    assert outcome.detail["model_calls"] == 4
 
 
 def test_an_empty_answer_is_a_failed_run(tmp_path):
