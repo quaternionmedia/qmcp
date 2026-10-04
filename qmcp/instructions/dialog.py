@@ -55,7 +55,9 @@ from qmcp.integrations.voice.adapter import (
     listen_for,
     match_option,
     parse_yes_no,
+    ask_over,
     say_options,
+    speakably,
 )
 
 PROMPT = "What should be done?"
@@ -97,7 +99,7 @@ class InstructionDialog:
                  answer_duration: float = 5.0, tacit_above: float | None = None,
                  tacit_seconds: float = TACIT_SECONDS, vocabulary: Iterable[str] = ()):
         self.stt = stt
-        self.tts = tts
+        self.tts = speakably(tts)
         self.client = client
         self.names = tuple(names)
         self.max_retries = max_retries
@@ -142,10 +144,20 @@ class InstructionDialog:
         row = self.client.create_instruction(text, source="voice", project=project,
                                              heard=list(self.heard))
         said = (f"Recorded for {row['project']}." if row.get("project")
-                else "Recorded. The project is unresolved.")
+                else "Recorded, no project.")
         self._announce("recorded", said)
         self.tts.speak(said)
         return row
+
+    def _say_over(self, text: str, *, long: bool, hint: list[str] | None = None,
+                  duration: float | None = None) -> None:
+        """Say a question the person may answer before it ends (`ask_over`),
+        watched for the take `_listen` makes next, with the same parameters."""
+        if long:
+            ask_over(self.stt, self.tts, text, duration=self.listen_duration, pause_ms=self.pause_ms,
+                     hint=self.vocabulary or None)
+        else:
+            ask_over(self.stt, self.tts, text, duration=duration or self.answer_duration, hint=hint)
 
     def _listen(self, *, long: bool, hint: list[str] | None = None,
                 duration: float | None = None) -> str:
@@ -169,8 +181,8 @@ class InstructionDialog:
         the tacit agreement -- a word, a key, a held key -- and what interrupted
         decides: `agree` or a yes records, `again` or a no takes it again, and
         anything else is asked about outright. Below the threshold, or from an
-        engine that reports no confidence, the read-back asks "Say agree or
-        again." Nothing here runs anything: consent is a separate question.
+        engine that reports no confidence, the read-back asks "Agree or
+        again?" Nothing here runs anything: consent is a separate question.
 
         One budget covers the whole exchange, as the approval dialog's open
         question does: every turn the speaker has to be asked a second time
@@ -190,17 +202,17 @@ class InstructionDialog:
             tacit = self._tacit_allowed(confidence)
         else:
             self._announce("speaking", PROMPT)
-            self.tts.speak(PROMPT)
+            self._say_over(PROMPT, long=True)
         while True:
             reask = reason = None
             if answer is None:
                 heard = self._listen(long=True)
                 if not heard.strip():
-                    reask, reason = f"I didn't hear anything. {PROMPT}", "noinput"
+                    reask, reason = f"Didn't catch that. {PROMPT}", "noinput"
                 elif asks_repeat(heard) and repeats < MAX_REPEATS:
                     repeats += 1
                     self._announce("speaking", PROMPT, reason="repeat")
-                    self.tts.speak(PROMPT)
+                    self._say_over(PROMPT, long=True)
                     continue
                 else:
                     answer, asked = heard.strip(), False
@@ -220,7 +232,7 @@ class InstructionDialog:
             elif not asked:
                 readback = f"I heard: {_said(answer)}. {grammar}"
                 self._announce("speaking", readback, reason="confirm", options=CONFIRM)
-                self.tts.speak(readback)
+                self._say_over(readback, long=False, hint=CONFIRM)
                 asked = True
                 continue
             else:
@@ -229,7 +241,7 @@ class InstructionDialog:
                     repeats += 1
                     readback = f"I heard: {_said(answer)}. {grammar}"
                     self._announce("speaking", readback, reason="repeat", options=CONFIRM)
-                    self.tts.speak(readback)
+                    self._say_over(readback, long=False, hint=CONFIRM)
                     continue
                 agreed = self._agreement(heard)
                 if agreed is True:
@@ -237,9 +249,9 @@ class InstructionDialog:
                 if agreed is False:
                     reask, reason, answer = PROMPT, "again", None
                 elif not heard.strip():
-                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
+                    reask, reason = f"Didn't catch that. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                    reask, reason = f"Heard {_said(heard, 80)}. {grammar}", "nomatch"
             if reasks >= self.max_retries:
                 break
             reasks += 1
@@ -247,7 +259,7 @@ class InstructionDialog:
             # instruction itself has none to offer.
             self._announce("speaking", reask, reason=reason,
                            options=CONFIRM if answer is not None else None)
-            self.tts.speak(reask)
+            self._say_over(reask, long=answer is None, hint=CONFIRM)
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
             f"No usable instruction after {self.max_retries + 1} attempts; last heard {heard!r}"
@@ -261,7 +273,7 @@ class InstructionDialog:
         """Say what was heard, ask nothing, and listen briefly for an interruption."""
         said = f"I heard: {_said(answer)}."
         self._announce("speaking", said, reason="tacit", options=CONFIRM)
-        self.tts.speak(said)
+        self._say_over(said, long=False, hint=CONFIRM, duration=self.tacit_seconds)
         return self._listen(long=False, hint=CONFIRM, duration=self.tacit_seconds)
 
     @staticmethod
@@ -281,31 +293,31 @@ class InstructionDialog:
         """A closed choice by name only, or None once the budget is spent.
 
         The same grammar and re-asks as an approval, without the yes/no
-        reading: "yes" to "Which project? Say qmcp or vox." chooses nothing,
+        reading: "yes" to "Which project? Qmcp or vox?" chooses nothing,
         and a project is never picked by position.
         """
         grammar = say_options(options)
         question = f"{prompt} {grammar}"
         self._announce("speaking", question, options=options)
-        self.tts.speak(question)
+        self._say_over(question, long=False, hint=options)
         attempt = repeats = 0
         while attempt <= self.max_retries:
             heard = self._listen(long=False, hint=options)
             if asks_repeat(heard) and repeats < MAX_REPEATS:
                 repeats += 1
                 self._announce("speaking", question, reason="repeat", options=options)
-                self.tts.speak(question)
+                self._say_over(question, long=False, hint=options)
                 continue
             named = match_option(heard, options)
             if named is not None:
                 return named
             if attempt < self.max_retries:
                 if not heard.strip():
-                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
+                    reask, reason = f"Didn't catch that. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                    reask, reason = f"Heard {_said(heard, 80)}. {grammar}", "nomatch"
                 self._announce("speaking", reask, reason=reason, options=options)
-                self.tts.speak(reask)
+                self._say_over(reask, long=False, hint=options)
             attempt += 1
         return None
 
@@ -318,7 +330,7 @@ class InstructionDialog:
         unresolved for a person to settle.
         """
         self._announce("speaking", WHICH_PROJECT)
-        self.tts.speak(WHICH_PROJECT)
+        self._say_over(WHICH_PROJECT, long=False)
         heard = self._listen(long=False)
         return resolve(heard, self.names).project
 

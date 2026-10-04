@@ -535,7 +535,7 @@ def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: st
     and each ending is checked. No microphone, speakers or model are needed,
     and the configured queue is not touched.
 
-    `--live` asks one question aloud ("Voice check. Say approve or hold.")
+    `--live` asks one question aloud ("Voice check. Approve or hold?")
     through the configured server and a running engine, and reports what was
     recorded. It queues one request, `voice-check-<time>`, which expires in
     five minutes.
@@ -2010,7 +2010,7 @@ def instruct(text: str | None, project: str | None, source: str, voice: bool,
 
     --voice asks "What should be done?" aloud, listens with a long cap and a
     long pause (an instruction has pauses mid-thought), reads the transcript
-    back ("I heard: ... Say agree or again."), and records on a yes. An
+    back ("I heard: ... Agree or again?"), and records on a yes. An
     ambiguous project is asked back as a closed choice by name; a missing
     one is asked for once. The engine must be reachable, as for
     `qmcp human voice`.

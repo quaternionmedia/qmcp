@@ -161,8 +161,8 @@ the measurement.
 
 It is a closed-choice dialog in the shape VoiceXML gives one: the request's
 own `options` are the grammar, and the prompt says them — a request carrying
-`["approve", "hold"]` is spoken as *"Launch the audit? Say approve or
-hold."*
+`["approve", "hold"]` is spoken as *"Launch the audit? Approve or
+hold?"*
 
 `parse_yes_no` normalizes casing and punctuation before matching, because a
 transcript carries both ("Yes.", "Yeah, go ahead."). Negatives are
@@ -186,22 +186,48 @@ without spending a retry, up to `MAX_REPEATS`. A transcript repeating one word
 `options` existed is asked without them (`listen_for`, `announce_to`).
 
 The re-ask says which of two things went wrong, up to `max_retries` (default
-2): *"I didn't hear anything."* when the transcript is empty (VoiceXML's
-noinput), or *"I heard: banana."* when something was heard and was unusable
+2): *"Didn't catch that."* when the transcript is empty (VoiceXML's
+noinput), or *"Heard banana."* when something was heard and was unusable
 (nomatch) — echoing the mishearing lets the speaker hear it. Each re-ask
 repeats the options. Exhausting the budget raises `UnclearResponse` and
 submits nothing: an ambiguous answer is never guessed at.
 
 A request with no `options` is an open question, and the transcript is the
 answer: *"What should the branch be called?"* is spoken as it is, and what is
-heard is read back once as a closed choice — *"I heard: release candidate. Say
-agree or again."* The read-back goes through the same helpers, so a yes
+heard is read back once as a closed choice — *"I heard: release candidate.
+Agree or again?"* The read-back goes through the same helpers, so a yes
 records and a no listens again; `again` re-speaks the question; silence and a
 confirmation that matches neither are re-asked as noinput and nomatch. One
 budget covers the dialog: each turn the speaker has to be asked a second time,
 whether for the answer or for the confirmation, costs a retry, and exhausting
 it raises and submits nothing. An `input` request answered "yes" therefore
 records `yes`, not `approve`; a request with options is unaffected.
+
+## What is said
+
+Every sentence is said through `speakable`, whoever wrote it: a "(s)" is
+dropped, a path is said by its last name, a link as "a link", "3/3" as "3 of
+3", and brackets, slashes and markdown marks are not read. What is announced to
+the engine -- and shown on joe's page -- keeps the full text, so the ear gets a
+few plain words and the eye the detail. The grammar is a short question
+(*"Approve or hold?"*), counts are words (*"one run"*), and an accepted answer
+is acknowledged with its word: *"Approved."*, *"Holding."*. The consent to act
+is said as where, what, how and how many -- *"Run in qmcp: Deploy qmcp to the
+pi. The local model, one run, with what came before. Approve or hold?"* -- and
+the request written on the queue keeps the clone's path and the budget.
+
+## Answering before the question ends
+
+Every closed question -- a consent, a question an agent put on the queue, the
+read-back of an instruction, a choice of project, "Anything else?" -- is said
+through `ask_over`, so it can be answered before it ends. The engine is
+watched first (`HttpSTT.watch`, with the parameters of the listen that
+follows), and the voice stops as soon as the engine says the person
+interrupted (`HttpSTT.interrupted`): a key or button answered, the talk key
+held, or speech louder than the question's own echo. An answer said over the
+question is heard from its first word, and an answer by key is taken the
+moment it is pressed. A backend without the routes, or a voice that cannot be
+cut short, says the question whole, as before.
 
 ## Watching the exchange
 
@@ -271,10 +297,10 @@ outright, recorded as `stated`; a blank states nothing.
 Spoken, the dialog asks *"What should be done?"*, listens with a long cap and a
 long pause (`--duration`, `--pause-ms`; an instruction has pauses mid-thought,
 which is what `pause_ms` on the engine contract is for), and reads the
-transcript back: *"I heard: Deploy qmcp to the pi. Say agree or again."* A yes
+transcript back: *"I heard: Deploy qmcp to the pi. Agree or again?"* A yes
 or `agree` records; a no or `again` listens again; the re-asks are the ones
 above. An instruction naming several projects is asked back as a closed choice
-by name (*"Which project? Say qmcp or vox."*), where a spoken `rad godot`
+by name (*"Which project? Qmcp or vox?"*), where a spoken `rad godot`
 chooses `rad-godot` over `rad`; one naming none is asked for the project once.
 A text that named its project is sent for the server to read, so the row
 carries the match; a project the person chose or spoke is `stated`, with the
@@ -365,11 +391,11 @@ the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
 
 ## The result, spoken
 
-With `--voice`, the act says *"Approved. Running in qmcp."* between the
-approval and the run, so the wait is not silence, and when the run ends it
+With `--voice`, the act says *"Approved."* and *"Running in qmcp."* between
+the approval and the run, so the wait is not silence, and when the run ends it
 says what the row came to: whether it ran, where, and the outcome's first
 sentence -- *"Done in qmcp. Added a health route that answers with the
-version; the suite passes. The rest is on the record."* The whole outcome
+version; the suite passes."* The whole outcome
 stays on the row. Without `--voice` the same sentence is printed. A held or
 unanswered consent says that nothing ran, and a refusal before anything was
 asked says so without reading out the flags it names.
@@ -411,7 +437,7 @@ done?"*, and from then on is spoken:
 | an instruction | it is read back -- *"I heard: ..."*, and heard confidently, nothing more: silence agrees |
 | `agree` / `again` | it is recorded against its project, or taken again; either one also interrupts a tacit agreement |
 | `approve` / `hold` | to the consent -- what will run, where, and how much history is carried; only `approve` runs |
-| -- | the runtime carries it out, *"Approved. Running in qmcp."*, and the answer is said back |
+| -- | the runtime carries it out, *"Running in qmcp."*, and the answer is said back |
 | `yes` / `no` | to *"Anything else?"*: asks for the next instruction, or goes back to waiting |
 | `stop listening` / `goodbye` | ends the conversation |
 | `repeat` / `what?` | the last question again |
@@ -471,15 +497,15 @@ against its script:
 |---|---|
 | "Yes, go ahead." | `approve`, by `vox`: a yes read onto the options |
 | "Hold." | `hold`, by `vox`: an option by name |
-| "banana" | nothing; re-asked "I heard: banana." |
-| (silence) | nothing; re-asked "I didn't hear anything." |
+| "banana" | nothing; re-asked "Heard banana." |
+| (silence) | nothing; re-asked "Didn't catch that." |
 | "release candidate", then "agree" | `release candidate`, by `vox`: an open question, read back and confirmed |
 
 The configured queue is not touched, and no microphone, speaker or model is
 needed. `tests/test_cookbook_voice.py` runs it and makes sure it can fail: a
 loop that records the first option for an answer it cannot match turns it red.
 
-**`--live`** asks one question aloud, *"Voice check. Say approve or hold."*,
+**`--live`** asks one question aloud, *"Voice check. Approve or hold?"*,
 through the configured server and a running engine, after the same
 preflight `human voice` runs. It queues one request, `voice-check-<time>`,
 which expires in five minutes, and reports what was recorded.

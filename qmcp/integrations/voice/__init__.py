@@ -18,18 +18,24 @@ Usage:
 
 from qmcp.integrations.voice.adapter import (
     UnclearResponse,
+    ask_over,
     VoiceApprovalLoop,
     choose_option,
     match_option,
     parse_yes_no,
     say_options,
+    speakable,
+    speakably,
 )
 
 __all__ = [
     "VoiceApprovalLoop",
+    "ask_over",
     "UnclearResponse",
     "parse_yes_no",
     "choose_option",
     "match_option",
     "say_options",
+    "speakable",
+    "speakably",
 ]

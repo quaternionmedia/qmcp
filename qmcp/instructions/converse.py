@@ -55,16 +55,16 @@ from pathlib import Path
 from typing import Any
 
 from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, VOCABULARY, InstructionDialog
-from qmcp.integrations.voice.adapter import REPEAT
+from qmcp.integrations.voice.adapter import REPEAT, ask_over, speakably
 
 READY = "Ready. What should be done?"
 ANYTHING_ELSE = "Anything else?"
 WAITING = "Listening. Say an instruction whenever you are ready."
-OKAY = "Okay. I am listening."
-STOPPING = "Stopping. Start the server again to talk."
+OKAY = "Listening."
+STOPPING = "Stopping."
 QUESTION_WAITING = "A question is waiting."
-FAILED = "That turn failed, and nothing ran. Say the instruction again."
-NOT_RECORDED = "Nothing was recorded."
+FAILED = "That failed. Nothing ran."
+NOT_RECORDED = "Nothing recorded."
 
 # What ends the conversation, what goes back to waiting, and what asks for an
 # instruction, matched on the whole utterance with punctuation and case gone.
@@ -126,7 +126,7 @@ class Conversation:
                  echo: Callable[[str], None] | None = None,
                  tacit_above: float | None = None) -> None:
         self.stt = stt
-        self.tts = tts
+        self.tts = speakably(tts)
         self.client = client
         self.runtime = runtime
         self.names = tuple(names)
@@ -185,7 +185,14 @@ class Conversation:
         self._question = (text, tuple(options))
         self.echo(f"said: {text}")
         announce(self.stt, "speaking", text, options=list(options) or None)
-        self.tts.speak(text)
+        # Answerable before it ends, watched for the take the loop makes next.
+        ask_over(self.stt, self.tts, text, duration=self.listen_duration, pause_ms=self.pause_ms,
+                 hint=self._hint())
+
+    def _hint(self) -> list[str]:
+        """The question's own options, then the names an instruction is
+        likely to carry: a take after it may be either."""
+        return list(dict.fromkeys([*self._question[1], *self._vocabulary]))[:VOCABULARY + 2]
 
     def _announce(self, state: str, text: str) -> None:
         from qmcp.instructions.spoken import announce
@@ -204,11 +211,8 @@ class Conversation:
         idle = 0
         while True:
             self._ask_waiting(ended)
-            # The question's own options, then the names an instruction is
-            # likely to carry: a take here may be either.
-            hint = list(dict.fromkeys([*self._question[1], *self._vocabulary]))[:VOCABULARY + 2]
             heard, recording = listen_for(self.stt, self.listen_duration, pause_ms=self.pause_ms,
-                                          hint=hint)
+                                          hint=self._hint())
             # An answer with no recording behind it came from a key or a button
             # on the engine's page: it was meant for this conversation.
             keyed = not recording

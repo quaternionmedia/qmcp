@@ -101,6 +101,34 @@ def listen_for(stt, duration: float, *, pause_ms: int | None = None, hint=None):
         return stt.listen(**kwargs)
 
 
+def ask_over(stt, tts, text: str, *, duration: float, pause_ms: int | None = None,
+             hint=None) -> None:
+    """Say a question so it can be answered before it ends.
+
+    The engine is watched first (`stt.watch`), with the parameters of the
+    listen that follows, so an answer said over the question is heard from
+    its first word; and the voice stops as soon as the engine says the person
+    interrupted (`stt.interrupted`) -- answered by key, held the talk key, or
+    spoke over it. A backend without either, or a voice that cannot be cut
+    short, says the question whole, as before. The listen is the caller's.
+    """
+    watch = getattr(stt, "watch", None)
+    if callable(watch):
+        try:
+            watch(duration, pause_ms=pause_ms, hint=list(hint) if hint else None)
+        except Exception:  # noqa: BLE001 -- a question that cannot be watched is still asked
+            pass
+    interrupted = getattr(stt, "interrupted", None)
+    if callable(interrupted):
+        try:
+            tts.speak(text, until=interrupted)
+            return
+        except TypeError as exc:
+            if "until" not in str(exc):
+                raise
+    tts.speak(text)
+
+
 def announce_to(stt, state: str, text: str = "", reason: str | None = None,
                 options=None) -> None:
     """Post one dialog state to the backend's `announce`, a question carrying
@@ -200,12 +228,81 @@ def _said(text: str, chars: int | None = None) -> str:
 
 
 def say_options(options: list[str]) -> str:
-    """The spoken grammar: "Say approve or hold." / "Say red, green, or blue."."""
+    """The spoken grammar, in as few words as it takes: "Approve or hold?" /
+    "Red, green, or blue?"."""
     if len(options) == 1:
-        return f"Say {options[0]}."
-    if len(options) == 2:
-        return f"Say {options[0]} or {options[1]}."
-    return f"Say {', '.join(options[:-1])}, or {options[-1]}."
+        said = f"{options[0]}?"
+    elif len(options) == 2:
+        said = f"{options[0]} or {options[1]}?"
+    else:
+        said = f"{', '.join(options[:-1])}, or {options[-1]}?"
+    return said[:1].upper() + said[1:]
+
+
+NUMBERS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+
+
+def counted(n: int, word: str) -> str:
+    """"one run", "two runs": a count as a listener hears it, never "1 run(s)"."""
+    said = NUMBERS[n] if 0 <= n < len(NUMBERS) else str(n)
+    return f"{said} {word}" if n == 1 else f"{said} {word}s"
+
+
+# What a synthesizer would read aloud as syntax: "(s)", markdown, brackets,
+# a path's folders, a link. Each is a rule a test names.
+_PLURAL_MARK = re.compile(r"\(s\)")
+_LINK = re.compile(r"\bhttps?://\S+")
+_MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_FRACTION = re.compile(r"\b(\d+)/(\d+)\b")
+# A drive or rooted path, anything with two separators, or one separator
+# before a file's extension; "and/or" and "3/3" are not paths.
+_PATH = re.compile(r"[A-Za-z]:(?:[\\/][^\s\\/]+)+"
+                   r"|(?<!\S)[\\/][^\s\\/]+(?:[\\/][^\s\\/]+)*"
+                   r"|(?:[^\s\\/]+[\\/]){2,}[^\s\\/]+"
+                   r"|[^\s\\/]+[\\/][^\s\\/]+\.[A-Za-z]\w{0,4}\b")
+_SYMBOLS = re.compile(r"[*`#_~<>\[\]{}()|\\/]+")
+
+
+def speakable(text: str) -> str:
+    """`text` as a synthesizer should say it: words and ordinary punctuation.
+
+    A "(s)" is dropped, a markdown link keeps its words, a link becomes "a
+    link", "3/3" is "3 of 3", a path keeps its last name
+    ("C:/work/clones/qmcp" is "qmcp"), and brackets, parentheses, slashes
+    and markdown marks go, so a sentence is never read with its syntax.
+    Whitespace is collapsed.
+    """
+    said = _PLURAL_MARK.sub("", text or "")
+    said = _MARKDOWN_LINK.sub(r"\1", said)
+    said = _LINK.sub("a link", said)
+    said = _FRACTION.sub(r"\1 of \2", said)
+    said = _PATH.sub(lambda m: re.split(r"[\\/]", m.group(0).rstrip("\\/"))[-1], said)
+    said = _SYMBOLS.sub(" ", said)
+    said = re.sub(r"\s+([,.;:!?])", r"\1", " ".join(said.split()))
+    return said
+
+
+class Speakable:
+    """A synthesizer that says every sentence `speakable`, whoever wrote it."""
+
+    def __init__(self, tts):
+        self.tts = tts
+
+    def speak(self, text: str, *args, **kwargs):
+        return self.tts.speak(speakable(text), *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.tts, name)
+
+
+def speakably(tts):
+    """`tts`, wrapped once in `Speakable`."""
+    return tts if isinstance(tts, Speakable) or tts is None else Speakable(tts)
+
+
+# How an accepted answer is acknowledged: the word, as a listener expects it.
+ACKNOWLEDGED = {"approve": "Approved.", "hold": "Holding.", "reject": "Rejected.",
+                "yes": "Yes.", "no": "No."}
 
 
 class SpeechToText(Protocol):
@@ -246,12 +343,16 @@ class VoiceApprovalLoop:
         listen_duration: float = 5.0,
     ):
         self.stt = stt
-        self.tts = tts
+        self.tts = speakably(tts)
         self.client = client or MCPClient()
         self.max_retries = max_retries
         self.listen_duration = listen_duration
         # Requests `run_forever` asked and got no usable answer to, oldest first.
         self.unanswered: list[str] = []
+
+    def _say(self, text: str, options: list[str]) -> None:
+        """Say a question the person may answer before it ends (`ask_over`)."""
+        ask_over(self.stt, self.tts, text, duration=self.listen_duration, hint=options)
 
     def _ask(self, prompt: str, options: list[str]) -> str:
         """Speak the prompt and its options, listen, and return the option chosen.
@@ -262,12 +363,13 @@ class VoiceApprovalLoop:
         re-ask says which of two things went wrong — nothing heard
         (noinput) or something heard and unusable (nomatch), echoing what
         was heard so the speaker can hear the mishearing. Unclear after the
-        retry budget raises, and nothing is guessed.
+        retry budget raises, and nothing is guessed. Every question can be
+        answered before it ends, by key or by voice (`ask_over`).
         """
         grammar = say_options(options)
         question = f"{prompt} {grammar}"
         self._announce("speaking", question, options=options)
-        self.tts.speak(question)
+        self._say(question, options)
         heard = ""
         attempt = repeats = 0
         while attempt <= self.max_retries:
@@ -276,7 +378,7 @@ class VoiceApprovalLoop:
             if asks_repeat(heard) and repeats < MAX_REPEATS:
                 repeats += 1
                 self._announce("speaking", question, reason="repeat", options=options)
-                self.tts.speak(question)
+                self._say(question, options)
                 continue
             decision = parse_yes_no(heard)
             if decision is not None:
@@ -286,11 +388,11 @@ class VoiceApprovalLoop:
                 return named
             if attempt < self.max_retries:
                 if not heard.strip():
-                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
+                    reask, reason = f"Didn't catch that. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                    reask, reason = f"Heard {_said(heard, 80)}. {grammar}", "nomatch"
                 self._announce("speaking", reask, reason=reason, options=options)
-                self.tts.speak(reask)
+                self._say(reask, options)
             attempt += 1
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
@@ -373,7 +475,7 @@ class VoiceApprovalLoop:
             request_id=request_id, response=answer, responded_by="vox"
         )
         self._announce("recorded", answer)
-        self.tts.speak(f"Recorded: {answer}")
+        self.tts.speak(ACKNOWLEDGED.get(answer, "Noted."))
         return response
 
     def _announce(self, state: str, text: str = "", reason: str | None = None,
