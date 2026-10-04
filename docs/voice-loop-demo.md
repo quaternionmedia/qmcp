@@ -52,13 +52,26 @@ recorded unresolved. A checkout kept elsewhere -- a worktree, say -- passes
 
 ### Set up, once
 
-1. **qmcp, with both submodules** -- the roster and vox:
+Needed first: `git`, [`uv`](https://docs.astral.sh/uv/), which fetches the
+Python each repository pins, and Node.js with npm for joe's page.
+
+1. **qmcp, in a checkout that has the loop**, with both submodules -- the
+   roster and vox:
 
    ```bash
-   git submodule update --init
+   git clone https://github.com/quaternionmedia/qmcp
+   cd qmcp
+   git submodule update --init       # first: any uv command fails while vendor/vox is empty
+   uv run qmcp serve --help          # must list --converse; see below if it does not
    uv sync --all-extras
-   uv run qmcp cookbook voice        # done when every case prints [ok]
+   uv run qmcp cookbook converse     # done when it prints [ok]: a whole spoken session, offline
    ```
+
+   A checkout whose `serve` does not list `--converse` predates the loop: it is
+   on a branch without it, or behind its remote. Switch to a branch that has
+   it -- the one this page was read from -- and run `git submodule update
+   --init` after every switch: branches pin different `vox` commits, and a
+   stale one still passes `cookbook voice` while every instruction fails.
 
 2. **The local model.** `check` reports the machine and whether the model is
    served; `plan` prints the exact commands that install the model service,
@@ -71,11 +84,18 @@ recorded unresolved. A checkout kept elsewhere -- a worktree, say -- passes
    uv run qmcp localmodel check      # done when it says `served:` and names the model
    ```
 
+   `served:` means the service answers and lists the model; the plan's last
+   command asks the model for one word, and its answer is what proves it
+   generates.
+
 3. **joe**, in its own checkout. `voice setup` counts down, tries every input
    while someone keeps talking, and saves the microphone only once it has
-   transcribed a sentence from it:
+   transcribed a sentence from it. The first transcription fetches whisper's
+   model, about 145 MB, into the user's cache:
 
    ```bash
+   git clone https://github.com/quaternionmedia/joe
+   cd joe
    uv sync
    npm install
    uv run joe voice setup            # done when it saves the microphone
@@ -172,7 +192,10 @@ uv run joe dev
 uv run qmcp serve --converse --runtime local
 ```
 
-Either may start first: the conversation waits for the other. Then it talks:
+Either may start first: the conversation waits for the other. qmcp's terminal
+shows the server's request log, not the conversation: what it hears and says
+is on joe's page, and `curl http://127.0.0.1:3141/v1/human/voice` gives its
+last lines. Then it talks:
 
 ```
 qmcp:   Ready. What should be done?
@@ -322,13 +345,20 @@ and the runner image are not reproduced.
 
 ## When it does not work
 
+- **`Error: No such option '--converse'`** -- or `instruct`, `instructions` or
+  `converse` is not a command. This checkout predates the loop: see step 1 of
+  "Set up, once". `uv run qmcp serve --help` lists what this checkout has.
 - **The local model does not answer, or answers late.** `uv run qmcp localmodel
   check` says whether it is installed and served. The model service on the
   machine this was built on was seen to stall partway through a reply, with
   the GPU busy and later calls queued behind it. Every call qmcp makes is
   capped, and a call that stalls unloads the model through the service's own
   keep-alive and is made once more against a fresh load; a second stall is a
-  failed run naming the endpoint, and the conversation goes on.
+  failed run naming the endpoint, and the conversation goes on. When every
+  call stalls, fresh loads included, the service is answering without
+  generating -- `localmodel check` still says served, and the run says *not
+  generating*: restart the service with the commands `uv run qmcp localmodel
+  plan` prints, and see that nothing else holds the GPU.
 - **The microphone hears nothing.** `uv run joe voice setup` in joe's checkout,
   and `docs/integrations/voice.md`, "Which microphone".
 - **It went quiet after a consent.** An answer it could not read clearly
@@ -343,7 +373,13 @@ and the runner image are not reproduced.
   `governance/qm` submodule is not checked out: `git submodule update --init`.
 - **Nothing is said, or the conversation seems to have gone.** `curl
   http://127.0.0.1:3141/v1/human/voice` says whether it is running and the last
-  lines it printed: what it is waiting for, or why it ended.
+  lines it printed: what it is waiting for, or why it ended. Its whole output
+  is in the system's temporary directory, as `qmcp-voice-<server pid>.log`.
+- **`TypeError: HttpSTT.listen() got an unexpected keyword argument
+  'pause_ms'`**, from `cookbook instruct`, `cookbook converse` or a spoken
+  instruction, while `cookbook voice` passes. The `vox` submodule is not at
+  this checkout's pin, usually after a branch switch: `git submodule update
+  --init`.
 - **The page's voice buttons say a conversation is running.** The standing
   conversation holds the microphone; speak to it instead, or start the server
   without `--converse`.

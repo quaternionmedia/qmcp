@@ -358,6 +358,14 @@ class Runtime:
             else:
                 text = (f"The local model did not finish within {self.max_steps} calls;"
                         " nothing it found is reported as an answer.")
+        except httpx.ReadTimeout as exc:
+            # Only the retry, or the unload before it, lets a read timeout out
+            # of `_chat`: the service answers and is not generating, which
+            # `localmodel check` would report as served.
+            text, code = (f"The local model at {self.endpoint} stopped replying"
+                          f" ({type(exc).__name__}), and again after it was reloaded."
+                          " The service answers but is not generating; `uv run qmcp"
+                          " localmodel plan` prints the commands that restart it."), 1
         except httpx.HTTPError as exc:
             text, code = (f"The local model did not answer at {self.endpoint}"
                           f" ({type(exc).__name__}). `uv run qmcp localmodel check` says"

@@ -361,6 +361,9 @@ def test_a_second_stall_is_a_failed_run_naming_the_endpoint(tmp_path):
 
     assert outcome.exit_code == 1 and "ReadTimeout" in outcome.text and ENDPOINT in outcome.text
     assert [path for path, _ in service.paths] == ["/api/chat", "/api/generate", "/api/chat"]
+    # Not sent to `localmodel check`, which reports a service that answers as
+    # served. Mutation: drop the read-timeout branch -- red.
+    assert "not generating" in outcome.text and "qmcp localmodel plan" in outcome.text
 
 
 # --- the tools' other refusals, and the search through the dispatch ------------------------
