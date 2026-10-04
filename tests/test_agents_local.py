@@ -77,7 +77,8 @@ def test_the_model_reads_with_a_tool_and_then_answers(tmp_path):
     assert outcome.text == "qmcp is the local backend." and outcome.exit_code == 0
     assert outcome.spent == 0
     assert outcome.detail == {"model": MODEL, "endpoint": ENDPOINT, "model_calls": 2,
-                              "read": ["read_file(README.md)"], "nudged": False, "repeats": 0}
+                              "read": ["read_file(README.md)"], "nudged": False, "repeats": 0,
+                              "recovered": 0}
     (result,) = _results(service.requests[1])
     assert result.startswith("Result of read_file(README.md):\n")
     assert "qmcp is the local backend." in result
@@ -310,3 +311,52 @@ def test_a_service_that_does_not_answer_is_not_ready():
     reason = ollama.Runtime(client=httpx.Client(transport=httpx.MockTransport(refuse))).ready()
 
     assert ENDPOINT in reason and "qmcp localmodel check" in reason
+
+
+# --- a stalled call ------------------------------------------------------------------------
+
+
+class _Stalling:
+    """The service, stalling on its first chat: times out, then answers after an unload."""
+
+    def __init__(self, stalls=1):
+        self.stalls = stalls
+        self.paths: list[tuple[str, dict]] = []
+
+    def __call__(self, request):
+        body = json.loads(request.content)
+        self.paths.append((request.url.path, body))
+        if request.url.path == "/api/generate":
+            return httpx.Response(200, json={"done": True})
+        if self.stalls:
+            self.stalls -= 1
+            raise httpx.ReadTimeout("stalled", request=request)
+        return httpx.Response(200, json={"message": {"role": "assistant",
+                                                     "content": "qmcp is the local backend."}})
+
+
+def test_a_stalled_call_unloads_the_model_and_is_made_once_more(tmp_path):
+    """Seen live: the runner stopped producing tokens, and every later call
+    queued behind it until the model was unloaded. Mutation: drop the retry --
+    red, the run fails on the first stall."""
+    service = _Stalling(stalls=1)
+    client = httpx.Client(transport=httpx.MockTransport(service))
+
+    outcome = ollama.Runtime(client=client).run(_brief(_project(tmp_path)))
+
+    assert [path for path, _ in service.paths][:3] == ["/api/chat", "/api/generate", "/api/chat"]
+    assert service.paths[1][1] == {"model": MODEL, "keep_alive": 0}
+    assert outcome.detail["recovered"] >= 1
+    assert outcome.text  # the run went on after the recovery
+
+
+def test_a_second_stall_is_a_failed_run_naming_the_endpoint(tmp_path):
+    """One recovery, not a loop. Mutation: retry until it answers -- red, the
+    stand-in stalls for ever and the run never ends."""
+    service = _Stalling(stalls=2)
+
+    outcome = ollama.Runtime(client=httpx.Client(transport=httpx.MockTransport(service))).run(
+        _brief(tmp_path))
+
+    assert outcome.exit_code == 1 and "ReadTimeout" in outcome.text and ENDPOINT in outcome.text
+    assert [path for path, _ in service.paths] == ["/api/chat", "/api/generate", "/api/chat"]
