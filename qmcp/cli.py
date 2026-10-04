@@ -453,20 +453,26 @@ def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: st
 
 @cookbook.command("instruct")
 def cookbook_instruct() -> None:
-    """The spoken-instruction check: asked, confirmed, resolved, recorded, read back.
+    """The spoken-instruction loop, end to end: asked, recorded, consented, run, said back.
 
     Offline, and only offline: a qmcp server on an ephemeral port over a
     database made for the run, and vox's deterministic engine in place of a
-    speech engine. Each scripted dialog goes through the real path -- the
-    prompt synthesized to a file, every take returned over the engine
-    contract, the row recorded over HTTP and read back -- and each ending is
-    checked against its script. No microphone, speakers or model are needed,
-    and the configured inbox is not touched.
+    speech engine. First the inbox: each scripted dialog goes through the real
+    path -- the prompt synthesized to a file, every take returned over the
+    engine contract, the row recorded over HTTP and read back. Then the loop:
+    an instruction recorded, consent asked aloud and answered, the scripted
+    runtime run in a directory standing in for the clone, and the summary
+    said back, printed as the conversation it was. No microphone, speakers,
+    model or agent are needed, nothing is spent, and the configured inbox is
+    not touched.
     """
-    from qmcp.instructions.check import run_offline
+    from qmcp.instructions.check import run_loop, run_offline
 
     _load_vox("joe", "cookbook instruct")
-    if not run_offline(echo=click.echo):
+    inbox = run_offline(echo=click.echo)
+    click.echo("")
+    loop = run_loop(echo=click.echo)
+    if not (inbox and loop):
         raise SystemExit(1)
 
 
@@ -1970,34 +1976,85 @@ def instructions_act(instruction_id: str, runtime_name: str | None, budget: int,
         _voice_preflight(client.base_url, resolved_engine, contract, engine)
         stt, tts = HttpSTT(resolved_engine, contract=contract), Pyttsx3TTS()
 
+    from qmcp.instructions.spoken import say, starting, summarise
+
     def show(state: str, text: str) -> None:
         click.echo(f"  [{state}] {text}")
+        # Between the approval and the run, so the person who said approve
+        # hears that it took rather than waiting on silence.
+        if state == "acting" and tts is not None:
+            say(starting(_instruction_row(instruction_id).get("project")), tts, stt)
 
     try:
-        done = act(instruction_id, runtime, Budget(authorised=budget), client=client,
-                   cwd=cwd, stt=stt, tts=tts, on_event=show, poll_interval=poll_interval)
-    except NoSuchInstruction as exc:
-        raise SystemExit(f"{exc}. `qmcp instructions list` shows the inbox.")
+        try:
+            done = act(instruction_id, runtime, Budget(authorised=budget), client=client,
+                       cwd=cwd, stt=stt, tts=tts, on_event=show, poll_interval=poll_interval)
+        except NoSuchInstruction as exc:
+            raise SystemExit(f"{exc}. `qmcp instructions list` shows the inbox.")
+
+        click.echo(f"  {done.instruction_id}  {done.status}  stages: {' > '.join(done.stages)}")
+        if done.cwd:
+            click.echo(f"      clone: {done.cwd}"
+                       + (f"  carrying {len(done.carried)} earlier instruction(s)"
+                          if done.carried else ""))
+        if done.request_id:
+            click.echo(f"      consent: {done.request_id}  answered: {done.answer!r}")
+        if done.why:
+            click.echo(f"      {done.why}")
+        if done.outcome is not None:
+            click.echo(f"      exit {done.outcome.exit_code} after"
+                       f" {done.outcome.elapsed_seconds:.1f}s; spent {done.outcome.spent}")
+            click.echo("      " + (done.outcome.text.strip().splitlines() or [""])[0][:200])
+        click.echo(render(done.declared))
+        # The row, not `done`, is what is said: the same row says the same
+        # thing here, in `instructions say`, and in the offline check.
+        summary = summarise(_instruction_row(done.instruction_id), why=done.why)
+        click.echo(f"  {'said' if tts is not None else 'summary'}: {summary}")
+        if tts is not None:
+            say(summary, tts, stt)
     finally:
         if stt is not None and hasattr(stt, "close"):
             stt.close()
-
-    click.echo(f"  {done.instruction_id}  {done.status}  stages: {' > '.join(done.stages)}")
-    if done.cwd:
-        click.echo(f"      clone: {done.cwd}"
-                   + (f"  carrying {len(done.carried)} earlier instruction(s)"
-                      if done.carried else ""))
-    if done.request_id:
-        click.echo(f"      consent: {done.request_id}  answered: {done.answer!r}")
-    if done.why:
-        click.echo(f"      {done.why}")
-    if done.outcome is not None:
-        click.echo(f"      exit {done.outcome.exit_code} after"
-                   f" {done.outcome.elapsed_seconds:.1f}s; spent {done.outcome.spent}")
-        click.echo("      " + (done.outcome.text.strip().splitlines() or [""])[0][:200])
-    click.echo(render(done.declared))
     if done.status == "failed":
         raise SystemExit(1)
+
+
+def _instruction_row(instruction_id: str) -> dict:
+    """One inbox row as the server would serve it, read from the database the
+    act wrote, or an empty mapping when there is none."""
+    from qmcp.db.models import Instruction
+    from qmcp.instructions import act as act_module
+
+    with act_module.configured_rows()() as session:
+        row = session.get(Instruction, instruction_id)
+        return row.model_dump(mode="json") if row is not None else {}
+
+
+@instructions.command("say")
+@click.argument("instruction_id")
+@click.option("--speak", is_flag=True,
+              help="say it aloud through vox's local synthesizer as well; no engine is contacted")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+def instructions_say(instruction_id: str, speak: bool, base_url: str | None) -> None:
+    """What an instruction came to, in the few sentences `act --voice` says.
+
+    Printed, and with --speak said aloud as well. The whole outcome is
+    `qmcp instructions show <id>`.
+    """
+    from qmcp.client import MCPClient, MCPClientError
+    from qmcp.instructions.spoken import say, summarise
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    try:
+        row = client.get_instruction(instruction_id)
+    except MCPClientError as exc:
+        raise SystemExit(str(exc))
+    summary = summarise(row)
+    click.echo(summary)
+    if speak:
+        _, Pyttsx3TTS, _, _ = _load_vox("joe", "instructions say --speak")
+        say(summary, Pyttsx3TTS())
 
 
 @cli.group("threads")
