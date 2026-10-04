@@ -16,6 +16,17 @@ directory: a path that resolves outside it is refused, and so is anything under
 for the model to change the clone. What it read is kept in the outcome's
 `detail`, so the record says what the answer was based on.
 
+**THE TOOLS ARE A PROTOCOL IN THE PROMPT, NOT THE SERVICE'S TOOL FIELD.** Asked
+with the service's own tool definitions, the pinned model on the service this
+was built against put its call in the reply's text rather than in the
+structured field, and most often skipped the tools and answered from nothing.
+So `SYSTEM` states the three tools and the one shape a call takes -- a single
+JSON object -- and `tool_call_in` reads that shape from the text, or from the
+structured field where a service fills it. It works with any model the service
+serves. A model that answers before it has read anything is sent back once to
+read: an answer grounded in no file is the failure a small model is likeliest
+to commit, and the cheapest one to refuse.
+
 **THE BRIEF IS THE MEMORY.** Each run starts with nothing but `Brief.prompt()`:
 the place, the project's earlier instructions and outcomes from qmcp's record,
 and the instruction. That is the same prompt any other runtime is given, which
@@ -52,7 +63,7 @@ PRODUCT = "Ollama"
 
 MAX_STEPS = 8
 MAX_TOKENS = 512
-TIMEOUT = 180.0
+TIMEOUT = 90.0
 
 # What a tool hands back, at most. Enough of a file for a model with a
 # four-thousand-token window to read it and still answer.
@@ -65,11 +76,24 @@ SEARCH_HITS = 40
 SKIPPED = frozenset({".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache",
                      ".pytest_cache", ".ruff_cache", "dist", "build"})
 
-SYSTEM = ("You answer questions about a software project by reading it. You have tools to"
-          " list a directory, read a file and search for text, all relative to the"
-          " project's directory. You cannot change anything. Read before you answer, keep"
-          " the answer short, and start with the answer.")
+SYSTEM = """You answer questions about a software project by reading its files. You cannot \
+change anything.
 
+To read, reply with exactly one JSON object and nothing else. The three shapes are:
+  {"tool": "list_files", "path": "."}
+  {"tool": "read_file", "path": "README.md"}
+  {"tool": "search", "text": "words to find", "path": "."}
+Paths are relative to the project's directory. What the tool returns comes back in the \
+next message.
+
+Read before you answer. When you have read enough, answer in plain sentences, not JSON: \
+start with the answer, keep it short, and say only what the files you read support."""
+
+NUDGE = ("You have not read anything yet. Reply with one JSON object that reads the project"
+         " -- list_files, read_file or search -- before you answer.")
+
+# The same three tools as the service's tool field would define them. Not sent:
+# kept so `tool_call_in` and the tests name the tools in one place.
 TOOLS = [
     {"type": "function", "function": {
         "name": "list_files", "description": "List a directory of the project.",
@@ -98,7 +122,9 @@ def inside(root: Path, relative: str | None) -> Path:
     """`relative` resolved under `root`, or `Refused` if it leaves it or names a
     directory that is never read."""
     base = root.resolve()
-    target = (base / (relative or ".")).resolve()
+    # A leading slash is a model meaning "from the top of the project", not the
+    # top of the disk, which on Windows would land outside the clone.
+    target = (base / (relative or ".").lstrip("/\\")).resolve()
     if target != base and base not in target.parents:
         raise Refused(f"{relative!r} is outside the project")
     if any(part in SKIPPED for part in target.relative_to(base).parts):
@@ -148,6 +174,63 @@ def search(root: Path, text: str, path: str | None = None) -> str:
     return "\n".join(hits) or "(no matches)"
 
 
+TOOL_NAMES = frozenset(t["function"]["name"] for t in TOOLS)
+_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
+_TAGS = re.compile(r"</?tool_call>")
+
+
+def tool_call_in(message: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    """The tool call a reply makes, as `(name, arguments)`, or None for an answer.
+
+    Read from the structured field where the service filled it, and otherwise
+    from the text: one JSON object, alone, optionally fenced, carrying `tool`
+    (the protocol `SYSTEM` states) or `name` and `arguments` (the shape the
+    model was trained to emit). Prose that merely contains braces is an answer.
+    """
+    for call in message.get("tool_calls") or []:
+        function = call.get("function") or {}
+        arguments = function.get("arguments") or {}
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {}
+        return str(function.get("name", "")), arguments if isinstance(arguments, dict) else {}
+    text = _TAGS.sub("", _FENCE.sub("", (message.get("content") or "").strip())).strip()
+    if not (text.startswith("{") and text.endswith("}")):
+        return None
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(document, dict):
+        return None
+    name = document.get("tool") or document.get("name")
+    if not isinstance(name, str):
+        return None
+    arguments = document.get("arguments")
+    if not isinstance(arguments, dict):
+        arguments = {k: v for k, v in document.items() if k not in ("tool", "name", "arguments")}
+    return name, arguments
+
+
+def answer_text(content: str) -> str:
+    """An answer as prose. A model told to read in JSON sometimes answers in it
+    too -- `{"answer": "..."}`, fenced -- and that would be read aloud as
+    braces; its string values are the answer, joined as sentences."""
+    text = _TAGS.sub("", _FENCE.sub("", content.strip())).strip()
+    if not (text.startswith("{") and text.endswith("}")):
+        return content.strip()
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError:
+        return content.strip()
+    if not isinstance(document, dict):
+        return content.strip()
+    parts = [" ".join(str(v).split()) for v in document.values() if isinstance(v, (str, int, float))]
+    return " ".join(p if p[-1:] in ".!?" else p + "." for p in parts if p) or content.strip()
+
+
 def call_tool(root: Path, name: str, arguments: dict[str, Any]) -> str:
     """One tool call, answered as text; a refusal is an answer, not an error."""
     try:
@@ -179,7 +262,7 @@ class Runtime:
 
     def _chat(self, client: httpx.Client, messages: list[dict[str, Any]]) -> dict[str, Any]:
         response = client.post(f"{self.endpoint}/api/chat", json={
-            "model": self.model, "messages": messages, "tools": TOOLS, "stream": False,
+            "model": self.model, "messages": messages, "stream": False,
             "options": {"temperature": 0.2, "num_predict": MAX_TOKENS}}, timeout=TIMEOUT)
         response.raise_for_status()
         return response.json().get("message") or {}
@@ -192,6 +275,7 @@ class Runtime:
                                           {"role": "user", "content": brief.prompt()}]
         read: list[str] = []
         calls = 0
+        nudged = False
         started = self.clock()
         client = self.client or httpx.Client()
         try:
@@ -199,27 +283,23 @@ class Runtime:
             while calls < self.max_steps:
                 calls += 1
                 message = self._chat(client, messages)
-                messages.append({k: v for k, v in message.items()
-                                 if k in ("role", "content", "tool_calls")})
-                tool_calls = message.get("tool_calls") or []
-                if not tool_calls:
-                    text = (message.get("content") or "").strip()
+                content = message.get("content") or ""
+                messages.append({"role": "assistant", "content": content})
+                call = tool_call_in(message)
+                if call is None:
+                    if not read and not nudged:
+                        nudged = True
+                        messages.append({"role": "user", "content": NUDGE})
+                        continue
+                    text = answer_text(content)
                     code = 0 if text else 1
                     break
-                for tool_call in tool_calls:
-                    function = tool_call.get("function") or {}
-                    name = str(function.get("name", ""))
-                    arguments = function.get("arguments") or {}
-                    if isinstance(arguments, str):
-                        try:
-                            arguments = json.loads(arguments)
-                        except json.JSONDecodeError:
-                            arguments = {}
-                    read.append(f"{name}({', '.join(f'{v}' for v in arguments.values())})")
-                    if on_event:
-                        on_event("output", read[-1])
-                    messages.append({"role": "tool", "tool_name": name,
-                                     "content": call_tool(brief.cwd, name, arguments)})
+                name, arguments = call
+                read.append(f"{name}({', '.join(f'{v}' for v in arguments.values())})")
+                if on_event:
+                    on_event("output", read[-1])
+                messages.append({"role": "user", "content": f"Result of {read[-1]}:\n"
+                                                            f"{call_tool(brief.cwd, name, arguments)}"})
             else:
                 text = (f"The local model did not finish within {self.max_steps} calls;"
                         " nothing it found is reported as an answer.")
@@ -235,4 +315,4 @@ class Runtime:
             on_event("finished", str(code))
         return AgentOutcome(text=text, exit_code=code, elapsed_seconds=elapsed, spent=0,
                             detail={"model": self.model, "endpoint": self.endpoint,
-                                    "model_calls": calls, "read": read})
+                                    "model_calls": calls, "read": read, "nudged": nudged})
