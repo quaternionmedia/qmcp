@@ -117,16 +117,28 @@ class InstructionSource(str, Enum):
 
 
 class InstructionStatus(str, Enum):
-    """Whether an instruction has a project.
+    """Where an instruction is, from recorded to acted on.
 
-    Both values describe a record and neither describes a run: nothing in this
-    vocabulary says an instruction is being acted on or has been. Acting is a
-    later change with a migration of its own, and the statuses it needs are
-    its to add.
+    The first two describe a record and nothing else: an instruction is
+    `recorded` against a project or `unresolved` without one, and nothing has
+    been asked or run. The rest are the path `qmcp.instructions.act` walks,
+    and a row is on it only because a person issued the command that put it
+    there. `asking` is a consent request waiting on the human queue;
+    `consented`, `refused` and `unanswered` are how that request ended --
+    approved, held, or expired -- and only the first is followed by `acting`,
+    which ends `done` or `failed` by the runtime's exit code. Nothing runs on
+    any other path.
     """
 
     RECORDED = "recorded"
     UNRESOLVED = "unresolved"
+    ASKING = "asking"
+    CONSENTED = "consented"
+    REFUSED = "refused"
+    UNANSWERED = "unanswered"
+    ACTING = "acting"
+    DONE = "done"
+    FAILED = "failed"
 
 
 class Instruction(SQLModel, table=True):
@@ -135,6 +147,12 @@ class Instruction(SQLModel, table=True):
     Recording one executes nothing. `detail` carries the evidence for the
     project: which roster names the text matched and the rule that read them,
     and for a spoken instruction every transcript the dialog took, in order.
+
+    The columns from `consent_request_id` on are empty until somebody acts on
+    the row, and then say what was asked, where and with what, and how it
+    went. `declared` is `qmcp.spend.declare` for the act, written on every
+    path including the ones that ran nothing, so a reader can tell a refusal
+    from a run without inferring either from an empty field.
     """
 
     __tablename__ = "instructions"
@@ -148,3 +166,11 @@ class Instruction(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now, index=True)
     updated_at: datetime = Field(default_factory=utc_now)
     detail: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+
+    consent_request_id: str | None = Field(default=None, index=True)
+    runtime: str | None = Field(default=None)
+    cwd: str | None = Field(default=None)
+    outcome_text: str | None = Field(default=None)
+    exit_code: int | None = Field(default=None)
+    acted_at: datetime | None = Field(default=None)
+    declared: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON, nullable=True))

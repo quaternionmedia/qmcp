@@ -214,10 +214,10 @@ dropped rather than stopping the question.
 
 Everything above answers a question an agent asked. The inbox runs the other
 direction: a person speaks or types an instruction, it is recorded against a
-project, and **recording executes nothing**. The row has two statuses,
+project, and **recording executes nothing**. Recording reaches two statuses,
 `recorded` and `unresolved`, and neither describes a run; acting on an
-instruction is a later change, behind consent on the human queue, with
-statuses and a migration of its own. `qmcp.instructions` carries the why, and
+instruction is a command a person issues, behind consent on the human queue,
+and is the section after this one. `qmcp.instructions` carries the why, and
 `walkthrough/08-an-instruction-is-recorded-not-run.md` runs the routes.
 
 Two commands:
@@ -273,6 +273,50 @@ the instruction a second time. It also checks that the instruction's take
 carried the long pause and the confirmation did not, and that each row says how
 its project was settled. `tests/test_cookbook_instruct.py` runs it and makes
 sure it can fail.
+
+## Acting on an instruction
+
+```bash
+uv run qmcp instructions act <id> --runtime NAME [--budget N] [--cwd PATH] [--voice]
+```
+
+A worker takes a recorded instruction, declares what it may spend, asks
+consent on the human queue, and runs it in the project's clone only on
+`approve`. Every runtime is asked, the local model included; growing a habit
+of approval into an automatic one is a later phase. The consent is an ordinary
+approval, `instruction-<id>` with the options `approve` and `hold`, so it is
+answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
+page, or in the command itself with `--voice`. Its prompt says the
+instruction, the project, the clone, the runtime, the budget and how much
+history is carried, and it expires after `CONSENT_SECONDS` in
+`qmcp.instructions.act`.
+
+**Continuity comes from qmcp, not the model.** The runtime is handed a brief:
+the instruction, the project, the clone, and the project's earlier
+instructions that ran, with what each found, read from this server's record
+(`qmcp.instructions.continuity`). No runtime resumes a conversation of its
+own, so the next instruction can go to a different runtime and still know what
+the last one found; the row's `detail` names the turns carried. The clone is
+`--cwd` when it is given; without it, the clone the project's last act ran in,
+so a path given once is remembered.
+
+`--runtime` has no default (`QMCP_AGENT_RUNTIME` stands in for it). `local` is
+the model `qmcp localmodel` stands up on this machine, reading the clone with
+tools that cannot write and spending nothing; a coding assistant's command line
+is another runtime behind the same contract, given the same brief. A product is
+named only in its adapter under `qmcp.integrations.agents.adapters`, and
+`scripted` runs nothing and is for checks. `--budget` is runs, and zero -- the
+default -- declares and stops. The row's status says where the act got to: `asking`,
+then `consented`, `refused` or `unanswered`, then `acting` and `done` or
+`failed`; `declared` is written on every path. `qmcp.instructions.act` carries
+the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
+
+| Route | What it does |
+|---|---|
+| `POST /v1/instructions/{id}/act` | `{runtime, budget?, cwd?, voice?}`; runs the command in a process of its own, as the spoken route does; `202` once started, `404` for no such instruction, `409` while a conversation or an act runs, `422` for a runtime no adapter declares |
+
+`GET /v1/instructions/voice` reports an act as it reports a conversation, with
+`kind: act`.
 
 ## Testing the integration
 

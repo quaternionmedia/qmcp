@@ -119,12 +119,14 @@ one conversation is idle:
     >>> client.get("/v1/instructions/voice").json()["running"]
     False
 
-Nor could a row say otherwise. The status vocabulary has two words, and neither
-describes a run; acting on an instruction is a later change with statuses and a
-migration of its own:
+Nor does a recorded row say otherwise. Recording reaches two words of the
+status vocabulary, and neither describes a run; the rest are the path an act
+walks (`09`), and a row is on it only because a person issued the command:
 
     >>> from qmcp.db.models import InstructionStatus
-    >>> sorted(s.value for s in InstructionStatus)
+    >>> sorted({r["status"] for r in listed["instructions"]})
+    ['recorded', 'unresolved']
+    >>> [s.value for s in InstructionStatus][:2]
     ['recorded', 'unresolved']
 
 ## Speaking one
@@ -154,4 +156,5 @@ That the project a transcript names is the project the person meant: whether a
 name transcribes reliably is unmeasured, which is why the spoken dialog reads
 the text back and asks an ambiguous name as a closed choice rather than trusting
 either. Nor that anything will act on these rows. The inbox holds them; acting
-is the next change, behind consent on the human queue.
+is a command a person issues, behind consent on the human queue, and `09` is
+where it runs.

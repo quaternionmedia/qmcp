@@ -8,11 +8,12 @@
 **RECORDING EXECUTES NOTHING.** The voice loop answers questions an agent asks:
 a closed choice, spoken and recorded on the human queue. This runs the other
 direction -- a person speaks or types an instruction and it is kept, in their
-words, with the project it is for -- and it stops there. The row has two
+words, with the project it is for -- and it stops there. Recording reaches two
 statuses, `recorded` and `unresolved`, and neither says anything is running:
-acting on an instruction is a later change, behind consent on the human queue,
-with statuses and a migration of its own. Keeping the two apart is what lets a
-person speak freely into the inbox: nothing said here spends, writes or runs.
+acting on an instruction is a command a person issues (`qmcp.instructions.act`),
+behind consent on the human queue, and the statuses it walks are its own.
+Keeping the two apart is what lets a person speak freely into the inbox:
+nothing said here spends, writes or runs.
 
 **THE PROJECT IS READ, AND THE READING IS KEPT BESIDE THE CLAIM.** Which project
 an instruction is for is decided by `resolve`, by the same whole-word match
