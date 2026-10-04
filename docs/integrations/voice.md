@@ -305,6 +305,34 @@ the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
 `GET /v1/instructions/voice` reports an act as it reports a conversation, with
 `kind: act`.
 
+## The result, spoken
+
+With `--voice`, the act says *"Approved. Running in qmcp."* between the
+approval and the run, so the wait is not silence, and when the run ends it
+says what the row came to: whether it ran, where, and the outcome's first
+sentence -- *"Done in qmcp. Added a health route that answers with the
+version; the suite passes. The rest is on the record."* The whole outcome
+stays on the row. Without `--voice` the same sentence is printed. A held or
+unanswered consent says that nothing ran, and a refusal before anything was
+asked says so without reading out the flags it names.
+
+```bash
+uv run qmcp instructions say <id> [--speak]   # what an instruction came to, again
+```
+
+The summary is announced to the engine's conversation route as `speaking` and
+the turn then ends `idle` carrying it, so joe's panel shows it as the last
+thing said; it is never `recorded`, which the panel shows as an answer
+accepted. `qmcp.instructions.spoken` carries the why.
+
+`uv run qmcp cookbook instruct` is the loop, end to end and offline: after the
+inbox's cases it takes one instruction the whole way in one conversation --
+spoken and recorded, consent asked aloud and answered `approve`, the
+`scripted` runtime run in a directory standing in for the clone, and the
+summary said back -- and a second whose consent is answered `hold`, which runs
+nothing and says so. Each loop prints as the conversation it was, said and
+heard in order, and `tests/test_cookbook_instruct.py` makes sure it can fail.
+
 ## Testing the integration
 
 `qmcp cookbook voice` is the check, in two forms that answer different

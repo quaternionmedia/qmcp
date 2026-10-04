@@ -162,6 +162,87 @@ def test_voice_answers_the_consent_in_the_command(inbox, queue, clone, monkeypat
     assert _status(inbox) == InstructionStatus.DONE
 
 
+def _fake_vox(monkeypatch, stt, tts):
+    fake_vox = ModuleType("vox")
+    fake_vox.HttpSTT = lambda *a, **k: stt
+    fake_joe = ModuleType("vox.adapters.joe")
+    fake_joe.JOE = MagicMock(name="EngineContract")
+    fake_joe.DEFAULT_URL = "http://127.0.0.1:8000"
+    fake_pyttsx3 = ModuleType("vox.adapters.pyttsx3")
+    fake_pyttsx3.Pyttsx3TTS = lambda *a, **k: tts
+    for name, module in [("vox", fake_vox), ("vox.adapters", ModuleType("vox.adapters")),
+                         ("vox.adapters.joe", fake_joe), ("vox.adapters.pyttsx3", fake_pyttsx3)]:
+        monkeypatch.setitem(sys.modules, name, module)
+
+
+def test_with_voice_the_run_is_announced_and_its_outcome_said_last(inbox, queue, clone, monkeypatch):
+    """Mutation: drop the closing `say` -- red, the last thing said is the
+    running line; drop the `acting` branch of `show` -- red, approve is met
+    with silence until the run ends."""
+    stt, tts = _STT("approve"), _TTS()
+    _fake_vox(monkeypatch, stt, tts)
+    queue.script = {"instruction-row-1": None}
+
+    result = CliRunner().invoke(cli.cli, [
+        "instructions", "act", "row-1", "--runtime", "scripted", "--budget", "1",
+        "--cwd", str(clone), "--voice"])
+
+    assert result.exit_code == 0, result.output
+    assert "Approved. Running in qmcp." in tts.spoken
+    assert tts.spoken[-1] == "Done in qmcp. done, as scripted."
+    assert "said: Done in qmcp. done, as scripted." in result.output
+
+
+def test_without_voice_the_summary_is_printed_and_nothing_is_said(inbox, queue, clone):
+    queue.script = {"instruction-row-1": "hold"}
+
+    result = CliRunner().invoke(cli.cli, [
+        "instructions", "act", "row-1", "--runtime", "scripted", "--budget", "1", "--cwd", str(clone)])
+
+    assert result.exit_code == 0, result.output
+    assert "summary: Held. Nothing ran for: Deploy qmcp to the pi." in result.output
+
+
+def test_a_refusal_before_the_ask_is_summarised_as_nothing_ran(inbox, queue, tmp_path):
+    """Mutation: drop `why=done.why` -- red, the row reads as merely recorded."""
+    result = CliRunner().invoke(cli.cli, [
+        "instructions", "act", "row-1", "--runtime", "scripted", "--budget", "1",
+        "--cwd", str(tmp_path / "nowhere")])
+
+    assert result.exit_code == 0, result.output
+    assert "summary: Nothing was asked and nothing ran in qmcp." in result.output
+
+
+def test_say_prints_the_summary_of_a_row_and_speaks_it_on_request(monkeypatch):
+    """Mutation: speak without `--speak` -- red."""
+    row = {"id": "row-1", "text": "Add a health check.", "project": "qmcp", "status": "done",
+           "outcome_text": "Added it. Two files.", "exit_code": 0}
+    client = MagicMock()
+    client.get_instruction.return_value = row
+    monkeypatch.setattr("qmcp.client.MCPClient", lambda *a, **k: client)
+    tts = _TTS()
+    _fake_vox(monkeypatch, _STT(""), tts)
+
+    quiet = CliRunner().invoke(cli.cli, ["instructions", "say", "row-1"])
+    aloud = CliRunner().invoke(cli.cli, ["instructions", "say", "row-1", "--speak"])
+
+    assert quiet.exit_code == 0 and aloud.exit_code == 0, quiet.output + aloud.output
+    assert quiet.output.strip() == "Done in qmcp. Added it. The rest is on the record."
+    assert tts.spoken == ["Done in qmcp. Added it. The rest is on the record."]
+
+
+def test_say_names_a_row_that_does_not_exist(monkeypatch):
+    from qmcp.client import MCPClientError
+
+    client = MagicMock()
+    client.get_instruction.side_effect = MCPClientError("Instruction 'nobody' not found")
+    monkeypatch.setattr("qmcp.client.MCPClient", lambda *a, **k: client)
+
+    result = CliRunner().invoke(cli.cli, ["instructions", "say", "nobody"])
+
+    assert result.exit_code != 0 and "not found" in result.output
+
+
 def test_the_list_filters_by_every_status(queue):
     """`--status` is read from the model's vocabulary. Mutation: list the two
     inbox words in the `Choice` -- red on `asking`."""

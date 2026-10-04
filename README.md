@@ -5,6 +5,13 @@ server that does the exposing: it publishes your tools, runs them when an
 assistant asks, records every invocation, and stops for a human when a step
 needs one.
 
+It is also the local backend of a voice-driven development loop: an
+instruction spoken at the machine is recorded against a project, an agent acts
+on it in that project's clone only after a spoken approval, and the result is
+said back. Every step is a row in this server's database, so the work carries
+across sessions and repositories from the record rather than from whichever
+conversation happens to be open.
+
 It speaks the **Model Context Protocol**, so any client that speaks it can use
 these tools without being told about them in advance. Built with FastAPI.
 
@@ -55,6 +62,35 @@ door, and `docs/human_in_loop.md` says what that door does and does not enforce.
 `cookbook voice` needs neither, and `cookbook voice --live` asks one question
 aloud through both. `docs/integrations/voice.md` is the page, and
 `quickstart.md` §5 is the shortest path.
+
+## The voice-driven loop
+
+```
+speak ──> joe: microphone, transcription ──> qmcp: recorded against a project
+                                                         │
+                                        consent asked aloud: approve or hold
+                                                         │ approve
+hear  <── vox: synthesis <── qmcp: summary <── agent runs in the project's clone
+```
+
+Three processes on one machine: this server (`uv run qmcp serve`); joe, the
+speech engine, which owns the microphone and runs from its own checkout
+(`uv run joe dev`); and vox, vendored at `vendor/vox`, which carries the
+contract a speech engine answers and the local synthesizer.
+
+```bash
+uv run qmcp cookbook instruct          # the whole loop offline: no hardware, no agent, nothing spent
+uv run qmcp instruct --voice           # speak an instruction; prints the row and its id
+uv run qmcp instructions list          # the inbox
+uv run qmcp instructions act <id> --runtime NAME --budget 1 --voice
+                                       # consent asked aloud; runs only on approve; result said back
+uv run qmcp instructions say <id>      # what an instruction came to, again
+```
+
+Nothing runs on any answer but `approve`. `--budget` counts runs and defaults
+to zero, which declares what would be asked and stops; `--runtime` has no
+default, and `scripted` runs nothing. Recording, acting and the summary each
+have a section in `docs/integrations/voice.md`.
 
 ## Adoption and Onboarding
 

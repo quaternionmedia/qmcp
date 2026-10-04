@@ -1,15 +1,23 @@
-"""The spoken-instruction check: asked, confirmed, resolved, recorded, read back.
+"""The spoken-instruction check: asked, recorded, consented, run, and said back.
 
 `qmcp cookbook instruct` runs it, offline and only offline. A qmcp server is
 started on an ephemeral port over a database made for the run, vox's
 deterministic engine stands in for the speech engine, and each scripted dialog
 travels the real path: the prompt synthesized to a file, every take returned
-over the engine contract, the row recorded over HTTP and read back. It proves
-the wiring -- the long take carries the pause the stack exists for, the
-confirmation does not, the project is read and asked back, and the row holds
-what the script says -- and makes no claim about transcription, which only a
-person at a microphone tests.
+over the engine contract, the row recorded over HTTP and read back.
 
+**TWO PARTS, AND THE SECOND IS THE LOOP.** The inbox cases prove the
+recording -- the long take carries the pause the stack exists for, the
+confirmation does not, the project is read and asked back, and the row holds
+what the script says. The loop cases then go the whole way in one
+conversation: the instruction spoken and recorded, consent asked aloud on the
+human queue and answered, the scripted runtime run in a directory standing in
+for the clone, and the row's summary said back. Each loop case prints as the
+conversation it was, so a person can follow what was said and heard. A held
+consent runs nothing and says so.
+
+It makes no claim about transcription, which only a person at a microphone
+tests, nor about any real agent: the runtime is `scripted` and spends nothing.
 Nothing here writes into the configured inbox. The server, the engine and the
 database are all made for the run and gone after it.
 """
@@ -83,16 +91,20 @@ class _Scripted:
     stubbing the client.
     """
 
-    def __init__(self, stt, state, script: tuple[str, ...]):
+    def __init__(self, stt, state, script: tuple[str, ...], log: list | None = None):
         self.stt = stt
         self.state = state
         self.script = list(script)
         self.takes = 0
+        self.log = log
 
     def listen(self, duration: float = 5.0, *, pause_ms: int | None = None):
         self.state.heard = self.script[min(self.takes, len(self.script) - 1)]
         self.takes += 1
-        return self.stt.listen(duration=duration, pause_ms=pause_ms)
+        text, path = self.stt.listen(duration=duration, pause_ms=pause_ms)
+        if self.log is not None:
+            self.log.append(("heard", text))
+        return text, path
 
     def announce(self, state: str, text: str = "", reason: str | None = None):
         return self.stt.announce(state, text, reason=reason)
@@ -179,4 +191,163 @@ def run_offline(echo: Callable[[str], None] = print, cases=OFFLINE_CASES) -> boo
                 echo(f"  [ok]   heard {script}: recorded for {recorded['project'] or 'nobody'}")
 
         echo(f"{passed} of {len(cases)} ended as scripted.")
+        return passed == len(cases)
+
+
+# --- the loop ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Loop:
+    """One spoken instruction taken the whole way, and how it must end."""
+
+    heard: tuple[str, ...]
+    """What each take returns: the instruction, its confirmation, and the
+    answer to the consent."""
+
+    status: str
+    """The row's status afterwards."""
+
+    ran: bool
+    """Whether the runtime was reached."""
+
+    says: str
+    """How the summary said back must begin."""
+
+
+# What the scripted runtime reports. Two sentences, so the summary is seen to
+# say the first and point at the rest.
+OUTCOME = ("Added a health route that answers with the version; the suite passes. "
+           "Two files changed.")
+
+# The two ways a consent ends aloud: approve runs the instruction once and its
+# outcome is said back; hold runs nothing and says so.
+LOOP_CASES = (
+    Loop((f"Add a health check to {NAMED}.", "record", "approve"), "done", True,
+         f"Done in {NAMED}. Added a health route"),
+    Loop((f"Rotate the {NAMED} logs.", "record", "hold"), "refused", False,
+         "Held. Nothing ran"),
+)
+
+
+class _Said:
+    """A synthesizer that also writes what it says into the conversation log."""
+
+    def __init__(self, tts, log: list):
+        self.tts = tts
+        self.log = log
+        self.spoken: list[str] = []
+
+    def speak(self, text: str, out_path: str | None = None) -> str:
+        self.spoken.append(text)
+        self.log.append(("said", text))
+        return self.tts.speak(text, out_path)
+
+
+def run_loop(echo: Callable[[str], None] = print, cases=LOOP_CASES) -> bool:
+    """Every loop case through recording, consent, run and summary, in one conversation.
+
+    Returns True when every case ended as its script says.
+    """
+    from vox import HttpSTT
+    from vox.adapters.joe import JOE
+    from vox.engine import EngineState
+    from vox.engine import serve as serve_engine
+    from vox.tts import RecordingTTS
+
+    from qmcp.client import MCPClient
+    from qmcp.instructions import roster_names
+    from qmcp.instructions.act import act
+    from qmcp.instructions.spoken import say, starting, summarise
+    from qmcp.integrations.agents.scripted import ScriptedRuntime
+    from qmcp.spend import Budget
+
+    names = roster_names()
+    with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as stack:
+        root = Path(tmp)
+        database = root / "inbox.db"
+        qmcp_url = stack.enter_context(throwaway_server(database))
+        client = stack.enter_context(MCPClient(base_url=qmcp_url))
+        # The inbox the act writes is the file the server serves, so the row
+        # read back over HTTP is the row the act recorded. Its engine is
+        # disposed before the directory goes: on Windows an open SQLite file
+        # cannot be deleted.
+        from sqlmodel import Session, create_engine
+
+        engine = create_engine(f"sqlite:///{database.as_posix()}")
+        stack.callback(engine.dispose)
+        rows = lambda: Session(engine)  # noqa: E731 -- the shape `act` takes
+        clone = root / NAMED
+        clone.mkdir()
+        echo(f"qmcp:    {qmcp_url} (a database made for this run)")
+        echo(f"clone:   a directory named {NAMED}, made for this run;"
+             " runtime: scripted, which spends nothing")
+        if NAMED not in names:
+            echo(f"  [FAIL] the roster does not name {NAMED!r}; nothing here can resolve")
+            return False
+
+        passed = 0
+        for case in cases:
+            log: list[tuple[str, str]] = []
+            state = EngineState(audio_dirs=[root], microphone="deterministic engine",
+                                contract=JOE)
+            tts = _Said(RecordingTTS(out_dir=str(root / "spoken")), log)
+            runtime = ScriptedRuntime(text=OUTCOME)
+            row = recorded = summary = None
+            with serve_engine(state) as (engine_url, _), HttpSTT(engine_url, contract=JOE) as stt:
+                scripted = _Scripted(stt, state, case.heard, log=log)
+                dialog = InstructionDialog(stt=scripted, tts=tts, client=client, names=names,
+                                           max_retries=1, listen_duration=2.0,
+                                           answer_duration=1.0)
+                with contextlib.suppress(UnclearResponse):
+                    row = dialog.run_once()
+                if row is not None:
+                    log.append(("recorded", f"for {row['project'] or 'nobody'}"))
+
+                    def event(kind: str, text: str) -> None:
+                        if kind == "acting":
+                            log.append(("ran", f"{runtime.name}, in the {NAMED} clone"))
+                            say(starting(row["project"]), tts, scripted)
+
+                    done = act(row["id"], runtime, Budget(authorised=1), client=client,
+                               rows=rows, sources=[], cwd=clone, stt=scripted, tts=tts,
+                               on_event=event, poll_interval=0.05, consent_seconds=60)
+                    recorded = client.get_instruction(row["id"])
+                    summary = summarise(recorded, why=done.why)
+                    say(summary, tts, scripted)
+
+            problems = []
+            if recorded is None:
+                problems.append("nothing recorded")
+            else:
+                if recorded["status"] != case.status:
+                    problems.append(f"status {recorded['status']!r}, expected {case.status!r}")
+                if not any(s.startswith("Act on the instruction: ") and case.heard[0] in s
+                           for s in tts.spoken):
+                    problems.append("the consent was never asked aloud with the instruction")
+                ran = len(runtime.calls)
+                if ran != int(case.ran):
+                    problems.append(f"the runtime ran {ran} time(s), expected {int(case.ran)}")
+                if not summary or not summary.startswith(case.says):
+                    problems.append(f"said {summary!r}, expected it to begin {case.says!r}")
+                if tts.spoken[-1:] != [summary]:
+                    problems.append("the summary was not the last thing said")
+                # The panel is told the summary as it is said, then that the
+                # turn is over -- never `recorded`, which it shows as an answer.
+                tail = [(a.get("state"), a.get("text")) for a in state.announced[-2:]]
+                if tail != [("speaking", summary), ("idle", summary)]:
+                    problems.append(f"the panel was last told {tail!r}")
+
+            answer = case.heard[-1]
+            echo(f"  loop: consent answered {answer!r}")
+            for kind, text in log:
+                echo(f"    {kind:<9} {text}")
+            if problems:
+                echo(f"  [FAIL] {answer}: {'; '.join(problems)}")
+            else:
+                passed += 1
+                times = "once" if case.ran else "nothing"
+                echo(f"  [ok]   {answer}: {recorded['status']}, ran {times}, and said so")
+
+        echo(f"{passed} of {len(cases)} loops ended as scripted.")
         return passed == len(cases)
