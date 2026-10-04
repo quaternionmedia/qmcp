@@ -77,7 +77,7 @@ def test_the_model_reads_with_a_tool_and_then_answers(tmp_path):
     assert outcome.text == "qmcp is the local backend." and outcome.exit_code == 0
     assert outcome.spent == 0
     assert outcome.detail == {"model": MODEL, "endpoint": ENDPOINT, "model_calls": 2,
-                              "read": ["read_file(README.md)"], "nudged": False}
+                              "read": ["read_file(README.md)"], "nudged": False, "repeats": 0}
     (result,) = _results(service.requests[1])
     assert result.startswith("Result of read_file(README.md):\n")
     assert "qmcp is the local backend." in result
@@ -123,6 +123,23 @@ def test_an_answer_wrapped_in_json_is_unwrapped_to_prose(tmp_path):
     assert ollama.answer_text('{"a": ""}') == '{"a": ""}'
 
 
+def test_a_read_already_made_is_not_made_again_and_the_model_is_asked_to_answer(tmp_path):
+    """Seen live: the model alternated between rereading one file and searching
+    for an invented phrase until the step bound ended the run. Mutation: drop
+    the repeat check -- red, the file is read twice and no one asks for the
+    answer."""
+    service = _Service(_reads("read_file", path="README.md"),
+                       _reads("read_file", path="README.md"),
+                       {"content": "qmcp is the local backend."})
+
+    outcome = ollama.Runtime(client=service.client()).run(_brief(_project(tmp_path)))
+
+    assert outcome.text == "qmcp is the local backend." and outcome.exit_code == 0
+    assert outcome.detail["read"] == ["read_file(README.md)"]
+    assert outcome.detail["repeats"] == 1
+    assert service.requests[2]["messages"][-1] == {"role": "user", "content": ollama.AGAIN}
+
+
 def test_an_answer_before_any_read_is_sent_back_once(tmp_path):
     """A small model's likeliest failure is answering from nothing. Mutation:
     drop the nudge -- red, the unread answer is returned."""
@@ -162,6 +179,7 @@ def test_every_request_is_the_pinned_model_capped_with_the_tools_in_the_prompt(t
     request = service.requests[0]
     assert request["model"] == MODEL and request["stream"] is False
     assert request["options"]["num_predict"] == ollama.MAX_TOKENS
+    assert request["options"]["temperature"] == 0  # so a run can be repeated
     assert "tools" not in request
     assert request["messages"][0] == {"role": "system", "content": ollama.SYSTEM}
     for name in ollama.TOOL_NAMES:

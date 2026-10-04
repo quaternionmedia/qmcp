@@ -25,7 +25,11 @@ JSON object -- and `tool_call_in` reads that shape from the text, or from the
 structured field where a service fills it. It works with any model the service
 serves. A model that answers before it has read anything is sent back once to
 read: an answer grounded in no file is the failure a small model is likeliest
-to commit, and the cheapest one to refuse.
+to commit, and the cheapest one to refuse. A model that asks for a read it has
+already made is told so and asked to answer, rather than handed the same text
+again: seen live, the pinned model alternated between rereading one file and
+searching for a phrase it had invented until the step bound ended the run.
+Sampling is at temperature zero, so a run can be repeated.
 
 **THE BRIEF IS THE MEMORY.** Each run starts with nothing but `Brief.prompt()`:
 the place, the project's earlier instructions and outcomes from qmcp's record,
@@ -88,6 +92,9 @@ next message.
 
 Read before you answer. When you have read enough, answer in plain sentences, not JSON: \
 start with the answer, keep it short, and say only what the files you read support."""
+
+AGAIN = ("You have already read that, and it has not changed. Answer now from what you"
+         " have read, in plain sentences.")
 
 NUDGE = ("You have not read anything yet. Reply with one JSON object that reads the project"
          " -- list_files, read_file or search -- before you answer.")
@@ -284,7 +291,7 @@ class Runtime:
     def _chat(self, client: httpx.Client, messages: list[dict[str, Any]]) -> dict[str, Any]:
         response = client.post(f"{self.endpoint}/api/chat", json={
             "model": self.model, "messages": messages, "stream": False,
-            "options": {"temperature": 0.2, "num_predict": MAX_TOKENS}}, timeout=TIMEOUT)
+            "options": {"temperature": 0, "num_predict": MAX_TOKENS}}, timeout=TIMEOUT)
         response.raise_for_status()
         return response.json().get("message") or {}
 
@@ -297,6 +304,8 @@ class Runtime:
         read: list[str] = []
         calls = 0
         nudged = False
+        asked: set[str] = set()
+        repeats = 0
         started = self.clock()
         client = self.client or httpx.Client()
         try:
@@ -316,6 +325,12 @@ class Runtime:
                     code = 0 if text else 1
                     break
                 name, arguments = call
+                key = json.dumps([name, arguments], sort_keys=True)
+                if key in asked:
+                    repeats += 1
+                    messages.append({"role": "user", "content": AGAIN})
+                    continue
+                asked.add(key)
                 read.append(f"{name}({', '.join(f'{v}' for v in arguments.values())})")
                 if on_event:
                     on_event("output", read[-1])
@@ -336,4 +351,5 @@ class Runtime:
             on_event("finished", str(code))
         return AgentOutcome(text=text, exit_code=code, elapsed_seconds=elapsed, spent=0,
                             detail={"model": self.model, "endpoint": self.endpoint,
-                                    "model_calls": calls, "read": read, "nudged": nudged})
+                                    "model_calls": calls, "read": read, "nudged": nudged,
+                                    "repeats": repeats})
