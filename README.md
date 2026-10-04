@@ -82,7 +82,9 @@ joe, the speech engine, which owns the microphone and runs from its own
 checkout (`uv run joe dev`); and vox, vendored at `vendor/vox`, which carries
 the contract a speech engine answers and the local synthesizer.
 
-Two commands, and then only speech:
+Once the workstation is set up -- the onboarding in `docs/voice-loop-demo.md`,
+with the local model served and joe holding a microphone -- two commands, and
+then only speech:
 
 ```bash
 uv run joe dev                                  # in joe's checkout: the speech engine

@@ -365,7 +365,8 @@ uv run joe dev                                  # in joe's checkout: the speech 
 uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
 ```
 
-Nothing after those two is typed. The conversation starts with the server,
+Nothing after those two is typed, once the workstation is set up as the
+onboarding in `docs/voice-loop-demo.md` says. The conversation starts with the server,
 waits for the speech engine in either order, says *"Ready. What should be
 done?"*, and from then on is spoken:
 
