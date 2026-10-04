@@ -104,8 +104,8 @@ a spoken answer maps onto a request's own options.
 The loop also runs the other way: an instruction spoken at the machine,
 consented to aloud, carried out by the model `qmcp localmodel` stands up, and
 said back -- with each instruction told what the project's earlier ones found.
-`docs/voice-loop-demo.md` runs it in three tiers; the first two need no
-microphone:
+`docs/voice-loop-demo.md` is its onboarding and cookbook; the first two of
+its three tiers need no microphone:
 
 ```bash
 uv run qmcp cookbook converse                     # one spoken session, every take scripted

@@ -9,7 +9,7 @@ through — so the audit trail does not distinguish the two except by
 acted on behind consent asked aloud ("An instruction is recorded, not run" and
 the sections after it). And one standing conversation does both, so that once
 two servers start nothing is typed ("Talking to qmcp").
-`docs/voice-loop-demo.md` runs the whole loop in order.
+`docs/voice-loop-demo.md` is the loop's onboarding and cookbook.
 
 ## Overview
 
@@ -365,7 +365,8 @@ uv run joe dev                                  # in joe's checkout: the speech 
 uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
 ```
 
-Nothing after those two is typed. The conversation starts with the server,
+Nothing after those two is typed, once the workstation is set up as the
+onboarding in `docs/voice-loop-demo.md` says. The conversation starts with the server,
 waits for the speech engine in either order, says *"Ready. What should be
 done?"*, and from then on is spoken:
 
@@ -400,14 +401,16 @@ rather than opening the microphone a second time; it ends when the server
 stops. `uv run qmcp converse --runtime local` runs it on its own against a
 running server, and `--synth recording` writes each sentence to a file instead
 of speaking it, for a check on a machine nobody is at. `qmcp.instructions.converse`
-carries the why, and `uv run qmcp cookbook converse` is one whole session
-offline, every take scripted.
+carries the why, `uv run qmcp cookbook converse` is one whole session
+offline, every take scripted, and the cookbook in `docs/voice-loop-demo.md` is
+what to say.
 
 ## Testing the integration
 
-`docs/voice-loop-demo.md` is the whole loop in the order to run it -- the
-offline checks, continuity on the local model, and a person at the microphone.
-This section is the voice-answer check on its own.
+`docs/voice-loop-demo.md` is the whole loop's onboarding -- set up once, then
+the offline checks, continuity on the local model, and a person at the
+microphone -- and its cookbook. This section is the voice-answer check on its
+own.
 
 `qmcp cookbook voice` is the check, in two forms that answer different
 questions:
