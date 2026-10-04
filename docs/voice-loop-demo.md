@@ -3,9 +3,10 @@
 The voice-driven development loop, end to end, in three tiers. Each tier is a
 command that runs, and each adds one thing the tier before it stood in for:
 first nothing real, then the real local model, then a person at the
-microphone -- where, once two servers are started, nothing is typed at all. **Continuity comes from qmcp, not the model**: every tier ends with
-an instruction carried out because this server remembered the project's
-earlier work, not because a runtime did.
+microphone -- where, once two servers are started, nothing is typed at all.
+**Continuity comes from qmcp, not the model**: every tier ends with a second
+instruction handed what this server recorded of the first, and nothing a
+runtime kept.
 
 ```
 speak ──> joe: microphone, transcription ──> qmcp: recorded against a project
@@ -67,6 +68,10 @@ uv run qmcp cookbook instruct --runtime local     # reads this repository
 uv run qmcp cookbook instruct --runtime local --clone <path to a rostered project>
 uv run qmcp cookbook converse --runtime local     # the whole session, on the model
 ```
+
+`cookbook converse --runtime local` looks for a clone named `qmcp` beside this
+checkout; from a worktree, or a checkout kept elsewhere, pass `--clones` the
+directory that holds one.
 
 Two instructions in one project. The first asks which file says what the
 project is, and passes the clone. The second asks "what did *that file* say it
@@ -130,7 +135,9 @@ speaking, the pause, the reading. A question an agent has put on the human
 queue is asked aloud before the next instruction. The first time a project is
 acted on, its clone is the one named for it beside this checkout (`--clones`
 moves where it is looked for); after that, the one its last act ran in. A room
-where people talk can require a word first with `--wake`.
+where people talk can require a word first with `--wake`. While it runs it
+listens take after take, and joe keeps every take as a file in its checkout's
+`Data/Voice`; nothing deletes them.
 
 Each step is also a command, for checking and debugging rather than for the
 loop: `uv run qmcp instruct --voice`, `uv run qmcp instructions act <id>
@@ -161,6 +168,9 @@ and the runner image are not reproduced.
 - **An act refuses for want of a clone.** The conversation looks for a clone
   named for the project beside this checkout, or in `--clones`; by command,
   pass `--cwd` once. The project remembers it either way.
+- **Nothing is said, or the conversation seems to have gone.** `curl
+  http://127.0.0.1:3141/v1/human/voice` says whether it is running and the last
+  lines it printed: what it is waiting for, or why it ended.
 - **The page's voice buttons say a conversation is running.** The standing
   conversation holds the microphone; speak to it instead, or start the server
   without `--converse`.

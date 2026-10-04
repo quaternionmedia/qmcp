@@ -112,9 +112,11 @@ uv run qmcp cookbook converse                     # one spoken session, every ta
 uv run qmcp cookbook instruct --runtime local     # continuity, on the local model
 ```
 
-With the speech engine running (step 5), `uv run qmcp serve --converse --runtime local`
-in place of step 2's command makes everything after it spoken: qmcp asks what
-should be done, and a person answers.
+`--runtime local` needs the model served: `uv run qmcp localmodel check` says
+whether it is, and `uv run qmcp localmodel plan` gives the commands that
+install it. With the speech engine running (step 5), `uv run qmcp serve
+--converse --runtime local` in place of step 2's command makes everything
+after it spoken: qmcp asks what should be done, and a person answers.
 
 ## Next Steps
 
