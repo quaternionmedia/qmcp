@@ -22,6 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from qmcp.instructions import RULE_ONE, RULE_STATED
 from qmcp.instructions.dialog import CONFIRM, PAUSE_MS, PROMPT, WHICH_PROJECT, InstructionDialog
 from qmcp.integrations.voice.adapter import UnclearResponse, say_options
 from qmcp.integrations.voice.check import _Recorded, throwaway_server
@@ -46,6 +47,10 @@ class Case:
     project: str | None
     """The project recorded, or None for unresolved."""
 
+    rule: str
+    """The rule the row must say settled the project: the server's match
+    when the text named it, `stated` when the person chose or spoke it."""
+
     reasked: str | None = None
     """How a turn after the first prompt must begin."""
 
@@ -56,16 +61,16 @@ class Case:
 # `again`, which takes the instruction a second time before recording.
 OFFLINE_CASES = (
     Case(("Deploy qmcp to the pi.", "record"),
-         "Deploy qmcp to the pi.", NAMED),
+         "Deploy qmcp to the pi.", NAMED, RULE_ONE),
     Case(("Rotate the logs.", "yes", OTHER),
-         "Rotate the logs.", OTHER, reasked=WHICH_PROJECT),
+         "Rotate the logs.", OTHER, RULE_STATED, reasked=WHICH_PROJECT),
     # The project chosen is the one the roster lists second, so a dialog that
     # took the first candidate for anything it could not match is caught here.
     Case((f"Move the vectors from {OTHER} into {NAMED}.", "record", NAMED),
-         f"Move the vectors from {OTHER} into {NAMED}.", NAMED,
+         f"Move the vectors from {OTHER} into {NAMED}.", NAMED, RULE_STATED,
          reasked=f"{WHICH_PROJECT} Say {OTHER} or {NAMED}."),
     Case(("Deploy qmcp.", "again", "Deploy qmcp to the pi.", "record"),
-         "Deploy qmcp to the pi.", NAMED, reasked=PROMPT),
+         "Deploy qmcp to the pi.", NAMED, RULE_ONE, reasked=PROMPT),
 )
 
 
@@ -156,6 +161,11 @@ def run_offline(echo: Callable[[str], None] = print, cases=OFFLINE_CASES) -> boo
                 if recorded["project"] != case.project:
                     problems.append(f"recorded project {recorded['project']!r},"
                                     f" expected {case.project!r}")
+                # The row says how the project was settled: by the server's
+                # match where the text named it, as stated where the person did.
+                if recorded["detail"].get("rule") != case.rule:
+                    problems.append(f"rule {recorded['detail'].get('rule')!r},"
+                                    f" expected {case.rule!r}")
                 if recorded["source"] != "voice":
                     problems.append(f"source {recorded['source']!r}, expected 'voice'")
                 if recorded["detail"].get("heard") != list(dialog.heard):

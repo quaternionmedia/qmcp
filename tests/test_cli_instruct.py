@@ -17,9 +17,12 @@ import pytest
 from click.testing import CliRunner
 
 import qmcp.cli as cli
+from qmcp.instructions import RULE_ONE, RULE_STATED, resolve
 from qmcp.instructions import dialog as dialog_module
 
-NAMES = ("qmcp", "dossier", "vox")
+# `rad` and `rad-godot` are both on the real roster, and a transcript says
+# the second as `rad godot`.
+NAMES = ("qmcp", "dossier", "vox", "rad", "rad-godot")
 
 
 class _FakeSTT:
@@ -60,7 +63,12 @@ class _FakeTTS:
 
 
 class _FakeClient:
-    """Stands in for MCPClient's inbox surface: no HTTP, no server."""
+    """Stands in for MCPClient's inbox surface: no HTTP, no server.
+
+    `recorded` is what each call sent; `rows` is what the server would hold,
+    resolved as the server resolves, so a row's project and rule say whether
+    the dialog stated the project or left the text for the server to read.
+    """
 
     def __init__(self):
         self.base_url = "http://127.0.0.1:3141"
@@ -68,11 +76,11 @@ class _FakeClient:
         self.rows: dict[str, dict] = {}
 
     def create_instruction(self, text, source="typed", project=None, heard=None):
+        found = resolve(text, NAMES, project=project)
         row = {"id": f"row-{len(self.recorded) + 1}", "text": text, "source": source,
-               "project": project, "status": "recorded" if project else "unresolved",
+               "project": found.project, "status": found.status.value,
                "created_at": "2026-10-03T12:00:00", "updated_at": "2026-10-03T12:00:00",
-               "detail": {"candidates": [], "rule": "stated" if project else "no project named",
-                          **({"heard": heard} if heard is not None else {})}}
+               "detail": {**found.detail(), **({"heard": heard} if heard is not None else {})}}
         self.recorded.append({"text": text, "source": source, "project": project, "heard": heard})
         self.rows[row["id"]] = row
         return row
@@ -177,9 +185,35 @@ def test_a_spoken_instruction_is_read_back_and_recorded_on_record(fake_client, m
     assert tts.spoken[1] == "I heard: Deploy qmcp to the pi.. Say record or again."
     assert tts.spoken[2] == "Recorded for qmcp."
     assert fake_client.recorded == [{
-        "text": "Deploy qmcp to the pi.", "source": "voice", "project": "qmcp",
+        "text": "Deploy qmcp to the pi.", "source": "voice", "project": None,
         "heard": ["Deploy qmcp to the pi.", "record"]}]
     assert "[=] row-1  qmcp  voice" in result.output
+
+
+def test_a_project_the_text_names_is_left_for_the_server_to_read(fake_client, monkeypatch):
+    """The row then carries the match and its rule, as a typed one does, rather
+    than `stated` with no candidates. Mutation: send `found.project` whatever
+    settled it -- red on `rule`."""
+    result, stt, tts = _spoken(monkeypatch, ["Deploy qmcp to the pi.", "record"])
+
+    assert result.exit_code == 0, result.output
+    assert fake_client.recorded[0]["project"] is None
+    row = fake_client.rows["row-1"]
+    assert (row["project"], row["detail"]["candidates"], row["detail"]["rule"]) == (
+        "qmcp", ["qmcp"], RULE_ONE)
+
+
+def test_a_project_the_person_settled_is_stated(fake_client, monkeypatch):
+    """Chosen from the candidates or spoken when asked, the dialog is the
+    caller stating it, and the answer is in `heard`. Mutation: send `None`
+    for every project -- red, both rows unresolved."""
+    chosen, _, _ = _spoken(monkeypatch, ["Move the vectors from vox into qmcp.", "record", "vox"])
+    asked, _, _ = _spoken(monkeypatch, ["Rotate the logs.", "record", "dossier"])
+
+    assert chosen.exit_code == 0 and asked.exit_code == 0
+    assert [r["project"] for r in fake_client.recorded] == ["vox", "dossier"]
+    assert [r["detail"]["rule"] for r in fake_client.rows.values()] == [RULE_STATED, RULE_STATED]
+    assert [r["heard"][-1] for r in fake_client.recorded] == ["vox", "dossier"]
 
 
 def test_the_instruction_take_is_long_and_the_confirmation_is_not(fake_client, monkeypatch):
@@ -226,7 +260,32 @@ def test_no_asks_again_as_a_no_does_for_an_approval(fake_client, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert fake_client.recorded[0]["text"] == "Deploy vox."
-    assert fake_client.recorded[0]["project"] == "vox"
+    assert fake_client.rows["row-1"]["project"] == "vox"
+
+
+def test_dont_record_is_a_no_although_it_names_record(fake_client, monkeypatch):
+    """The decision is read before the option named, as the approval dialog
+    reads it. Mutation: `if named == "record" or decision is True:` -- red,
+    the first take is recorded."""
+    result, stt, tts = _spoken(monkeypatch, [
+        "Deploy qmcp.", "don't record", "Deploy qmcp to the pi.", "record"])
+
+    assert result.exit_code == 0, result.output
+    assert tts.spoken[2] == "What should be done?"
+    assert fake_client.recorded[0]["text"] == "Deploy qmcp to the pi."
+
+
+def test_max_retries_is_the_dialogs_budget(fake_client, monkeypatch):
+    """`again` costs the one retry, and nothing is recorded; the default
+    budget records this same script (`test_again_takes_the_instruction_a_second_time`).
+    Mutation: hand the dialog `max_retries=2` instead of the option -- red."""
+    result, stt, tts = _spoken(monkeypatch, [
+        "Deploy qmcp.", "again", "Deploy qmcp to the pi.", "record"], "--max-retries", "0")
+
+    assert result.exit_code != 0
+    assert "No usable instruction after 1 attempts" in result.output
+    assert stt.calls == 2
+    assert fake_client.recorded == []
 
 
 def test_an_ambiguous_project_is_asked_back_as_a_closed_choice(fake_client, monkeypatch):
@@ -239,6 +298,22 @@ def test_an_ambiguous_project_is_asked_back_as_a_closed_choice(fake_client, monk
     assert tts.spoken[2] == "Which project? Say qmcp or vox."
     assert fake_client.recorded[0]["project"] == "vox"
     assert fake_client.recorded[0]["heard"][-1] == "vox"
+    assert fake_client.rows["row-1"]["project"] == "vox"
+
+
+def test_a_hyphenated_project_is_chosen_as_a_transcript_says_it(fake_client, monkeypatch):
+    """`rad godot` is the transcript of `rad-godot`, and it names `rad` too;
+    the text saying it is unresolved between the two, and the spoken answer
+    chooses the longer. Mutation: compare the option's words with its hyphen
+    kept -- red, the choice never matches; drop the covering rule from
+    `match_option` -- red, `rad godot` names both and is a nomatch."""
+    result, stt, tts = _spoken(monkeypatch, [
+        "Pin rad godot to the vectors.", "record", "rad godot"])
+
+    assert result.exit_code == 0, result.output
+    assert tts.spoken[2] == "Which project? Say rad or rad-godot."
+    assert fake_client.recorded[0]["project"] == "rad-godot"
+    assert tts.spoken[-1] == "Recorded for rad-godot."
 
 
 def test_yes_chooses_no_project(fake_client, monkeypatch):

@@ -12,7 +12,7 @@ import pytest
 from click.testing import CliRunner
 
 from qmcp.cli import cli
-from qmcp.instructions import check, dialog, roster_names
+from qmcp.instructions import RULE_ONE, RULE_STATED, check, dialog, roster_names
 from qmcp.instructions.check import OFFLINE_CASES, Case, run_offline
 
 pytestmark = pytest.mark.skipif(
@@ -60,6 +60,39 @@ def test_the_offline_check_fails_when_the_long_take_drops_the_pause(monkeypatch)
     assert any("carried pause [None], expected 1500" in line for line in lines)
 
 
+def test_the_offline_check_fails_when_the_confirmation_carries_the_pause(monkeypatch):
+    """The other half of the same claim: a word in answer gets the engine's
+    own pause. Mutation: `if False:` for the check on `state.pauses[1]` in
+    `run_offline` -- red, the check stays green with the pause on every take."""
+    original = dialog.InstructionDialog._listen
+
+    def long_everywhere(self, *, long):
+        return original(self, long=True)
+
+    monkeypatch.setattr(dialog.InstructionDialog, "_listen", long_everywhere)
+
+    lines: list[str] = []
+    assert run_offline(echo=lines.append, cases=OFFLINE_CASES[:1]) is False
+    assert any("the confirmation carried pause 1500" in line for line in lines)
+
+
+def test_the_offline_check_fails_when_the_row_is_not_a_spoken_one(monkeypatch):
+    """A dialog recording what it heard as typed would pass every other check.
+    Mutation: drop the `source` check from `run_offline` -- red."""
+    from qmcp.client.mcp_client import MCPClient
+
+    original = MCPClient.create_instruction
+
+    def as_typed(self, text, source="typed", project=None, heard=None):
+        return original(self, text, source="typed", project=project, heard=heard)
+
+    monkeypatch.setattr(MCPClient, "create_instruction", as_typed)
+
+    lines: list[str] = []
+    assert run_offline(echo=lines.append, cases=OFFLINE_CASES[:1]) is False
+    assert any("source 'typed', expected 'voice'" in line for line in lines)
+
+
 def test_the_offline_check_fails_when_nothing_is_read_back(monkeypatch):
     monkeypatch.setattr(dialog, "say_options", lambda options: "")
 
@@ -71,10 +104,25 @@ def test_the_offline_check_fails_when_nothing_is_read_back(monkeypatch):
 def test_a_case_expecting_one_project_fails_when_another_is_recorded():
     """A script whose expectation the inbox does not meet is reported as such."""
     lines: list[str] = []
-    wrong = Case(("Deploy qmcp to the pi.", "record"), "Deploy qmcp to the pi.", check.OTHER)
+    wrong = Case(("Deploy qmcp to the pi.", "record"), "Deploy qmcp to the pi.", check.OTHER,
+                 RULE_ONE)
 
     assert run_offline(echo=lines.append, cases=(wrong,)) is False
     assert "recorded project 'qmcp', expected 'dossier'" in lines[-2]
+
+
+def test_the_row_says_how_the_project_was_settled():
+    """A text that named the project is read by the server and the row says
+    so; a project the person chose is `stated`. Mutation: have the dialog
+    send `found.project` whatever settled it -- red, the first case's row
+    says `stated`; drop the `rule` check from `run_offline` -- green here, so
+    the wrong expectation below is what shows the check reads it."""
+    lines: list[str] = []
+    wrong = Case(("Deploy qmcp to the pi.", "record"), "Deploy qmcp to the pi.", check.NAMED,
+                 RULE_STATED)
+
+    assert run_offline(echo=lines.append, cases=(wrong,)) is False
+    assert f"rule {RULE_ONE!r}, expected 'stated'" in lines[-2]
 
 
 def test_the_verdict_reads_the_inbox_and_not_the_dialogs_return(monkeypatch):

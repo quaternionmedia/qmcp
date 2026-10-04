@@ -24,7 +24,16 @@ resolves. None, or several, leaves the instruction `unresolved` with the
 candidates in `detail`, where the rule that read them is written beside them --
 a project assigned without its evidence would be a guess that looks like a
 finding. A caller may state the project outright, which skips the matching and
-is recorded as `stated`.
+is recorded as `stated`; a blank is not a statement, and is read as nothing
+stated.
+
+**A HYPHENATED NAME IS ALSO MATCHED AS A TRANSCRIPT CARRIES IT.** The roster has
+names like `rad-godot`, and a transcript does not carry hyphens: it says
+`rad godot`. So a hyphenated name is matched with its hyphens as whitespace as
+well as written, and the boundary that keeps `rad` out of `rad-godot` still
+holds -- `rad godot` names both `rad`, as a whole word, and `rad-godot`, in its
+spoken form, so a text saying it is `unresolved` with both as candidates rather
+than recorded against the shorter one.
 
 **AN AMBIGUOUS NAME IS ASKED BACK, NEVER GUESSED.** Spoken, an unresolved
 instruction becomes a closed choice over the candidates by name, through the
@@ -40,12 +49,13 @@ whatever directory either was started in.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 from qmcp.db.models import InstructionStatus
-from qmcp.threads.consolidate import _pattern, roster
+from qmcp.threads.consolidate import roster
 
 # The governance submodule this checkout carries. Resolved from this file so
 # the server and `qmcp instruct --voice`, which the server starts as a process
@@ -83,19 +93,32 @@ class Resolution:
         return {"candidates": list(self.candidates), "rule": self.rule}
 
 
+def _mention(name: str) -> re.Pattern[str]:
+    """A repository name as a whole word, written or as a transcript says it.
+
+    The boundaries are `qmcp.threads.consolidate._pattern`'s, so `rad` is not
+    found inside `gradient` or `rad-godot`. Each hyphen in the name also
+    matches whitespace, so `rad godot` is `rad-godot`: a transcript carries
+    no hyphens, and the spoken form is the only one a dialog ever hears.
+    """
+    body = r"[\s-]+".join(re.escape(part) for part in name.split("-"))
+    return re.compile(rf"(?<![\w-]){body}(?![\w-])", re.IGNORECASE)
+
+
 def resolve(text: str, names: Iterable[str], project: str | None = None) -> Resolution:
     """Which project `text` names, by whole word, or the one stated.
 
     `project` given skips the matching entirely: the caller knows, and the
-    record says the caller said so. Otherwise every roster name is tried as a
-    whole word, case ignored, and exactly one hit resolves.
+    record says the caller said so. A blank is not a statement. Otherwise
+    every roster name is tried as a whole word, case ignored and hyphens as
+    whitespace, and exactly one hit resolves.
     """
-    if project is not None:
-        return Resolution(project=project, candidates=(), rule=RULE_STATED)
+    if project is not None and project.strip():
+        return Resolution(project=project.strip(), candidates=(), rule=RULE_STATED)
     known = tuple(names)
     if not known:
         return Resolution(project=None, candidates=(), rule=RULE_NO_ROSTER)
-    named = tuple(name for name in known if _pattern(name).search(text))
+    named = tuple(name for name in known if _mention(name).search(text))
     if len(named) == 1:
         return Resolution(project=named[0], candidates=named, rule=RULE_ONE)
     if not named:

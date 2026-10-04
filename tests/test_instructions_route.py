@@ -1,23 +1,38 @@
 """`/v1/instructions`: recorded, listed, read; and the spoken route, which starts
 a command and never runs an instruction.
 
-The roster is the real one, read from `governance/qm`, so the names used are
-two the organisation's own workspace carries. No process is started: the
-launcher is stood in for, as `tests/test_voice_route.py` does.
+The roster is handed to the routes, so these run whatever the governance
+submodule lists and whether it is checked out; `qmcp cookbook instruct` is
+where the real roster is read. No process is started: the launcher is stood in
+for, as `tests/test_voice_route.py` does.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from qmcp.instructions import RULE_NONE, RULE_ONE, RULE_SEVERAL, RULE_STATED, roster_names
+from qmcp.instructions import RULE_NONE, RULE_ONE, RULE_SEVERAL, RULE_STATED
 
 NAMED, OTHER = "qmcp", "dossier"
+# `alpha` is on no real roster, so a route reading the checkout's instead of
+# this one is told apart from one reading this one.
+NAMES = (NAMED, "vox", OTHER, "alpha")
 
-pytestmark = pytest.mark.skipif(
-    not {NAMED, OTHER} <= set(roster_names()),
-    reason="governance/qm is not checked out, so there is no roster to resolve against",
-)
+
+@pytest.fixture(autouse=True)
+def _roster(monkeypatch):
+    """The routes read the module's `roster_names` at each record, so the
+    stand-in reaches them without rebuilding the app."""
+    monkeypatch.setattr("qmcp.instructions.service.roster_names", lambda: NAMES)
+
+
+def test_the_routes_read_the_roster_at_each_record(client):
+    """Mutation: bind `roster_names` as `register`'s default argument -- red,
+    the checkout's roster has no `alpha` and the row is unresolved."""
+    row = _record(client, "Deploy alpha.")
+
+    assert row["status"] == "recorded"
+    assert row["project"] == "alpha"
 
 
 class _Process:
@@ -97,8 +112,24 @@ def test_what_was_heard_travels_with_a_spoken_instruction(client):
 
 
 def test_an_empty_instruction_is_refused(client):
+    """Whitespace alone is refused with the empty string. Mutation: drop the
+    validator and keep `min_length=1` -- red on the spaces, 201 unresolved."""
     assert client.post("/v1/instructions", json={"text": ""}).status_code == 422
+    assert client.post("/v1/instructions", json={"text": "   "}).status_code == 422
     assert client.post("/v1/instructions", json={"text": "x", "source": "sms"}).status_code == 422
+
+
+def test_a_blank_project_is_nothing_stated(client):
+    """`project: ""` is a client meaning none, not a project called nothing.
+    Mutation: `if project is not None` alone in `resolve` -- red, recorded
+    against `''` as `stated`."""
+    row = _record(client, "Rotate the logs.", project="")
+
+    assert row["status"] == "unresolved"
+    assert row["project"] is None
+    assert row["detail"]["rule"] == RULE_NONE
+    listed = client.get("/v1/instructions", params={"status": "unresolved"}).json()
+    assert [r["id"] for r in listed["instructions"]] == [row["id"]]
 
 
 # --- listing and reading ---------------------------------------------------------

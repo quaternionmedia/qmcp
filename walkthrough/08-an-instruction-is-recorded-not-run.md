@@ -38,7 +38,7 @@ what the governance submodule lists this week:
     ...     return Process()
     >>> runs = VoiceRuns(log_dir=root, popen=popen)
     >>> app = FastAPI()
-    >>> service.register(app, runs, names=lambda: ("qmcp", "vox", "dossier"),
+    >>> service.register(app, runs, names=lambda: ("qmcp", "vox", "dossier", "rad-godot"),
     ...                  sessions=sessions_at(root / "inbox.db"))
     >>> client = TestClient(app)
 
@@ -54,6 +54,14 @@ reader can disagree with the reading without losing the evidence:
     ('recorded', 'qmcp', 'typed')
     >>> row["detail"]
     {'candidates': ['qmcp'], 'rule': 'the one project named, as a whole word'}
+
+A hyphenated name is matched as a transcript says it, since no transcript
+writes the hyphen:
+
+    >>> spoken = client.post("/v1/instructions",
+    ...                      json={"text": "Pin rad godot to the vectors."}).json()
+    >>> spoken["status"], spoken["project"]
+    ('recorded', 'rad-godot')
 
 ## None named, and several named
 
@@ -92,7 +100,7 @@ records that the project was stated rather than read:
 
     >>> listed = client.get("/v1/instructions").json()
     >>> listed["count"]
-    5
+    6
     >>> [r["text"] for r in listed["instructions"]][:2]
     ['Deploy qmcp to the pi.', 'Fix the voxel shader.']
     >>> [r["text"] for r in
@@ -103,7 +111,7 @@ records that the project was stated rather than read:
 
 ## What recording did not do
 
-Five instructions are in the inbox. No process was started, and the machine's
+Six instructions are in the inbox. No process was started, and the machine's
 one conversation is idle:
 
     >>> started

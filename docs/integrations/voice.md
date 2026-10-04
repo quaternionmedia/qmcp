@@ -231,10 +231,12 @@ uv run qmcp instructions show <id>
 
 The project is read from the text by the whole-word match `qmcp threads
 consolidate` uses, against the roster in `governance/qm`: a substring inside
-another word is not a match, casing is ignored, and a name followed by
-punctuation still matches. Exactly one match resolves. None or several leaves
-the row `unresolved` with the candidates and the rule in `detail`, and
-`--project` states the project outright, recorded as `stated`.
+another word is not a match, casing is ignored, a name followed by punctuation
+still matches, and a hyphenated name matches as a transcript says it, so `rad
+godot` is `rad-godot` -- and `rad` too, which leaves that text between the two.
+Exactly one match resolves. None or several leaves the row `unresolved` with
+the candidates and the rule in `detail`, and `--project` states the project
+outright, recorded as `stated`; a blank states nothing.
 
 Spoken, the dialog asks *"What should be done?"*, listens with a long cap and a
 long pause (`--duration`, `--pause-ms`; an instruction has pauses mid-thought,
@@ -242,9 +244,13 @@ which is what `pause_ms` on the engine contract is for), and reads the
 transcript back: *"I heard: Deploy qmcp to the pi. Say record or again."* A yes
 or `record` records; a no or `again` listens again; the re-asks are the ones
 above. An instruction naming several projects is asked back as a closed choice
-by name (*"Which project? Say qmcp or vox."*); one naming none is asked for the
-project once. The states reach the engine's conversation route as the approval
-dialog's do, with `confirm` on the read-back and `again` on a second take.
+by name (*"Which project? Say qmcp or vox."*), where a spoken `rad godot`
+chooses `rad-godot` over `rad`; one naming none is asked for the project once.
+A text that named its project is sent for the server to read, so the row
+carries the match; a project the person chose or spoke is `stated`, with the
+answer among the transcripts in `detail.heard`. The states reach the engine's
+conversation route as the approval dialog's do, with `confirm` on the read-back
+and `again` on a second take.
 
 | Route | What it does |
 |---|---|
@@ -259,12 +265,14 @@ route shares the voice route's tracker, so an approval being asked and an
 instruction being taken cannot overlap: there is one microphone.
 
 `uv run qmcp cookbook instruct` is the check, offline only: a server on an
-ephemeral port over its own database, vox's deterministic engine, and four
-scripted dialogs through the real path -- one project named and recorded; none
-named, the project asked for and the spoken one recorded; several named and
-chosen by name; and `again`, which takes the instruction a second time. It also
-checks that the instruction's take carried the long pause and the confirmation
-did not. `tests/test_cookbook_instruct.py` runs it and makes sure it can fail.
+ephemeral port over its own database, vox's deterministic engine, and one
+scripted dialog per way a spoken instruction can end, through the real path --
+one project named and recorded; none named, the project asked for and the
+spoken one recorded; several named and chosen by name; and `again`, which takes
+the instruction a second time. It also checks that the instruction's take
+carried the long pause and the confirmation did not, and that each row says how
+its project was settled. `tests/test_cookbook_instruct.py` runs it and makes
+sure it can fail.
 
 ## Testing the integration
 

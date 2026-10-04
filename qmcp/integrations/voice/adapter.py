@@ -84,22 +84,34 @@ def choose_option(decision: bool, options: list[str]) -> str:
     return options[0] if decision else options[-1]
 
 
+def _words(text: str) -> set[str]:
+    """The words of a transcript or an option, lower-cased, punctuation gone.
+
+    A hyphen is a word break and not punctuation: an option `rad-godot` is
+    the two words a transcript carries when somebody says it, since no
+    transcript writes the hyphen.
+    """
+    return set(re.sub(r"[^\w\s]", "", text.lower().replace("-", " ")).split())
+
+
 def match_option(text: str, options: list[str]) -> str | None:
     """The request's own option a transcript names, or None.
 
     The options are the grammar, as a VoiceXML field's are: an answer that
     says one of them is that answer, whether or not it is a yes/no word.
-    An option is named when every word of it appears in the transcript;
-    naming none, or more than one, is no match.
+    An option is named when every word of it appears in the transcript.
+    Naming none is no match; naming several is no match unless one of them
+    says every word the others do, when it is the one meant -- `rad godot`
+    names `rad` too, and the longer option is what was said.
     """
-    words = set(re.sub(r"[^\w\s]", "", text.lower()).split())
-    named = [
-        option
-        for option in options
-        if (option_words := set(re.sub(r"[^\w\s]", "", option.lower()).split()))
-        and option_words <= words
-    ]
-    return named[0] if len(named) == 1 else None
+    words = _words(text)
+    named = [option for option in options
+             if (option_words := _words(option)) and option_words <= words]
+    if len(named) == 1:
+        return named[0]
+    covering = [option for option in named
+                if all(_words(other) <= _words(option) for other in named)]
+    return covering[0] if len(covering) == 1 else None
 
 
 def say_options(options: list[str]) -> str:

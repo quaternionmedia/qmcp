@@ -23,7 +23,9 @@ tracker is what makes "one conversation at a time" true across both kinds.
 page's arrive as text and are read against the roster here, so every row's
 `detail` was produced by one function on one list. The spoken dialog reads the
 same roster before it records, because an ambiguous name has to be asked back
-before anything is written, and then states the project it was told.
+before anything is written; it states a project only when the person chose or
+spoke one, and sends a text that named one project without it, so that row too
+carries the match the server made and the rule that made it.
 """
 
 from __future__ import annotations
@@ -36,7 +38,7 @@ from typing import Any
 # Module level, not inside `register`: the routes' annotations are strings
 # under `from __future__ import annotations`, and FastAPI resolves them here.
 from fastapi import HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from qmcp.db.models import Instruction, InstructionSource, InstructionStatus
 from qmcp.instructions import resolve, roster_names
@@ -60,25 +62,41 @@ class InstructionCreate(BaseModel):
         description="How it arrived: voice, typed, or page")
     project: str | None = Field(
         default=None,
-        description="The project it is for, stated outright; skips the matching")
+        description="The project it is for, stated outright; skips the matching."
+                    " Blank is nothing stated.")
     heard: list[str] | None = Field(
         default=None,
         description="For a spoken instruction, every transcript the dialog took, in order")
 
+    @field_validator("text")
+    @classmethod
+    def _said_something(cls, text: str) -> str:
+        # Stripped before the length is read: whitespace alone is not an
+        # instruction, and `min_length` alone would record it as one.
+        if not text.strip():
+            raise ValueError("an instruction has to say something")
+        return text.strip()
+
 
 def register(app: Any, runs: VoiceRuns, engine: str = "joe",
-             engine_url: str | None = None, names: Names = roster_names,
+             engine_url: str | None = None, names: Names | None = None,
              sessions: Sessions | None = None) -> None:
     """Attach the inbox routes. `runs` is the machine's one conversation.
 
-    `sessions` defaults to the configured database. A walkthrough or a test
-    hands in its own, because the configured one is somebody's queue.
+    `names` defaults to the checkout's own roster, read when a row is
+    recorded; `sessions` defaults to the configured database. A walkthrough
+    or a test hands in its own, because the configured one is somebody's queue.
     """
     from sqlmodel import select
 
     if sessions is None:
         from qmcp.db import get_session
         sessions = get_session
+
+    def known() -> Iterable[str]:
+        # Looked up on each call rather than bound as a default, so the roster
+        # a route reads is the module's at that moment.
+        return names() if names is not None else roster_names()
 
     # Registered before `/v1/instructions/{instruction_id}`: a path is matched
     # in registration order, and `voice` would otherwise be read as an id.
@@ -119,7 +137,7 @@ def register(app: Any, runs: VoiceRuns, engine: str = "joe",
         the row says which names matched and by what rule, and is
         `unresolved` rather than guessed when none or several did.
         """
-        found = resolve(body.text, names(), project=body.project)
+        found = resolve(body.text, known(), project=body.project)
         detail = found.detail()
         if body.heard is not None:
             detail["heard"] = body.heard

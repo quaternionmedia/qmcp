@@ -29,6 +29,14 @@ is asked back as a closed choice over the candidates by name; one naming none
 is asked for the project once, open. An answer that still matches nothing is
 recorded `unresolved` rather than dropped -- the person spoke it and confirmed
 it, and the inbox is where it is kept until somebody says which project.
+
+**THE ROW SAYS HOW THE PROJECT WAS SETTLED.** A text that named one project is
+sent without a project, so the server reads the same text against the same
+roster and the row carries the name it matched and the rule, as a typed one
+does. A project the person chose from the candidates or spoke when asked is
+stated to the server, and the row says `stated` with `source: voice` and the
+answer among the transcripts in `heard`: the dialog is the caller that stated
+it, and the evidence for its choice is kept beside it.
 """
 
 from __future__ import annotations
@@ -86,10 +94,12 @@ class InstructionDialog:
         self.heard = []
         text = self._ask_instruction()
         found = resolve(text, self.names)
-        project = found.project
-        if project is None and found.candidates:
+        # None when the text itself named the project: the server reads it
+        # again and the row carries that match, not a statement.
+        project = None
+        if found.project is None and found.candidates:
             project = self._ask_choice(WHICH_PROJECT, list(found.candidates))
-        elif project is None:
+        elif found.project is None:
             project = self._ask_project_once()
         row = self.client.create_instruction(text, source="voice", project=project,
                                              heard=list(self.heard))

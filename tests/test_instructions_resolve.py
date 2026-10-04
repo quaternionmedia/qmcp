@@ -17,7 +17,7 @@ from qmcp.instructions import (
     roster_names,
 )
 
-NAMES = ("qmcp", "rad", "vox", "dossier")
+NAMES = ("qmcp", "rad", "vox", "dossier", "rad-godot")
 
 
 def test_one_project_named_resolves_to_it():
@@ -68,7 +68,7 @@ def test_casing_is_ignored():
 
 
 def test_a_name_followed_by_punctuation_matches():
-    """Whisper ends sentences. Mutation: require a space or end after the
+    """A transcript ends sentences. Mutation: require a space or end after the
     name -- red on the full stop and the comma."""
     assert resolve("Deploy qmcp.", NAMES).project == "qmcp"
     assert resolve("In vox, add a pause parameter", NAMES).project == "vox"
@@ -91,6 +91,15 @@ def test_a_stated_project_skips_the_matching():
     assert found.status is InstructionStatus.RECORDED
 
 
+def test_a_blank_project_is_nothing_stated():
+    """A row recorded against `''` would be `recorded` and for nobody, and the
+    unresolved listing would never show it. Mutation: test `project is not
+    None` alone -- red on both."""
+    assert resolve("Rotate the logs", NAMES, project="").rule == RULE_NONE
+    assert resolve("Rotate the logs", NAMES, project="   ").status is InstructionStatus.UNRESOLVED
+    assert resolve("Rotate the logs", NAMES, project=" dossier ").project == "dossier"
+
+
 def test_no_roster_is_its_own_answer():
     """Nothing to match against is not the same as nothing named."""
     found = resolve("Deploy qmcp", ())
@@ -101,14 +110,35 @@ def test_no_roster_is_its_own_answer():
 
 def test_a_hyphenated_name_is_whole():
     """`rad` inside `rad-godot` is not `rad`, which is what the hyphen in
-    `_pattern`'s boundary is for."""
-    assert resolve("Pin rad-godot to the vectors", NAMES).project is None
+    `_mention`'s boundary is for. Mutation: a plain `\\b` boundary -- red,
+    both named."""
+    found = resolve("Pin rad-godot to the vectors", NAMES)
+
+    assert found.project == "rad-godot"
+    assert found.candidates == ("rad-godot",)
+
+
+def test_a_hyphenated_name_is_matched_as_a_transcript_says_it():
+    """No transcript carries a hyphen: `rad-godot` is heard as `rad godot`,
+    which names `rad` as a whole word too, so the text is unresolved between
+    the two rather than recorded against `rad`. Mutation: match the name as
+    written only (`re.escape(name)` for the body) -- red, project `rad`."""
+    found = resolve("Pin rad godot to the vectors", NAMES)
+
+    assert found.project is None
+    assert found.candidates == ("rad", "rad-godot")
+    assert found.rule == RULE_SEVERAL
+    assert resolve("Pin RAD   GODOT", NAMES).candidates == ("rad", "rad-godot")
+    assert resolve("Fix the radgodot build", NAMES).candidates == ()
 
 
 def test_the_roster_comes_from_the_checkouts_own_corpus(tmp_path):
     """Read beside the package, not from the working directory; and empty,
-    not an error, where the submodule is absent."""
+    not an error, where the submodule is absent. Mutation: read from
+    `Path.cwd()` -- red on the corpus written here."""
     assert roster_names(tmp_path) == ()
-    names = roster_names()
-    if names:
-        assert "qmcp" in names
+    (tmp_path / "ci").mkdir()
+    (tmp_path / "ci" / "workspace.yaml").write_text(
+        "repositories:\n  - name: alpha\n  - name: beta-gamma\n", encoding="utf-8")
+
+    assert roster_names(tmp_path) == ("alpha", "beta-gamma")
