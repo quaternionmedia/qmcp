@@ -291,6 +291,11 @@ moment, `agree` or a yes records, `again` or a no takes it again, and anything
 else is asked about outright. "record", the read-back's earlier word, is still
 taken as `agree`. Consent to act is never tacit.
 
+An instruction's take is hinted with the project names it is likely to carry
+-- those of the most recent instructions first, then the roster's -- which a
+transcriber spells as given: on a real take, "camcp" without them and "qmcp"
+with them.
+
 | Route | What it does |
 |---|---|
 | `POST /v1/instructions` | records `{text, source, project?, heard?}`; `201` with the row, `recorded` or `unresolved` |

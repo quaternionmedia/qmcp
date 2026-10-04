@@ -323,7 +323,9 @@ with nobody looking at a screen.
 
 Each closed question also tells the speech engine the words its answer is
 expected to be, which joe hands its transcriber as a prompt: a clipped
-"approve" is far likelier to come back as that word.
+"approve" is far likelier to come back as that word, and an instruction's
+take is told the project names, so "qmcp" is spelled as a project rather than
+as whatever it sounded like.
 
 ### A room where people talk
 
