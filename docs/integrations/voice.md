@@ -299,7 +299,7 @@ the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
 
 | Route | What it does |
 |---|---|
-| `POST /v1/instructions/{id}/act` | `{runtime, budget?, cwd?, voice?}`; runs the command in a process of its own, as the spoken route does; `202` once started, `404` for no such instruction, `409` while a conversation or an act runs |
+| `POST /v1/instructions/{id}/act` | `{runtime, budget?, cwd?, voice?}`; runs the command in a process of its own, as the spoken route does; `202` once started, `404` for no such instruction, `409` while a conversation or an act runs, `422` for a runtime no adapter declares |
 
 `GET /v1/instructions/voice` reports an act as it reports a conversation, with
 `kind: act`.

@@ -261,13 +261,33 @@ def test_the_act_route_asks_by_voice_only_when_told(client, launched):
 
 
 def test_the_act_route_requires_a_runtime_and_a_row(client, launched):
+    """A runtime the registry does not name is refused here, before anything
+    starts: the command would refuse it too, but after a 202 a page reads as
+    an act under way. Mutation: drop the `runtime` validator -- red on
+    `nobody`, 202 and a process."""
     row = _record(client, f"Deploy {NAMED}.")
 
     assert client.post(f"/v1/instructions/{row['id']}/act", json={}).status_code == 422
     assert client.post(f"/v1/instructions/{row['id']}/act",
                        json={"runtime": "scripted", "budget": -1}).status_code == 422
+    for name in ("nobody", " "):
+        refused = client.post(f"/v1/instructions/{row['id']}/act", json={"runtime": name})
+        assert refused.status_code == 422, refused.text
+        assert "is not a runtime" in refused.text and "scripted" in refused.text
     assert client.post("/v1/instructions/nobody/act", json={"runtime": "scripted"}).status_code == 404
     assert launched == []
+
+
+def test_a_blank_cwd_is_no_clone(client, launched):
+    """A page that sends the field empty has named no clone. Mutation: drop
+    the `cwd` validator -- red, `--cwd` is passed with spaces."""
+    row = _record(client, f"Deploy {NAMED}.")
+
+    response = client.post(f"/v1/instructions/{row['id']}/act",
+                           json={"runtime": "scripted", "cwd": "   "})
+
+    assert response.status_code == 202, response.text
+    assert "--cwd" not in launched[0].argv
 
 
 def test_an_act_is_one_at_a_time_with_the_conversations(client, launched):

@@ -5,7 +5,7 @@
     GET  /v1/instructions/{id}         one row
     POST /v1/instructions/voice        take one by voice on this machine; 202 or 409
     GET  /v1/instructions/voice        whether that is running, and how the last ended
-    POST /v1/instructions/{id}/act     act on one, behind consent; 202, 404 or 409
+    POST /v1/instructions/{id}/act     act on one, behind consent; 202, 404, 409 or 422
 
 **LOOPBACK ONLY, LIKE THE VOICE ROUTES.** An instruction is a person's own
 words about what should be done, and the voice route makes this machine speak
@@ -50,6 +50,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from qmcp.db.models import Instruction, InstructionSource, InstructionStatus
 from qmcp.instructions import resolve, roster_names
+from qmcp.integrations.agents import runtime_names
 from qmcp.integrations.voice.service import VoiceRuns
 
 Sessions = Callable[[], Any]
@@ -95,9 +96,28 @@ class ActRequest(BaseModel):
     budget: int = Field(default=0, ge=0,
                         description="Runs the command may make; 0 declares and stops")
     cwd: str | None = Field(default=None,
-                            description="The clone, when the thread archive names none")
+                            description="The clone, when the thread archive names none."
+                                        " Blank is none.")
     voice: bool = Field(default=False,
                         description="Ask the consent aloud on this machine, in the command")
+
+    @field_validator("runtime")
+    @classmethod
+    def _a_runtime_that_exists(cls, runtime: str) -> str:
+        # Checked here, before the command is started: the command refuses a
+        # name the registry lacks, but by then this route has answered 202
+        # and a page reads that as an act under way.
+        if runtime not in runtime_names():
+            raise ValueError(f"{runtime!r} is not a runtime. The names are:"
+                             f" {', '.join(runtime_names())}.")
+        return runtime
+
+    @field_validator("cwd")
+    @classmethod
+    def _blank_is_none(cls, cwd: str | None) -> str | None:
+        # A page that sends an empty field means no clone was given, and a
+        # directory of spaces is not one the act could run in.
+        return cwd.strip() or None if cwd is not None else None
 
 
 def register(app: Any, runs: VoiceRuns, engine: str = "joe",
@@ -207,9 +227,10 @@ def register(app: Any, runs: VoiceRuns, engine: str = "joe",
 
         202 once the command has started; `GET /v1/instructions/voice` says
         how it ends, as it does for a conversation. 404 for no such
-        instruction, 409 while a conversation or another act runs. The
-        command asks consent on the human queue and runs nothing until it is
-        approved; the row's status says where it got to.
+        instruction, 409 while a conversation or another act runs, 422 for a
+        runtime the registry does not name. The command asks consent on the
+        human queue and runs nothing until it is approved; the row's status
+        says where it got to.
         """
         async with sessions() as session:
             row = (await session.execute(
