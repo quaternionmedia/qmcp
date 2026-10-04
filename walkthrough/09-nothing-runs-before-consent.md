@@ -11,15 +11,17 @@ shaped by `qmcp.governed` with the human gate in front of the runtime rather
 than behind it -- the command states how many runs it may make, a consent
 request goes on the human queue saying everything a stranger would need, and
 the runtime is reached on `approve` and on nothing else. This page shows the
-three ways an act ends without running, and the one way it runs, through the
-`scripted` runtime, which answers as told and spends nothing.
+three ways an act ends without running, the one way it runs, and what the next
+instruction is told -- through the `scripted` runtime, which answers as told,
+spends nothing, and keeps every brief it is handed.
 
 ## One process, a real queue and an inbox of its own
 
 The queue is the real one: a qmcp server on an ephemeral port over a database
 made for this page, reached through the ordinary client. The inbox is the same
-file, so the row the act writes is the row the server serves. The archive is
-empty here, so the clone is passed:
+file, so the row the act writes is the row the server serves, and it is also
+the record the clone and the history are read from. Nothing has been acted on
+here yet, so the record names no clone and the first acts pass one:
 
     >>> import tempfile
     >>> from pathlib import Path
@@ -47,7 +49,7 @@ empty here, so the clone is passed:
 The runtime keeps every call it is asked to make. Through this whole page it
 is asked once:
 
-    >>> runtime = ScriptedRuntime(text="pinned to 2c10fd1", session_ref="session-after")
+    >>> runtime = ScriptedRuntime(text="pinned to 2c10fd1")
 
 ## Zero is the default, and it asks nothing
 
@@ -56,7 +58,7 @@ what would be asked, and stops; no request reaches the queue and the row is as
 it was:
 
     >>> free = act("pin-the-vectors", runtime, Budget(), client=client, rows=rows,
-    ...            sources=[], cwd=clone)
+    ...            cwd=clone)
     >>> free.stages
     ('instruction', 'clone', 'budget')
     >>> free.status, free.request_id, runtime.calls
@@ -71,15 +73,15 @@ it was:
 
 ## No clone is a refusal that says what to pass
 
-The archive names no checkout for the project and nothing was passed, so the
+qmcp's record names no clone for the project and nothing was passed, so the
 act refuses before it asks, with the row unchanged:
 
     >>> nowhere = act("pin-the-vectors", runtime, Budget(authorised=1), client=client,
-    ...               rows=rows, sources=[])
+    ...               rows=rows)
     >>> nowhere.status, nowhere.stages
     ('recorded', ('instruction', 'clone'))
     >>> nowhere.why
-    "no checkout for 'rad-godot' in the thread archive; pass --cwd <path to the project's clone>."
+    "no clone for 'rad-godot' in qmcp's record yet; pass --cwd <path to the project's clone>, and it is remembered for the project's later instructions."
 
 ## Held: the consent is asked, answered, and nothing runs
 
@@ -96,7 +98,7 @@ hold:
     ...     def speak(self, text, out_path=None): self.spoken.append(text); return "out.wav"
 
     >>> held = act("pin-the-vectors", runtime, Budget(authorised=1), client=client,
-    ...            rows=rows, sources=[], cwd=clone, stt=Hears("hold"), tts=Says(),
+    ...            rows=rows, cwd=clone, stt=Hears("hold"), tts=Says(),
     ...            poll_interval=0.05)
     >>> Says.spoken[0] == (
     ...     "Act on the instruction: Pin rad godot to the vectors. "
@@ -141,7 +143,7 @@ what marks it expired, and nothing runs.
     ...     def now(cls, tz=None): return datetime.now(tz) + timedelta(seconds=CONSENT_SECONDS + 60)
     >>> def nobody_answers(seconds): qmcp.server.datetime = Later
     >>> expired = act("pin-the-vectors", runtime, Budget(authorised=1), client=client,
-    ...               rows=rows, sources=[], cwd=clone, sleep=nobody_answers, poll_interval=0.05)
+    ...               rows=rows, cwd=clone, sleep=nobody_answers, poll_interval=0.05)
     >>> qmcp.server.datetime = datetime
     >>> expired.status, expired.answer, runtime.calls
     ('unanswered', None, [])
@@ -151,22 +153,23 @@ what marks it expired, and nothing runs.
 ## Approve: consented before it starts, then run in the clone
 
 The fourth act is approved. The runtime is called once, in the clone, and the
-outcome is recorded with the session it left for the next instruction:
+outcome is recorded, where the project's next instruction will find it:
 
     >>> Says.spoken.clear()
     >>> done = act("pin-the-vectors", runtime, Budget(authorised=1), client=client,
-    ...            rows=rows, sources=[], cwd=clone, stt=Hears("yes, go ahead"), tts=Says(),
+    ...            rows=rows, cwd=clone, stt=Hears("yes, go ahead"), tts=Says(),
     ...            poll_interval=0.05)
     >>> done.status, done.answer
     ('done', 'approve')
     >>> done.stages
     ('instruction', 'clone', 'budget', 'ask', 'answer', 'run', 'record')
-    >>> runtime.calls == [{"instruction": "Pin rad godot to the vectors.",
-    ...                    "cwd": str(clone), "resume": None}]
+    >>> runtime.calls == [{"instruction": "Pin rad godot to the vectors.", "cwd": str(clone)}]
     True
+    >>> runtime.briefs[0].history
+    ()
     >>> recorded = client.get_instruction("pin-the-vectors")
-    >>> recorded["status"], recorded["exit_code"], recorded["outcome_text"], recorded["session_ref"]
-    ('done', 0, 'pinned to 2c10fd1', 'session-after')
+    >>> recorded["status"], recorded["exit_code"], recorded["outcome_text"]
+    ('done', 0, 'pinned to 2c10fd1')
     >>> print(render(recorded["declared"]))
       1 of 1 authorised call(s) made against scripted.
       This budget was for this command and is not remembered.
@@ -179,13 +182,50 @@ numbered after the first, and the run is the only one with an outcome:
     >>> len(runtime.calls)
     1
 
+## The next instruction is told what the last one found
+
+Continuity comes from qmcp, not the model. A second instruction in the same
+project is acted on with no `--cwd` and by a different runtime. The clone is
+the one the project's last act ran in, and the brief carries what that act
+found, read from this server's record -- nothing about it was kept by the
+runtime that ran it:
+
+    >>> with rows() as session:
+    ...     session.add(Instruction(id="say-the-pin", text="Say which commit the vectors are pinned to.",
+    ...                             project="rad-godot", source=InstructionSource.VOICE))
+    ...     session.commit()
+    >>> class Another(ScriptedRuntime):
+    ...     name = "another"
+    >>> another = Another(text="2c10fd1.")
+    >>> Says.spoken.clear()
+    >>> second = act("say-the-pin", another, Budget(authorised=1), client=client,
+    ...              rows=rows, stt=Hears("approve"), tts=Says(), poll_interval=0.05)
+    >>> second.status, second.cwd == str(clone), second.carried
+    ('done', True, ('pin-the-vectors',))
+    >>> "carrying 1 earlier instruction(s) from qmcp's record" in Says.spoken[0]
+    True
+    >>> (turn,) = another.briefs[0].history
+    >>> turn.instruction, turn.runtime, turn.outcome
+    ('Pin rad godot to the vectors.', 'scripted', 'pinned to 2c10fd1')
+    >>> print("\n".join(another.briefs[0].prompt().splitlines()[2:4]))
+    What has been asked in this project so far, from qmcp's record, oldest first:
+    1. ... asked: Pin rad godot to the vectors.
+
+The record says which turns were carried and what chose the clone, so a reader
+of the outcome can see what the runtime was told:
+
+    >>> detail = client.get_instruction("say-the-pin")["detail"]
+    >>> detail["continuity"], detail["clone"]["rule"]
+    (['pin-the-vectors'], "the clone the project's last act ran in, from qmcp's record")
+
     >>> client.close()
     >>> _ = server.__exit__(None, None, None)
 
 ## What this page does not claim
 
-That an agent did anything: `scripted` answers as told, and the one runtime
-that runs a tool lives in `qmcp.integrations.agents.adapters`, where
-`tests/test_agents_runtime.py` asserts its command line without launching it.
-Nor that the clone the archive would have named is the right one; the page
-passed it, and the prompt says which so the person at the gate can refuse.
+That an agent did anything: `scripted` answers as told. The runtimes that run
+something -- the local model and a coding assistant's command line -- live in
+`qmcp.integrations.agents.adapters`, given the same brief, and
+`tests/test_agents_local.py` and `tests/test_agents_runtime.py` assert what each
+sends without a model or a tool. Nor that the clone is the right one; the
+prompt says which so the person at the gate can refuse.

@@ -281,19 +281,32 @@ uv run qmcp instructions act <id> --runtime NAME [--budget N] [--cwd PATH] [--vo
 ```
 
 A worker takes a recorded instruction, declares what it may spend, asks
-consent on the human queue, and runs an agent in the project's clone only on
-`approve`. The consent is an ordinary approval, `instruction-<id>` with the
-options `approve` and `hold`, so it is answered wherever approvals are:
-`qmcp human voice`, `qmcp human respond`, a page, or in the command itself with
-`--voice`. Its prompt says the instruction, the project, the clone, the runtime
-and the budget, and it expires after `CONSENT_SECONDS` in
-`qmcp.instructions.act`. The clone is `--cwd` when it is given, in a fresh
-session; without it, the checkout of the most recently active archive thread
-about the project, and that thread's session is resumed. `--runtime` has
-no default (`QMCP_AGENT_RUNTIME` stands in for it); a product is named only in
-its adapter under `qmcp.integrations.agents.adapters`, and `scripted` runs
-nothing and is for checks. `--budget` is runs, and zero -- the default --
-declares and stops. The row's status says where the act got to: `asking`,
+consent on the human queue, and runs it in the project's clone only on
+`approve`. Every runtime is asked, the local model included; growing a habit
+of approval into an automatic one is a later phase. The consent is an ordinary
+approval, `instruction-<id>` with the options `approve` and `hold`, so it is
+answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
+page, or in the command itself with `--voice`. Its prompt says the
+instruction, the project, the clone, the runtime, the budget and how much
+history is carried, and it expires after `CONSENT_SECONDS` in
+`qmcp.instructions.act`.
+
+**Continuity comes from qmcp, not the model.** The runtime is handed a brief:
+the instruction, the project, the clone, and the project's earlier
+instructions that ran, with what each found, read from this server's record
+(`qmcp.instructions.continuity`). No runtime resumes a conversation of its
+own, so the next instruction can go to a different runtime and still know what
+the last one found; the row's `detail` names the turns carried. The clone is
+`--cwd` when it is given; without it, the clone the project's last act ran in,
+so a path given once is remembered.
+
+`--runtime` has no default (`QMCP_AGENT_RUNTIME` stands in for it). `local` is
+the model `qmcp localmodel` stands up on this machine, reading the clone with
+tools that cannot write and spending nothing; a coding assistant's command line
+is another runtime behind the same contract, given the same brief. A product is
+named only in its adapter under `qmcp.integrations.agents.adapters`, and
+`scripted` runs nothing and is for checks. `--budget` is runs, and zero -- the
+default -- declares and stops. The row's status says where the act got to: `asking`,
 then `consented`, `refused` or `unanswered`, then `acting` and `done` or
 `failed`; `declared` is written on every path. `qmcp.instructions.act` carries
 the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.

@@ -1914,8 +1914,8 @@ def instructions_show(instruction_id: str, base_url: str | None) -> None:
 @click.option("--budget", default=0, type=int, show_default=True,
               help="runs this command may make; 0 declares what would be asked and stops")
 @click.option("--cwd", type=click.Path(path_type=Path), default=None,
-              help="the clone to run in, in a fresh session; without it the thread archive"
-                   " names one and its session is resumed")
+              help="the clone to run in; without it, the one the project's last act ran in,"
+                   " from qmcp's record")
 @click.option("--voice", is_flag=True,
               help="answer the consent by voice here, as `qmcp human voice` would")
 @click.option("--base-url", default=None,
@@ -1931,9 +1931,10 @@ def instructions_act(instruction_id: str, runtime_name: str | None, budget: int,
                      engine_url: str | None, poll_interval: float) -> None:
     """Act on one instruction: declare the spend, ask consent, run only on approve.
 
-    The clone is --cwd when it is given, in a fresh session; without it, the
-    checkout of the most recently active archive thread about the
-    instruction's project, whose session is resumed. A consent request
+    The clone is --cwd when it is given; without it, the clone the project's
+    last act ran in, from qmcp's record. The runtime is handed the project's
+    earlier instructions and outcomes from the same record: continuity comes
+    from qmcp, not the model. A consent request
     `instruction-<id>` with the options approve and hold goes on the human
     queue, saying the instruction, the project, the clone, the runtime and
     the budget, and expires after a fixed wait
@@ -1984,7 +1985,8 @@ def instructions_act(instruction_id: str, runtime_name: str | None, budget: int,
     click.echo(f"  {done.instruction_id}  {done.status}  stages: {' > '.join(done.stages)}")
     if done.cwd:
         click.echo(f"      clone: {done.cwd}"
-                   + (f"  session: {done.session_ref}" if done.session_ref else ""))
+                   + (f"  carrying {len(done.carried)} earlier instruction(s)"
+                      if done.carried else ""))
     if done.request_id:
         click.echo(f"      consent: {done.request_id}  answered: {done.answer!r}")
     if done.why:
