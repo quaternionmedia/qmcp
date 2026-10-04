@@ -20,11 +20,12 @@ asking the repository:
    now, in other repositories, for the same reviewer;
    `governance/qm/handbook/async-contract.md` is the set of rules that exist only
    because of that, and it is short.
-4. **Which gates exist**, and what each cannot see:
-   `python governance/qm/project-seed/ci/run_workflows_locally.py`.
+4. **Which gates exist**, and what each cannot see: `uv run qmcp preflight`
+   runs their actual steps, and `uv run qmcp preflight --help` is the runner's
+   own page.
 
 Those are the invariants. **How** you gather them is yours to choose — read the
-repository, run the scripts above, or use an adapter if one exists for your
+repository, run the commands above, or use an adapter if one exists for your
 tooling. `governance/qm/adapters/` holds any that do, each named for the product
 it targets and none of them required. This file names no vendor, and neither
 should anything you add to it.
@@ -207,6 +208,21 @@ import in `examples/flows/approved_deploy.py` that no local run could reach.
 Windows a running server holds `Scripts/qmcp.exe`, so a sync that reinstalls
 qmcp fails with os error 32 until the server is stopped -- which a change to
 qmcp's own dependencies needs anyway.
+
+**Every gate runs locally, and `uv run qmcp preflight` is the command.** It
+routes to the seed runner, `governance/qm/project-seed/ci/run_workflows_locally.py`,
+with its arguments unchanged and exits with that script's status, so a pull
+request is run through the workflows' actual steps before anybody claims they
+are green; the hosted runs under `.github/workflows/` mirror this. It is not
+`selfcheck`: that runs this repository's gate scripts and records each as an
+invocation, where `preflight` simulates the workflows as the hosted runner
+would and records nothing. A pass is evidence and not proof, and the runner's
+own docstring is the list of what it cannot see. One thing it does see is
+`PATH`: a `run:` step that invokes `python` by name gets whichever interpreter
+leads `PATH`, and under `uv run` that is the project's virtual environment,
+which ships no `pip`. A step that `python -m pip install`s is therefore red
+through this route and may be green through the path -- the same workflow,
+answered by a different interpreter.
 
 ## The tag is the human gate, and nothing else is
 
