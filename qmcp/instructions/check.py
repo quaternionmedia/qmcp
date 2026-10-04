@@ -607,9 +607,14 @@ def run_conversation(echo: Callable[[str], None] = print, runtime=None,
             problems.append(f"the confident second instruction was not agreed to tacitly: {second}")
         # What reached the engine over the wire: each closed question's
         # options as the hint, and as the options a display can offer.
-        for hint in ("approve, hold", "agree, again", "yes, no"):
+        for hint in ("approve, hold", "agree, again"):
             if hint not in state.hints:
                 problems.append(f"no listen was hinted {hint!r}")
+        if not any(h and h.startswith("yes, no") for h in state.hints):
+            problems.append("the answer to 'Anything else?' was not hinted yes or no")
+        if not any(h and project in h.split(", ") and not h.startswith(("yes", "approve", "agree"))
+                   for h in state.hints):
+            problems.append("no instruction's take was hinted with the project names")
         offered = [tuple(a.get("options") or ()) for a in state.announced if a.get("state") == "speaking"]
         for options in (("approve", "hold"), ("agree", "again"), ("yes", "no")):
             if options not in offered:
