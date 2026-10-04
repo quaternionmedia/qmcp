@@ -310,7 +310,7 @@ def test_a_service_that_does_not_answer_is_not_ready():
 
     reason = ollama.Runtime(client=httpx.Client(transport=httpx.MockTransport(refuse))).ready()
 
-    assert ENDPOINT in reason and "qmcp localmodel check" in reason
+    assert ENDPOINT in reason and "qmcp localmodel plan" in reason
 
 
 # --- a stalled call ------------------------------------------------------------------------
@@ -407,3 +407,22 @@ def test_arguments_that_are_not_json_are_read_as_none():
 def test_an_answer_that_only_looks_like_json_is_kept_as_it_is():
     assert ollama.answer_text("{not json}") == "{not json}"
     assert ollama.answer_text("  plain  ") == "plain"
+
+
+def test_localmodel_check_says_whether_the_model_is_served(monkeypatch):
+    """Where a person is sent to find out, so it asks the service and not only
+    the disk. Mutation: drop the `served` line -- red."""
+    from click.testing import CliRunner
+
+    from qmcp import cli
+    from qmcp.localmodel import Check
+
+    monkeypatch.setattr("qmcp.localmodel.look", lambda: Check())
+    monkeypatch.setattr(ollama.Runtime, "ready", lambda self: None)
+    served = CliRunner().invoke(cli.cli, ["localmodel", "check"])
+    monkeypatch.setattr(ollama.Runtime, "ready", lambda self: "the service does not answer")
+    missing = CliRunner().invoke(cli.cli, ["localmodel", "check"])
+
+    assert served.exit_code == 0, served.output
+    assert f"served:     {MODEL} at {ENDPOINT}" in served.output
+    assert "served:     no; the service does not answer" in missing.output

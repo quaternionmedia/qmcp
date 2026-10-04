@@ -288,8 +288,8 @@ class Runtime:
             served = {m.get("name") for m in response.json().get("models") or []}
         except (httpx.HTTPError, ValueError) as exc:
             return (f"the local model service does not answer at {self.endpoint}"
-                    f" ({type(exc).__name__}); `uv run qmcp localmodel check` says whether it"
-                    " is installed and served")
+                    f" ({type(exc).__name__}); `uv run qmcp localmodel plan` gives the"
+                    " commands that install and start it")
         finally:
             if self.client is None:
                 client.close()

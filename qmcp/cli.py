@@ -2770,7 +2770,9 @@ def localmodel() -> None:
 
 @localmodel.command("check")
 def localmodel_check() -> None:
-    """What is on this machine, before anything is installed. Installs nothing."""
+    """What is on this machine, before anything is installed, and whether the
+    model is served. Installs nothing."""
+    from qmcp.integrations.agents.adapters.ollama import Runtime
     from qmcp.localmodel import look
 
     check = look()
@@ -2787,6 +2789,10 @@ def localmodel_check() -> None:
         click.echo("  the system drive is tight; --models-dir elsewhere")
     for blocker in check.blockers:
         click.echo(f"  blocked by: {blocker}")
+    runtime = Runtime()
+    missing = runtime.ready()
+    click.echo(f"  served:     {runtime.model} at {runtime.endpoint}" if missing is None
+               else f"  served:     no; {missing}")
 
 
 @localmodel.command("plan")
