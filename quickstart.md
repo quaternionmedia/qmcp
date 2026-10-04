@@ -105,17 +105,19 @@ a spoken answer maps onto a request's own options.
 The loop also runs the other way: an instruction spoken at the machine,
 consented to aloud, carried out by the model `qmcp localmodel` stands up, and
 said back -- with each instruction told what the project's earlier ones found.
-`docs/voice-loop-demo.md` runs it in three tiers; the first two need no
-microphone:
+`docs/voice-loop-demo.md` is its onboarding and cookbook; the first two of
+its three tiers need no microphone:
 
 ```bash
 uv run qmcp cookbook converse                     # one spoken session, every take scripted
 uv run qmcp cookbook instruct --runtime local     # continuity, on the local model
 ```
 
-With the speech engine running (step 5), `uv run qmcp serve --converse --runtime local`
-in place of step 2's command makes everything after it spoken: qmcp asks what
-should be done, and a person answers.
+`--runtime local` needs the model served: `uv run qmcp localmodel check` says
+whether it is, and `uv run qmcp localmodel plan` gives the commands that
+install it. With the speech engine running (step 5), `uv run qmcp serve
+--converse --runtime local` in place of step 2's command makes everything
+after it spoken: qmcp asks what should be done, and a person answers.
 
 ## Next Steps
 

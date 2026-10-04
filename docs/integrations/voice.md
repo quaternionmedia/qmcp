@@ -1,10 +1,15 @@
 # Voice Integration
 
-A pending human-in-the-loop request can be answered by speaking, instead of by
-typing `qmcp human respond`. The prompt is spoken aloud, the reply is
-transcribed, and the transcribed answer is submitted to the same HITL API a
-typed answer goes through — so the audit trail does not distinguish the two
-except by `responded_by`.
+Speech reaches qmcp three ways, over one seam. A pending human-in-the-loop
+request can be answered by speaking, instead of by typing `qmcp human
+respond`: the prompt is spoken aloud, the reply is transcribed, and the
+transcribed answer is submitted to the same HITL API a typed answer goes
+through — so the audit trail does not distinguish the two except by
+`responded_by`. An instruction can be spoken, recorded against a project, and
+acted on behind consent asked aloud ("An instruction is recorded, not run" and
+the sections after it). And one standing conversation does both, so that once
+two servers start nothing is typed ("Talking to qmcp").
+`docs/voice-loop-demo.md` is the loop's onboarding and cookbook.
 
 ## Overview
 
@@ -13,6 +18,7 @@ except by `responded_by`.
 | The HITL queue, its API and its audit trail | The speech seam: an engine contract, a client, and synthesis |
 | `VoiceApprovalLoop`, which turns a transcript into a response | `EngineContract`, `HttpSTT`, `VoiceSession` |
 | The retry budget and the yes/no parse | The engine contract and a deterministic stand-in for it |
+| The instruction inbox, the act behind consent, and the standing conversation | The same client and synthesizer, for every take and every sentence |
 
 Speech-to-text is not performed locally. `vox.HttpSTT` is an HTTP client
 against whatever engine an `EngineContract` describes, and it is that engine's
@@ -74,10 +80,10 @@ loop.run_forever()            # keep answering as new ones arrive
 From the CLI, alongside `qmcp human list` and `qmcp human respond`:
 
 ```bash
-qmcp human voice deploy-001     # answer that request
-qmcp human voice                # answer whatever is oldest and pending
-qmcp human voice --forever      # keep answering; Ctrl+C to stop
-qmcp human voice --engine joe   # which vox.adapters entry to talk to
+uv run qmcp human voice deploy-001     # answer that request
+uv run qmcp human voice                # answer whatever is oldest and pending
+uv run qmcp human voice --forever      # keep answering; Ctrl+C to stop
+uv run qmcp human voice --engine joe   # which vox.adapters entry to talk to
 ```
 
 The engine must be reachable. `vox doctor` reports which of the three
@@ -234,7 +240,7 @@ instruction is a command a person issues, behind consent on the human queue,
 and is the section after this one. `qmcp.instructions` carries the why, and
 `walkthrough/08-an-instruction-is-recorded-not-run.md` runs the routes.
 
-Two commands:
+The commands:
 
 ```bash
 uv run qmcp instruct "Deploy qmcp to the pi."     # typed; prints the row
@@ -278,8 +284,8 @@ The routes are served only on loopback, as the voice routes are. The spoken
 route shares the voice route's tracker, so an approval being asked and an
 instruction being taken cannot overlap: there is one microphone.
 
-`uv run qmcp cookbook instruct` is the check, offline only: a server on an
-ephemeral port over its own database, vox's deterministic engine, and one
+Without `--runtime`, `uv run qmcp cookbook instruct` is the check, offline: a
+server on an ephemeral port over its own database, vox's deterministic engine, and one
 scripted dialog per way a spoken instruction can end, through the real path --
 one project named and recorded; none named, the project asked for and the
 spoken one recorded; several named and chosen by name; and `again`, which takes
@@ -312,7 +318,8 @@ instructions that ran, with what each found, read from this server's record
 own, so the next instruction can go to a different runtime and still know what
 the last one found; the row's `detail` names the turns carried. The clone is
 `--cwd` when it is given; without it, the clone the project's last act ran in,
-so a path given once is remembered.
+so a path given once is remembered. The standing conversation, failing both,
+looks for a clone named for the project ("Talking to qmcp").
 
 `--runtime` has no default (`QMCP_AGENT_RUNTIME` stands in for it). `local` is
 the model `qmcp localmodel` stands up on this machine, reading the clone with
@@ -359,6 +366,9 @@ spoken and recorded, consent asked aloud and answered `approve`, the
 summary said back -- and a second whose consent is answered `hold`, which runs
 nothing and says so. Each loop prints as the conversation it was, said and
 heard in order, and `tests/test_cookbook_instruct.py` makes sure it can fail.
+`--runtime scripted` and `--runtime local` instead take two instructions in
+one project, the second answerable only from what qmcp recorded of the first;
+`docs/voice-loop-demo.md` says what to look for.
 
 ## Talking to qmcp
 
@@ -390,20 +400,28 @@ instruction begin with a word, for a room where people talk; without it every
 utterance is read back before anything is recorded, and nothing runs without
 `approve`. A turn that fails says so and the conversation goes on.
 
+**What it keeps.** While the conversation runs it listens take after take, and
+the speech engine keeps what it records: joe writes every take to `Data/Voice`
+in its checkout, as `capture_<time>.wav`, and nothing deletes them. Everything
+said near the microphone while the conversation runs stays on that disk until
+someone deletes it.
+
 The conversation holds the one conversation this machine can hold, so the
 page's **Answer by voice** and **Instruct by voice** answer that one is running
 rather than opening the microphone a second time; it ends when the server
 stops. `uv run qmcp converse --runtime local` runs it on its own against a
 running server, and `--synth recording` writes each sentence to a file instead
 of speaking it, for a check on a machine nobody is at. `qmcp.instructions.converse`
-carries the why, and `uv run qmcp cookbook converse` is one whole session
-offline, every take scripted.
+carries the why, `uv run qmcp cookbook converse` is one whole session
+offline, every take scripted, and the cookbook in `docs/voice-loop-demo.md` is
+what to say.
 
 ## Testing the integration
 
-`docs/voice-loop-demo.md` is the whole loop in the order to run it -- the
-offline checks, continuity on the local model, and a person at the microphone.
-This section is the voice-answer check on its own.
+`docs/voice-loop-demo.md` is the whole loop's onboarding -- set up once, then
+the offline checks, continuity on the local model, and a person at the
+microphone -- and its cookbook. This section is the voice-answer check on its
+own.
 
 `qmcp cookbook voice` is the check, in two forms that answer different
 questions:

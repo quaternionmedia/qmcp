@@ -310,7 +310,7 @@ def test_a_service_that_does_not_answer_is_not_ready():
 
     reason = ollama.Runtime(client=httpx.Client(transport=httpx.MockTransport(refuse))).ready()
 
-    assert ENDPOINT in reason and "qmcp localmodel check" in reason
+    assert ENDPOINT in reason and "qmcp localmodel plan" in reason
 
 
 # --- a stalled call ------------------------------------------------------------------------
@@ -347,7 +347,8 @@ def test_a_stalled_call_unloads_the_model_and_is_made_once_more(tmp_path):
     assert [path for path, _ in service.paths][:3] == ["/api/chat", "/api/generate", "/api/chat"]
     assert service.paths[1][1] == {"model": MODEL, "keep_alive": 0}
     assert outcome.detail["recovered"] >= 1
-    assert outcome.text  # the run went on after the recovery
+    # The run went on after the recovery and returned the answer it was given.
+    assert outcome.text == "qmcp is the local backend." and outcome.exit_code == 0
 
 
 def test_a_second_stall_is_a_failed_run_naming_the_endpoint(tmp_path):
@@ -360,3 +361,68 @@ def test_a_second_stall_is_a_failed_run_naming_the_endpoint(tmp_path):
 
     assert outcome.exit_code == 1 and "ReadTimeout" in outcome.text and ENDPOINT in outcome.text
     assert [path for path, _ in service.paths] == ["/api/chat", "/api/generate", "/api/chat"]
+
+
+# --- the tools' other refusals, and the search through the dispatch ------------------------
+
+
+def test_a_directory_is_not_read_as_a_file_nor_a_file_listed_as_a_directory(tmp_path):
+    """Mutation: drop either kind check -- red, the tool raises instead of
+    answering, or reads what it was not asked to."""
+    project = _project(tmp_path)
+
+    assert ollama.call_tool(project, "read_file", {"path": "qmcp"}) == "refused: 'qmcp' is not a file"
+    assert ollama.call_tool(project, "list_files", {"path": "README.md"}) == (
+        "refused: 'README.md' is not a directory")
+
+
+def test_search_is_reached_through_the_dispatch_and_skips_what_it_cannot_read(tmp_path):
+    """The one tool no other test calls through `call_tool`. Mutation: pass the
+    path as the text -- red; drop the decode guard -- red, a binary file
+    raises."""
+    project = _project(tmp_path)
+    (project / "qmcp" / "blob.bin").write_bytes(b"\xff\xfe the server \x00")
+
+    found = ollama.call_tool(project, "search", {"text": "the server", "path": "qmcp"})
+
+    assert found == "qmcp/server.py:1: app = 'the server'"
+
+
+def test_search_stops_at_its_cap_and_says_there_is_more(tmp_path):
+    """Mutation: drop the cap -- red; a model's small window would fill with
+    one search."""
+    (tmp_path / "many.txt").write_text("hit\n" * (ollama.SEARCH_HITS + 5), encoding="utf-8")
+
+    found = ollama.search(tmp_path, "hit")
+
+    assert found.count("many.txt:") == ollama.SEARCH_HITS
+    assert found.endswith("(more matches not shown)")
+
+
+def test_arguments_that_are_not_json_are_read_as_none():
+    assert ollama.tool_call_in({"tool_calls": [{"function": {
+        "name": "read_file", "arguments": "{broken"}}]}) == ("read_file", {})
+
+
+def test_an_answer_that_only_looks_like_json_is_kept_as_it_is():
+    assert ollama.answer_text("{not json}") == "{not json}"
+    assert ollama.answer_text("  plain  ") == "plain"
+
+
+def test_localmodel_check_says_whether_the_model_is_served(monkeypatch):
+    """Where a person is sent to find out, so it asks the service and not only
+    the disk. Mutation: drop the `served` line -- red."""
+    from click.testing import CliRunner
+
+    from qmcp import cli
+    from qmcp.localmodel import Check
+
+    monkeypatch.setattr("qmcp.localmodel.look", lambda: Check())
+    monkeypatch.setattr(ollama.Runtime, "ready", lambda self: None)
+    served = CliRunner().invoke(cli.cli, ["localmodel", "check"])
+    monkeypatch.setattr(ollama.Runtime, "ready", lambda self: "the service does not answer")
+    missing = CliRunner().invoke(cli.cli, ["localmodel", "check"])
+
+    assert served.exit_code == 0, served.output
+    assert f"served:     {MODEL} at {ENDPOINT}" in served.output
+    assert "served:     no; the service does not answer" in missing.output

@@ -115,12 +115,20 @@ def test_the_server_ends_its_conversation_when_it_stops(monkeypatch):
     monkeypatch.setattr(qmcp.db.engine, "_engine", None)
     monkeypatch.setattr(qmcp.db.engine, "get_settings", lambda: memory)
     stopped: list[bool] = []
-    monkeypatch.setattr(server, "start_conversation", lambda app, settings: True)
+    started: list = []
+
+    def start(app, settings):
+        started.append((app, settings))
+        return True
+
+    monkeypatch.setattr(server, "start_conversation", start)
     app = server.create_app()
     app.state.voice_runs = SimpleNamespace(stop=lambda: stopped.append(True))
 
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
+        # Started once, at startup, with the running app; not yet stopped.
+        assert [a for a, _ in started] == [app]
         assert stopped == []
 
     assert stopped == [True]
@@ -166,3 +174,66 @@ def test_converse_needs_a_runtime(monkeypatch):
     result = CliRunner().invoke(cli.cli, ["converse"])
 
     assert result.exit_code != 0 and "--runtime is required" in result.output
+
+
+def test_converse_waits_for_the_servers_says_what_is_missing_and_talks(monkeypatch):
+    """The command's own wiring: the engine URL it talks to, the synthesizer
+    `--synth` picks, the wait, a runtime that is not ready said aloud, and the
+    conversation run. Mutation: ignore `--synth recording` -- red, a check
+    would speak through the speakers."""
+    import sys
+    from types import ModuleType
+    from unittest.mock import MagicMock
+
+    from qmcp.instructions import converse as converse_module
+    from qmcp.integrations.agents.scripted import ScriptedRuntime
+
+    made: dict = {}
+
+    class STT:
+        def __init__(self, url, contract=None):
+            made["engine"] = url
+
+        def close(self):
+            made["closed"] = True
+
+    class Recording:
+        def __init__(self, *a, **k):
+            made["synth"] = "recording"
+
+    class Aloud:
+        def __init__(self, *a, **k):
+            made["synth"] = "aloud"
+
+    fake_vox, fake_tts = ModuleType("vox"), ModuleType("vox.tts")
+    fake_vox.HttpSTT, fake_tts.RecordingTTS = STT, Recording
+    fake_joe = ModuleType("vox.adapters.joe")
+    fake_joe.JOE, fake_joe.DEFAULT_URL = MagicMock(name="EngineContract"), "http://127.0.0.1:8000"
+    fake_pyttsx3 = ModuleType("vox.adapters.pyttsx3")
+    fake_pyttsx3.Pyttsx3TTS = Aloud
+    for name, module in [("vox", fake_vox), ("vox.tts", fake_tts),
+                         ("vox.adapters", ModuleType("vox.adapters")),
+                         ("vox.adapters.joe", fake_joe), ("vox.adapters.pyttsx3", fake_pyttsx3)]:
+        monkeypatch.setitem(sys.modules, name, module)
+
+    class Unready(ScriptedRuntime):
+        def ready(self):
+            return "the model is not served"
+
+    said: list[str] = []
+    monkeypatch.setattr("qmcp.integrations.agents.runtime_named", lambda name, **kw: Unready())
+    monkeypatch.setattr(converse_module, "wait_for",
+                        lambda client, stt, echo: made.setdefault("waited", True))
+    monkeypatch.setattr(converse_module.Conversation, "say", lambda self, text: said.append(text))
+    monkeypatch.setattr(converse_module.Conversation, "run",
+                        lambda self: converse_module.Ended(reason="told to stop"))
+    monkeypatch.setattr("qmcp.client.MCPClient", lambda *a, **k: MagicMock())
+
+    result = CliRunner().invoke(cli.cli, ["converse", "--runtime", "local", "--synth",
+                                          "recording", "--engine-url", "http://127.0.0.1:8001"])
+
+    assert result.exit_code == 0, result.output
+    assert made == {"engine": "http://127.0.0.1:8001", "synth": "recording", "waited": True,
+                    "closed": True}
+    assert said == ["The local runtime is not ready: the model is not served."]
+    assert "ended: told to stop; 0 instruction(s), 0 question(s) answered" in result.output

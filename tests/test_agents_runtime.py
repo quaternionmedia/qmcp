@@ -239,3 +239,10 @@ def test_every_runtime_is_handed_the_same_prompt_for_the_same_brief(tmp_path):
     ollama.Runtime(client=httpx.Client(transport=httpx.MockTransport(chat))).run(brief)
 
     assert seen["claude-code"] == seen["local"] == brief.prompt()
+
+
+def test_output_whose_result_is_not_text_is_kept_whole():
+    """Mutation: return `result` whatever its type -- red, a number is said back."""
+    stdout = '{"result": 5, "num_turns": 1}'
+
+    assert claudecode.read_output(stdout) == (stdout, 1)
