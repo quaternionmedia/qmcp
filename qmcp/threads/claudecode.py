@@ -10,7 +10,7 @@ tracking work it is better than either web export, because of what it already
 knows:
 
     gitBranch       which branch the session was working on
-    cwd             which checkout
+    cwd             which checkout, and so where a later run continues it
     pr-link         which pull requests the session produced, by number and
                     repository
 
@@ -281,6 +281,8 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
     agent: str | None = None
     sidechain = False
     started: str | None = None
+    cwd: str | None = None
+    last_at: str | None = None
 
     for record in records:
         kind = record.get("type")
@@ -290,6 +292,10 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
 
         if record.get("gitBranch"):
             branches.add(str(record["gitBranch"]))
+        # The last `cwd` seen wins: a session that changed directory was
+        # working where it ended up, and that is the checkout to continue in.
+        if record.get("cwd"):
+            cwd = str(record["cwd"])
 
         if kind == "ai-title" and record.get("aiTitle"):
             title = str(record["aiTitle"])
@@ -305,6 +311,7 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
         elif kind in TURN_TYPES:
             text = _text_of(record.get("message"))
             started = started or record.get("timestamp")
+            last_at = record.get("timestamp") or last_at
             turns.append(Turn(
                 id=str(record.get("uuid") or record.get("requestId")
                        or f"{path.stem}-{len(turns)}"),
@@ -330,6 +337,14 @@ def _session(records: list[dict], path: Path) -> tuple[Thread | None, dict]:
         # related to the session that launched it rather than floating loose.
         "parent": str(identifier) if agent and identifier else None,
         "sidechain": sidechain or bool(agent),
+        # Which checkout the session worked in, and the session that a later
+        # run resumes: the session's own id, or the parent's for a sidechain,
+        # because a subagent's conversation is not one the tool reopens. These
+        # are what lets an instruction be acted on where its project's last
+        # session left off (`qmcp.instructions.act`).
+        "cwd": cwd,
+        "session": str(identifier) if identifier else None,
+        "last_at": _maybe_str(last_at),
     }
 
 

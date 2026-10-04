@@ -225,6 +225,65 @@ def test_recording_starts_nothing(client, launched):
     assert client.get("/v1/instructions/voice").json()["running"] is False
 
 
+# --- the act route ---------------------------------------------------------------
+
+
+def test_the_act_route_runs_the_command_with_nothing_defaulted(client, launched):
+    """Mutation: leave `--runtime` out of argv -- red; the command would refuse
+    and the page would read a 202 as an act under way."""
+    row = _record(client, f"Deploy {NAMED}.")
+
+    response = client.post(f"/v1/instructions/{row['id']}/act",
+                           json={"runtime": "scripted", "budget": 1, "cwd": "/work/qmcp"},
+                           headers={"host": "localhost:3000"})
+
+    assert response.status_code == 202, response.text
+    assert response.json()["kind"] == "act"
+    assert response.json()["request_id"] == row["id"]
+    argv = launched[0].argv
+    assert argv[1:6] == ["-m", "qmcp", "instructions", "act", row["id"]]
+    assert argv[argv.index("--runtime") + 1] == "scripted"
+    assert argv[argv.index("--budget") + 1] == "1"
+    assert argv[argv.index("--cwd") + 1] == "/work/qmcp"
+    assert argv[argv.index("--base-url") + 1] == "http://testserver:80"
+    assert "--voice" not in argv
+    assert client.get("/v1/instructions/voice").json()["kind"] == "act"
+
+
+def test_the_act_route_asks_by_voice_only_when_told(client, launched):
+    row = _record(client, f"Deploy {NAMED}.")
+
+    client.post(f"/v1/instructions/{row['id']}/act", json={"runtime": "scripted", "voice": True})
+
+    argv = launched[0].argv
+    assert "--voice" in argv and argv[argv.index("--engine") + 1] == "joe"
+    assert argv[argv.index("--budget") + 1] == "0"
+
+
+def test_the_act_route_requires_a_runtime_and_a_row(client, launched):
+    row = _record(client, f"Deploy {NAMED}.")
+
+    assert client.post(f"/v1/instructions/{row['id']}/act", json={}).status_code == 422
+    assert client.post(f"/v1/instructions/{row['id']}/act",
+                       json={"runtime": "scripted", "budget": -1}).status_code == 422
+    assert client.post("/v1/instructions/nobody/act", json={"runtime": "scripted"}).status_code == 404
+    assert launched == []
+
+
+def test_an_act_is_one_at_a_time_with_the_conversations(client, launched):
+    """Mutation: give the act route a tracker of its own -- red on the 409."""
+    row = _record(client, f"Deploy {NAMED}.")
+    assert client.post(f"/v1/instructions/{row['id']}/act", json={"runtime": "scripted"}).status_code == 202
+
+    again = client.post(f"/v1/instructions/{row['id']}/act", json={"runtime": "scripted"})
+    spoken = client.post("/v1/instructions/voice")
+
+    assert again.status_code == 409 and f"for '{row['id']}'" in again.json()["detail"]
+    assert spoken.status_code == 409
+    launched[0].code = 0
+    assert client.post("/v1/instructions/voice").status_code == 202
+
+
 def test_the_routes_are_not_served_off_loopback(monkeypatch):
     """An instruction is a person's own words, and the spoken route makes this
     machine listen. Mutation: register the inbox outside the `is_loopback`

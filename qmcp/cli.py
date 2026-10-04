@@ -1759,18 +1759,37 @@ def _load_vox(engine: str, command: str):
     return HttpSTT, Pyttsx3TTS, adapter, contract
 
 
+# The inbox's status vocabulary, for `instructions list --status`. Read from the
+# model so the choice cannot name a state the row cannot hold.
+from qmcp.db.models import InstructionStatus  # noqa: E402
+
+# One mark per kind of state: recorded, unresolved, on the way through consent
+# or a run, ended without running, and ended with a run that succeeded.
+_INSTRUCTION_MARKS = {
+    "recorded": "[=]", "unresolved": "[?]",
+    "asking": "[>]", "consented": "[>]", "acting": "[>]",
+    "refused": "[x]", "unanswered": "[x]", "failed": "[x]",
+    "done": "[+]",
+}
+
+
 def _print_instruction(row: dict) -> None:
     """One row, as `instruct`, `instructions list` and `instructions show` print it."""
-    mark = "[=]" if row.get("status") == "recorded" else "[?]"
+    status = row.get("status")
+    mark = _INSTRUCTION_MARKS.get(status, "[?]")
     project = row.get("project") or "unresolved"
     when = (row.get("created_at") or "")[:16].replace("T", " ")
-    click.echo(f"  {mark} {row['id']}  {project}  {row.get('source')}  {when}")
+    click.echo(f"  {mark} {row['id']}  {project}  {row.get('source')}  {when}"
+               + (f"  {status}" if status not in ("recorded", "unresolved") else ""))
     click.echo(f"      {row['text']}")
     detail = row.get("detail") or {}
-    if row.get("status") != "recorded":
+    if status == "unresolved":
         candidates = detail.get("candidates") or []
         click.echo("      candidates: " + (", ".join(candidates) if candidates else "none")
                    + f"  ({detail.get('rule')})")
+    if row.get("runtime"):
+        click.echo(f"      runtime: {row['runtime']}  clone: {row.get('cwd')}"
+                   + (f"  exit {row['exit_code']}" if row.get("exit_code") is not None else ""))
 
 
 @cli.command("instruct")
@@ -1848,13 +1867,15 @@ def instructions() -> None:
 
 
 @instructions.command("list")
-@click.option("--status", "status_filter", type=click.Choice(["recorded", "unresolved"]),
+@click.option("--status", "status_filter", type=click.Choice([s.value for s in InstructionStatus]),
               default=None, help="only rows in this state")
 @click.option("--limit", default=50, type=int, show_default=True)
 @click.option("--base-url", default=None,
               help="qmcp server URL (default: this machine's configured host:port)")
 def instructions_list(status_filter: str | None, limit: int, base_url: str | None) -> None:
-    """What has been recorded, newest first. Nothing listed here is running."""
+    """What has been recorded, newest first, and where each row is: `recorded`
+    and `unresolved` have had nothing asked or run; the rest are on the path
+    `instructions act` walks, and only `acting` is a run in progress."""
     from qmcp.client import MCPClient
 
     client = MCPClient(base_url=base_url) if base_url else MCPClient()
@@ -1884,6 +1905,95 @@ def instructions_show(instruction_id: str, base_url: str | None) -> None:
         raise SystemExit(str(exc))
     _print_instruction(row)
     click.echo("      detail: " + _json.dumps(row.get("detail") or {}, sort_keys=True))
+
+
+@instructions.command("act")
+@click.argument("instruction_id")
+@click.option("--runtime", "runtime_name", default=None, envvar="QMCP_AGENT_RUNTIME",
+              help="which agent carries it out, by the name its adapter declares;"
+                   " required, or set QMCP_AGENT_RUNTIME. There is no default.")
+@click.option("--budget", default=0, type=int, show_default=True,
+              help="runs this command may make; 0 declares what would be asked and stops")
+@click.option("--cwd", type=click.Path(path_type=Path), default=None,
+              help="the clone to run in, when the thread archive names none for the project")
+@click.option("--voice", is_flag=True,
+              help="answer the consent by voice here, as `qmcp human voice` would")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+@click.option("--engine", default="joe",
+              help="which vox.adapters entry to use for speech recognition, with --voice")
+@click.option("--engine-url", default=None,
+              help="where that engine listens, with --voice (default: the adapter's own)")
+@click.option("--poll-interval", default=1.0, type=float, show_default=True,
+              help="seconds between reads of the pending listing while the consent waits")
+def instructions_act(instruction_id: str, runtime_name: str | None, budget: int,
+                     cwd: Path | None, voice: bool, base_url: str | None, engine: str,
+                     engine_url: str | None, poll_interval: float) -> None:
+    """Act on one instruction: declare the spend, ask consent, run only on approve.
+
+    The clone is the checkout of the most recently active archive thread about
+    the instruction's project, else --cwd; the session that thread was is
+    resumed. A consent request `instruction-<id>` with the options approve and
+    hold goes on the human queue, saying the instruction, the project, the
+    clone, the runtime and the budget, and expires in ten minutes. Approve runs
+    the runtime in the clone and records the outcome as `done` or `failed`;
+    hold records `refused`; silence records `unanswered`. Nothing runs on any
+    path but approve, and the declaration is recorded on every path.
+
+    --budget is the number of runs this command may make, and 0 is the
+    default: it resolves the clone, declares what would be asked, and stops.
+    --runtime has no default. `scripted` runs nothing and is for checks.
+    """
+    from qmcp.client import MCPClient
+    from qmcp.instructions.act import NoSuchInstruction, act
+    from qmcp.integrations.agents import runtime_named, runtime_names
+    from qmcp.spend import Budget, render
+
+    if not runtime_name:
+        raise click.UsageError(
+            "--runtime is required and has no default: a default that ran an agent would"
+            " be a paid call nobody chose. Pass one of "
+            f"{', '.join(runtime_names())}, or set QMCP_AGENT_RUNTIME.")
+    try:
+        runtime = runtime_named(runtime_name)
+    except KeyError as exc:
+        raise click.UsageError(str(exc.args[0]))
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    stt = tts = None
+    if voice:
+        HttpSTT, Pyttsx3TTS, adapter, contract = _load_vox(engine, "instructions act --voice")
+        resolved_engine = engine_url or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000")
+        _voice_preflight(client.base_url, resolved_engine, contract, engine)
+        stt, tts = HttpSTT(resolved_engine, contract=contract), Pyttsx3TTS()
+
+    def show(state: str, text: str) -> None:
+        click.echo(f"  [{state}] {text}")
+
+    try:
+        done = act(instruction_id, runtime, Budget(authorised=budget), client=client,
+                   cwd=cwd, stt=stt, tts=tts, on_event=show, poll_interval=poll_interval)
+    except NoSuchInstruction as exc:
+        raise SystemExit(f"{exc}. `qmcp instructions list` shows the inbox.")
+    finally:
+        if stt is not None and hasattr(stt, "close"):
+            stt.close()
+
+    click.echo(f"  {done.instruction_id}  {done.status}  stages: {' > '.join(done.stages)}")
+    if done.cwd:
+        click.echo(f"      clone: {done.cwd}"
+                   + (f"  session: {done.session_ref}" if done.session_ref else ""))
+    if done.request_id:
+        click.echo(f"      consent: {done.request_id}  answered: {done.answer!r}")
+    if done.why:
+        click.echo(f"      {done.why}")
+    if done.outcome is not None:
+        click.echo(f"      exit {done.outcome.exit_code} after"
+                   f" {done.outcome.elapsed_seconds:.1f}s; spent {done.outcome.spent}")
+        click.echo("      " + (done.outcome.text.strip().splitlines() or [""])[0][:200])
+    click.echo(render(done.declared))
+    if done.status == "failed":
+        raise SystemExit(1)
 
 
 @cli.group("threads")

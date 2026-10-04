@@ -214,10 +214,10 @@ dropped rather than stopping the question.
 
 Everything above answers a question an agent asked. The inbox runs the other
 direction: a person speaks or types an instruction, it is recorded against a
-project, and **recording executes nothing**. The row has two statuses,
+project, and **recording executes nothing**. Recording reaches two statuses,
 `recorded` and `unresolved`, and neither describes a run; acting on an
-instruction is a later change, behind consent on the human queue, with
-statuses and a migration of its own. `qmcp.instructions` carries the why, and
+instruction is a command a person issues, behind consent on the human queue,
+and is the section after this one. `qmcp.instructions` carries the why, and
 `walkthrough/08-an-instruction-is-recorded-not-run.md` runs the routes.
 
 Two commands:
@@ -273,6 +273,36 @@ the instruction a second time. It also checks that the instruction's take
 carried the long pause and the confirmation did not, and that each row says how
 its project was settled. `tests/test_cookbook_instruct.py` runs it and makes
 sure it can fail.
+
+## Acting on an instruction
+
+```bash
+uv run qmcp instructions act <id> --runtime NAME [--budget N] [--cwd PATH] [--voice]
+```
+
+A worker takes a recorded instruction, declares what it may spend, asks
+consent on the human queue, and runs an agent in the project's clone only on
+`approve`. The consent is an ordinary approval, `instruction-<id>` with the
+options `approve` and `hold`, so it is answered wherever approvals are:
+`qmcp human voice`, `qmcp human respond`, a page, or in the command itself with
+`--voice`. Its prompt says the instruction, the project, the clone, the runtime
+and the budget, and it expires in ten minutes. The clone is the checkout of the
+most recently active archive thread about the project, and that thread's
+session is resumed; `--cwd` serves when the archive names none. `--runtime` has
+no default (`QMCP_AGENT_RUNTIME` stands in for it); a product is named only in
+its adapter under `qmcp.integrations.agents.adapters`, and `scripted` runs
+nothing and is for checks. `--budget` is runs, and zero -- the default --
+declares and stops. The row's status says where the act got to: `asking`,
+then `consented`, `refused` or `unanswered`, then `acting` and `done` or
+`failed`; `declared` is written on every path. `qmcp.instructions.act` carries
+the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
+
+| Route | What it does |
+|---|---|
+| `POST /v1/instructions/{id}/act` | `{runtime, budget?, cwd?, voice?}`; runs the command in a process of its own, as the spoken route does; `202` once started, `404` for no such instruction, `409` while a conversation or an act runs |
+
+`GET /v1/instructions/voice` reports an act as it reports a conversation, with
+`kind: act`.
 
 ## Testing the integration
 
