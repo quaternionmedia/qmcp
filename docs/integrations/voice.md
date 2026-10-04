@@ -205,6 +205,19 @@ is said as where, what, how and how many -- *"Run in qmcp: Deploy qmcp to the
 pi. The local model, one run, with what came before. Approve or hold?"* -- and
 the request written on the queue keeps the clone's path and the budget.
 
+## Answering before the question ends
+
+Every closed question -- a consent, a question an agent put on the queue, the
+read-back of an instruction, a choice of project, "Anything else?" -- is said
+through `ask_over`, so it can be answered before it ends. The engine is
+watched first (`HttpSTT.watch`, with the parameters of the listen that
+follows), and the voice stops as soon as the engine says the person
+interrupted (`HttpSTT.interrupted`): a key or button answered, the talk key
+held, or speech louder than the question's own echo. An answer said over the
+question is heard from its first word, and an answer by key is taken the
+moment it is pressed. A backend without the routes, or a voice that cannot be
+cut short, says the question whole, as before.
+
 ## Watching the exchange
 
 The loop announces its own states to the STT backend as it goes: `speaking`
