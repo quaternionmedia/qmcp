@@ -259,8 +259,8 @@ outright, recorded as `stated`; a blank states nothing.
 Spoken, the dialog asks *"What should be done?"*, listens with a long cap and a
 long pause (`--duration`, `--pause-ms`; an instruction has pauses mid-thought,
 which is what `pause_ms` on the engine contract is for), and reads the
-transcript back: *"I heard: Deploy qmcp to the pi. Say record or again."* A yes
-or `record` records; a no or `again` listens again; the re-asks are the ones
+transcript back: *"I heard: Deploy qmcp to the pi. Say agree or again."* A yes
+or `agree` records; a no or `again` listens again; the re-asks are the ones
 above. An instruction naming several projects is asked back as a closed choice
 by name (*"Which project? Say qmcp or vox."*), where a spoken `rad godot`
 chooses `rad-godot` over `rad`; one naming none is asked for the project once.
@@ -269,6 +269,15 @@ carries the match; a project the person chose or spoke is `stated`, with the
 answer among the transcripts in `detail.heard`. The states reach the engine's
 conversation route as the approval dialog's do, with `confirm` on the read-back
 and `again` on a second take.
+
+**A confident instruction is agreed to tacitly.** When the speech engine says
+how sure it is of a take (joe does; `HttpSTT.last_confidence`) and that is at
+least `QMCP_VOICE_TACIT_CONFIDENCE` -- 0.7 by default, above 1 to always ask --
+the read-back says *"I heard: ..."* and asks nothing, and a moment of silence
+agrees. Any interruption cancels the tacit agreement: a word or a key in that
+moment, `agree` or a yes records, `again` or a no takes it again, and anything
+else is asked about outright. "record", the read-back's earlier word, is still
+taken as `agree`. Consent to act is never tacit.
 
 | Route | What it does |
 |---|---|
@@ -382,8 +391,8 @@ done?"*, and from then on is spoken:
 
 | Say | And |
 |---|---|
-| an instruction | it is read back -- *"I heard: ... Say record or again."* |
-| `record` / `again` | it is recorded against its project, or taken again |
+| an instruction | it is read back -- *"I heard: ..."*, and heard confidently, nothing more: silence agrees |
+| `agree` / `again` | it is recorded against its project, or taken again; either one also interrupts a tacit agreement |
 | `approve` / `hold` | to the consent -- what will run, where, and how much history is carried; only `approve` runs |
 | -- | the runtime carries it out, *"Approved. Running in qmcp."*, and the answer is said back |
 | `yes` / `no` | to *"Anything else?"*: asks for the next instruction, or goes back to waiting |

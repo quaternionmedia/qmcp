@@ -92,7 +92,8 @@ uv run qmcp serve --converse --runtime local    # here: the server, and the conv
 ```
 
 qmcp says it is ready and asks what should be done. An instruction is read
-back and recorded on "record", consent is asked aloud and given with
+back -- and, heard confidently, recorded unless interrupted, otherwise on
+"agree" -- consent is asked aloud and given with
 "approve", the local model reads the project, the answer is said back, and it
 asks whether there is anything else; questions agents have queued are asked in
 between, and "stop listening" ends it. Each step also has a command, for
