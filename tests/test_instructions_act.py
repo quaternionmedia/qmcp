@@ -587,9 +587,9 @@ def test_with_speech_the_consent_is_asked_aloud_and_the_answer_recorded(inbox, c
     done, runtime = _act(inbox, instruction_id, queue, cwd=clone, stt=_STT("yes, go ahead"), tts=tts)
 
     assert done.status == "done" and done.answer == "approve"
-    assert tts.spoken[0].startswith("Act on the instruction: Deploy")
-    assert tts.spoken[0].endswith("Say approve or hold.")
-    assert tts.spoken[-1] == "Recorded: approve"
+    assert tts.spoken[0].startswith("Run in qmcp: Deploy")
+    assert tts.spoken[0].endswith("Approve or hold?")
+    assert tts.spoken[-1] == "Approved."
     assert queue.reads == 2  # once by the loop before asking, once by the act afterwards
 
 
@@ -640,9 +640,10 @@ def test_a_database_url_naming_no_file_is_refused(monkeypatch):
         act_module.configured_rows()
 
 
-def test_the_consent_is_said_with_the_clone_s_folder_and_written_with_its_path():
-    """Said aloud, a path ran to half a minute. Mutation: name the clone by its
-    path in the spoken form -- red."""
+def test_the_consent_is_said_in_plain_words_and_written_with_its_path():
+    """Said aloud, a path ran to half a minute, and "1 run(s)" was read with
+    its parenthesis. Mutation: name the clone by its path in the spoken form
+    -- red; count the runs in digits -- red."""
     from pathlib import Path
     from types import SimpleNamespace
 
@@ -653,5 +654,8 @@ def test_the_consent_is_said_with_the_clone_s_folder_and_written_with_its_path()
     written = act_module.consent_prompt(row, clone, "local", Budget(authorised=1))
     spoken = act_module.consent_prompt(row, clone, "local", Budget(authorised=1), spoken=True)
 
-    assert str(clone.cwd) in written
-    assert "clone qmcp," in spoken and "deep" not in spoken
+    assert str(clone.cwd) in written and "1 run(s)" in written
+    assert spoken == "Run in qmcp: Deploy qmcp. The local model, one run."
+    assert "deep" not in spoken
+    assert act_module.consent_prompt(row, clone, "scripted", Budget(authorised=2), carried=3,
+                                     spoken=True) == "Run in qmcp: Deploy qmcp. A script, two runs, with what came before."

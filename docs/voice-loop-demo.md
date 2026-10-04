@@ -179,7 +179,7 @@ and hands the model what the first instruction found. What to look for:
 
 ```
   instruction 2: In one sentence, what did that file say qmcp is for?
-    said      Act on the instruction: ... carrying 1 earlier instruction(s) from qmcp's record. ...
+    said      Run in qmcp: ... The local model, one run, with what came before. Approve or hold?
     heard     approve
     read      read_file(README.md)
     carried   instruction 1 and what it found, from qmcp's record
@@ -213,22 +213,23 @@ last lines. Then it talks:
 ```
 qmcp:   Ready. What should be done?
 you:    Which file in qmcp says what qmcp is?
-qmcp:   I heard: Which file in qmcp says what qmcp is. Say agree or again.
+qmcp:   I heard: Which file in qmcp says what qmcp is. Agree or again?
 you:    agree
 qmcp:   Recorded for qmcp.
-qmcp:   Act on the instruction: ... Project qmcp, clone ..., runtime local, budget 1 run(s). Say approve or hold.
+qmcp:   Run in qmcp: Which file in qmcp says what qmcp is? The local model, one run. Approve or hold?
 you:    approve
-qmcp:   Approved. Running in qmcp.
-qmcp:   Done in qmcp. The file README.md ... The rest is on the record.
+qmcp:   Approved.
+qmcp:   Running in qmcp.
+qmcp:   Done in qmcp. The file README.md ...
 qmcp:   Anything else?
 you:    yes
 qmcp:   What should be done?
 you:    In one sentence, what did that file say qmcp is for?
-        ... record ... approve -- the consent says it carries 1 earlier instruction ...
+        ... agree ... approve -- the consent ends "with what came before" ...
 qmcp:   Done in qmcp. QMCP is the server that ...
 qmcp:   Anything else?
 you:    stop listening
-qmcp:   Stopping. Start the server again to talk.
+qmcp:   Stopping.
 ```
 
 joe's page shows each turn live: the question, the open microphone, the person
@@ -251,9 +252,10 @@ what qmcp is?" *I heard: ...* -- and when the engine heard it confidently, that
 is all: a moment's silence agrees, and it is recorded. Say anything in that
 moment, or press a key, and it is not taken for agreed: "again" takes it
 again, "agree" records it, and anything else is asked about outright. Heard
-less surely, the read-back asks: *Say agree or again.* The consent says what will run: the instruction, the project,
-the clone, the runtime, a budget of one run, and how many earlier instructions
-it carries. Say "approve". *Approved. Running in qmcp.* -- and when the model
+less surely, the read-back asks: *Agree or again?* The consent says what will
+run in a few words -- the project, the instruction, the runtime, how many runs,
+and whether it carries what came before: *Run in qmcp: ... The local model, one
+run. Approve or hold?* Say "approve". *Approved. Running in qmcp.* -- and when the model
 has read what it needs, the first sentence of what it found, said back. The
 whole answer is on the record: `uv run qmcp instructions show <id>`. Missed a
 question? Say "repeat", or press `R`.
@@ -264,7 +266,7 @@ Nothing to do. Every instruction in a project is handed that project's most
 recent instructions that ran, and what each found, from qmcp's record --
 whichever runtime ran them, and however long ago. "What did that file say qmcp
 is for?" works the next morning as it does the next minute. The consent says
-how many it carries, and the row's `detail.continuity` names them.
+it carries what came before, and the row's `detail.continuity` names it.
 
 ### Talk about a project for the first time
 
@@ -279,7 +281,7 @@ act refuses before it asks and says why.
 
 "Deploy to the pi." names none: *Which project?* is asked once, and the name
 said back is recorded as the project when it is one on the roster. "Move the
-vectors from vox into qmcp." names two: *Which project? Say qmcp or vox.* --
+vectors from vox into qmcp." names two: *Which project? Qmcp or vox?* --
 say one. A project is never picked by position, so "yes" chooses nothing.
 
 ### Hold instead of approve
@@ -297,10 +299,10 @@ anyone: `uv run qmcp human list`, `uv run qmcp human voice`, or joe's page.
 
 ### No more for now, and stopping
 
-"no" or "that's all" to *Anything else?*: *Okay. I am listening.* The
+"no" or "that's all" to *Anything else?*: *Listening.* The
 microphone stays open, and the next instruction can come at any time; "yes"
 asks for it now. "stop listening" or "goodbye" ends the conversation, and so
-does stopping the server; *Start the server again to talk.*
+does stopping the server: *Stopping.*
 
 ### Answer without speaking, and follow by ear
 
@@ -309,7 +311,7 @@ page focused the keys answer the same way, without looking:
 
 | Key | Does |
 |---|---|
-| `1`–`9` | answers with the question's options in the order it says them: *"Say approve or hold."* makes `1` approve and `2` hold |
+| `1`–`9` | answers with the question's options in the order it says them: *"Approve or hold?"* makes `1` approve and `2` hold |
 | `R` | says the question again, as saying "repeat" or "what?" does; neither spends one of its retries |
 | `Shift`+`Esc` | stops listening |
 | `~`, held | keeps the turn open through pauses -- an instruction with a long thought in it; releasing it ends the turn |
@@ -418,7 +420,7 @@ and the runner image are not reproduced.
 - **An act refuses for want of a clone.** The conversation looks for a clone
   named for the project beside this checkout, or in `--clones`; by command,
   pass `--cwd` once. The project remembers it either way.
-- **"The project is unresolved."** The name heard is not on the roster, or the
+- **"Recorded, no project."** The name heard is not on the roster, or the
   `governance/qm` submodule is not checked out: `git submodule update --init`.
 - **Nothing is said, or the conversation seems to have gone.** `curl
   http://127.0.0.1:3141/v1/human/voice` says whether it is running and the last

@@ -182,12 +182,81 @@ def match_option(text: str, options: list[str]) -> str | None:
 
 
 def say_options(options: list[str]) -> str:
-    """The spoken grammar: "Say approve or hold." / "Say red, green, or blue."."""
+    """The spoken grammar, in as few words as it takes: "Approve or hold?" /
+    "Red, green, or blue?"."""
     if len(options) == 1:
-        return f"Say {options[0]}."
-    if len(options) == 2:
-        return f"Say {options[0]} or {options[1]}."
-    return f"Say {', '.join(options[:-1])}, or {options[-1]}."
+        said = f"{options[0]}?"
+    elif len(options) == 2:
+        said = f"{options[0]} or {options[1]}?"
+    else:
+        said = f"{', '.join(options[:-1])}, or {options[-1]}?"
+    return said[:1].upper() + said[1:]
+
+
+NUMBERS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+
+
+def counted(n: int, word: str) -> str:
+    """"one run", "two runs": a count as a listener hears it, never "1 run(s)"."""
+    said = NUMBERS[n] if 0 <= n < len(NUMBERS) else str(n)
+    return f"{said} {word}" if n == 1 else f"{said} {word}s"
+
+
+# What a synthesizer would read aloud as syntax: "(s)", markdown, brackets,
+# a path's folders, a link. Each is a rule a test names.
+_PLURAL_MARK = re.compile(r"\(s\)")
+_LINK = re.compile(r"\bhttps?://\S+")
+_MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_FRACTION = re.compile(r"\b(\d+)/(\d+)\b")
+# A drive or rooted path, anything with two separators, or one separator
+# before a file's extension; "and/or" and "3/3" are not paths.
+_PATH = re.compile(r"[A-Za-z]:(?:[\\/][^\s\\/]+)+"
+                   r"|(?<!\S)[\\/][^\s\\/]+(?:[\\/][^\s\\/]+)*"
+                   r"|(?:[^\s\\/]+[\\/]){2,}[^\s\\/]+"
+                   r"|[^\s\\/]+[\\/][^\s\\/]+\.[A-Za-z]\w{0,4}\b")
+_SYMBOLS = re.compile(r"[*`#_~<>\[\]{}()|\\/]+")
+
+
+def speakable(text: str) -> str:
+    """`text` as a synthesizer should say it: words and ordinary punctuation.
+
+    A "(s)" is dropped, a markdown link keeps its words, a link becomes "a
+    link", "3/3" is "3 of 3", a path keeps its last name
+    ("C:/work/clones/qmcp" is "qmcp"), and brackets, parentheses, slashes
+    and markdown marks go, so a sentence is never read with its syntax.
+    Whitespace is collapsed.
+    """
+    said = _PLURAL_MARK.sub("", text or "")
+    said = _MARKDOWN_LINK.sub(r"\1", said)
+    said = _LINK.sub("a link", said)
+    said = _FRACTION.sub(r"\1 of \2", said)
+    said = _PATH.sub(lambda m: re.split(r"[\\/]", m.group(0).rstrip("\\/"))[-1], said)
+    said = _SYMBOLS.sub(" ", said)
+    said = re.sub(r"\s+([,.;:!?])", r"\1", " ".join(said.split()))
+    return said
+
+
+class Speakable:
+    """A synthesizer that says every sentence `speakable`, whoever wrote it."""
+
+    def __init__(self, tts):
+        self.tts = tts
+
+    def speak(self, text: str, *args, **kwargs):
+        return self.tts.speak(speakable(text), *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.tts, name)
+
+
+def speakably(tts):
+    """`tts`, wrapped once in `Speakable`."""
+    return tts if isinstance(tts, Speakable) or tts is None else Speakable(tts)
+
+
+# How an accepted answer is acknowledged: the word, as a listener expects it.
+ACKNOWLEDGED = {"approve": "Approved.", "hold": "Holding.", "reject": "Rejected.",
+                "yes": "Yes.", "no": "No."}
 
 
 class SpeechToText(Protocol):
@@ -228,7 +297,7 @@ class VoiceApprovalLoop:
         listen_duration: float = 5.0,
     ):
         self.stt = stt
-        self.tts = tts
+        self.tts = speakably(tts)
         self.client = client or MCPClient()
         self.max_retries = max_retries
         self.listen_duration = listen_duration
@@ -268,9 +337,9 @@ class VoiceApprovalLoop:
                 return named
             if attempt < self.max_retries:
                 if not heard.strip():
-                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
+                    reask, reason = f"Didn't catch that. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {heard.strip()[:80]}. {grammar}", "nomatch"
+                    reask, reason = f"Heard {heard.strip()[:80].rstrip('.!?')}. {grammar}", "nomatch"
                 self._announce("speaking", reask, reason=reason, options=options)
                 self.tts.speak(reask)
             attempt += 1
@@ -300,7 +369,7 @@ class VoiceApprovalLoop:
             request_id=request_id, response=answer, responded_by="vox"
         )
         self._announce("recorded", answer)
-        self.tts.speak(f"Recorded: {answer}")
+        self.tts.speak(ACKNOWLEDGED.get(answer, "Noted."))
         return response
 
     def _announce(self, state: str, text: str = "", reason: str | None = None,

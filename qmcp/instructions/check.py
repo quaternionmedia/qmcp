@@ -83,7 +83,7 @@ OFFLINE_CASES = (
     # took the first candidate for anything it could not match is caught here.
     Case((f"Move the vectors from {OTHER} into {NAMED}.", "agree", NAMED),
          f"Move the vectors from {OTHER} into {NAMED}.", NAMED, RULE_STATED,
-         reasked=f"{WHICH_PROJECT} Say {OTHER} or {NAMED}."),
+         reasked=f"{WHICH_PROJECT} {say_options([OTHER, NAMED])}"),
     Case(("Deploy qmcp.", "again", "Deploy qmcp to the pi.", "agree"),
          "Deploy qmcp to the pi.", NAMED, RULE_ONE, reasked=PROMPT),
 )
@@ -335,7 +335,7 @@ def run_loop(echo: Callable[[str], None] = print, cases=LOOP_CASES) -> bool:
             else:
                 if recorded["status"] != case.status:
                     problems.append(f"status {recorded['status']!r}, expected {case.status!r}")
-                if not any(s.startswith("Act on the instruction: ") and case.heard[0] in s
+                if not any(s.startswith("Run in ") and case.heard[0] in s
                            for s in tts.spoken):
                     problems.append("the consent was never asked aloud with the instruction")
                 ran = len(runtime.calls)
@@ -603,7 +603,7 @@ def run_conversation(echo: Callable[[str], None] = print, runtime=None,
             problems.append(f"the first read-back was said {len(readbacks)} time(s), not again on 'repeat'")
         second_ask = SECOND_ASK.format(project=project)[:20]
         second = [t for t in tts.spoken if t.startswith("I heard: ") and second_ask in t]
-        if len(second) != 1 or "Say agree or again" in second[0]:
+        if len(second) != 1 or "Agree or again?" in second[0]:
             problems.append(f"the confident second instruction was not agreed to tacitly: {second}")
         # What reached the engine over the wire: each closed question's
         # options as the hint, and as the options a display can offer.

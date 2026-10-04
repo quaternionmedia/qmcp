@@ -155,8 +155,8 @@ def test_voice_answers_the_consent_in_the_command(inbox, queue, clone, monkeypat
         "--cwd", str(clone), "--voice"])
 
     assert result.exit_code == 0, result.output
-    assert tts.spoken[0].startswith("Act on the instruction: Deploy qmcp to the pi.")
-    assert tts.spoken[0].endswith("Say approve or hold.")
+    assert tts.spoken[0].startswith("Run in qmcp: Deploy qmcp to the pi.")
+    assert tts.spoken[0].endswith("Approve or hold?")
     assert "answered: 'approve'" in result.output
     assert _status(inbox) == InstructionStatus.DONE
 
@@ -187,7 +187,7 @@ def test_with_voice_the_run_is_announced_and_its_outcome_said_last(inbox, queue,
         "--cwd", str(clone), "--voice"])
 
     assert result.exit_code == 0, result.output
-    assert "Approved. Running in qmcp." in tts.spoken
+    assert "Running in qmcp." in tts.spoken
     assert tts.spoken[-1] == "Done in qmcp. done, as scripted."
     assert "said: Done in qmcp. done, as scripted." in result.output
 
@@ -199,7 +199,7 @@ def test_without_voice_the_summary_is_printed_and_nothing_is_said(inbox, queue, 
         "instructions", "act", "row-1", "--runtime", "scripted", "--budget", "1", "--cwd", str(clone)])
 
     assert result.exit_code == 0, result.output
-    assert "summary: Held. Nothing ran for: Deploy qmcp to the pi." in result.output
+    assert "summary: Held. Nothing ran." in result.output
 
 
 def test_a_refusal_before_the_ask_is_summarised_as_nothing_ran(inbox, queue, tmp_path):
@@ -209,7 +209,7 @@ def test_a_refusal_before_the_ask_is_summarised_as_nothing_ran(inbox, queue, tmp
         "--cwd", str(tmp_path / "nowhere")])
 
     assert result.exit_code == 0, result.output
-    assert "summary: Nothing was asked and nothing ran in qmcp." in result.output
+    assert "summary: Nothing ran." in result.output
 
 
 def test_say_prints_the_summary_of_a_row_and_speaks_it_on_request(monkeypatch):
@@ -226,8 +226,8 @@ def test_say_prints_the_summary_of_a_row_and_speaks_it_on_request(monkeypatch):
     aloud = CliRunner().invoke(cli.cli, ["instructions", "say", "row-1", "--speak"])
 
     assert quiet.exit_code == 0 and aloud.exit_code == 0, quiet.output + aloud.output
-    assert quiet.output.strip() == "Done in qmcp. Added it. The rest is on the record."
-    assert tts.spoken == ["Done in qmcp. Added it. The rest is on the record."]
+    assert quiet.output.strip() == "Done in qmcp. Added it."
+    assert tts.spoken == ["Done in qmcp. Added it."]
 
 
 def test_say_names_a_row_that_does_not_exist(monkeypatch):

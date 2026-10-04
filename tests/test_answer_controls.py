@@ -119,12 +119,12 @@ def test_a_backend_s_own_type_error_is_not_mistaken_for_an_old_shape():
 def test_options_reach_a_backend_that_takes_them_and_an_old_one_still_hears_the_state():
     new, old = _STT(), _OldSTT()
 
-    announce_to(new, "speaking", "Say approve or hold.", options=("approve", "hold"))
-    announce_to(old, "speaking", "Say approve or hold.", reason="nomatch", options=("approve", "hold"))
+    announce_to(new, "speaking", "Approve or hold?", options=("approve", "hold"))
+    announce_to(old, "speaking", "Approve or hold?", reason="nomatch", options=("approve", "hold"))
 
-    assert new.announced == [{"state": "speaking", "text": "Say approve or hold.", "reason": None,
+    assert new.announced == [{"state": "speaking", "text": "Approve or hold?", "reason": None,
                               "options": ["approve", "hold"]}]
-    assert old.announced == [("speaking", "Say approve or hold.", "nomatch")]
+    assert old.announced == [("speaking", "Approve or hold?", "nomatch")]
 
 
 # --- the approval dialog -------------------------------------------------------------
@@ -145,7 +145,7 @@ def test_repeat_says_the_question_again_and_spends_no_retry():
     stt, tts = _STT("repeat", "hold"), _TTS()
 
     assert VoiceApprovalLoop(stt, tts, max_retries=0)._ask("Ship it?", ["approve", "hold"]) == "hold"
-    assert tts.spoken == ["Ship it? Say approve or hold."] * 2
+    assert tts.spoken == ["Ship it? Approve or hold?"] * 2
     assert stt.announced[1]["reason"] == "repeat"
 
 
@@ -270,8 +270,8 @@ def test_a_request_s_spoken_form_is_what_is_said_and_its_prompt_otherwise():
         def submit_human_response(self, **kw):
             return SimpleNamespace(response=kw["response"])
 
-    for context, said in (({"spoken": "Act on qmcp."}, "Act on qmcp. Say approve or hold."),
-                          (None, "Act on C:/a/very/long/path. Say approve or hold.")):
+    for context, said in (({"spoken": "Act on qmcp."}, "Act on qmcp. Approve or hold?"),
+                          (None, "Act on path. Approve or hold?")):
         tts = _TTS()
         VoiceApprovalLoop(_STT("approve"), tts, client=Client(context)).run_once("r")
         assert tts.spoken[0] == said

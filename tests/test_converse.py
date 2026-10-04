@@ -278,7 +278,7 @@ def test_the_dialog_starts_at_the_read_back_when_it_is_handed_what_was_heard():
     row = InstructionDialog(stt, tts, Client(), names=["qmcp"]).run_once(heard="Deploy qmcp.")
 
     assert row["text"] == "Deploy qmcp."
-    assert tts.spoken[0] == "I heard: Deploy qmcp. Say agree or again."
+    assert tts.spoken[0] == "I heard: Deploy qmcp. Agree or again?"
     assert PROMPT not in tts.spoken
 
 
