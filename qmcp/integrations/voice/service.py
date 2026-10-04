@@ -84,6 +84,22 @@ class VoiceRuns:
             return {"kind": kind, "request_id": request_id, "running": True,
                     "started_at": self._when()}
 
+    def stop(self, timeout: float = 5.0) -> None:
+        """End the running conversation, if there is one: asked, then made to.
+
+        For the server's shutdown, which would otherwise leave a standing
+        conversation holding the microphone with nothing behind it.
+        """
+        with self._lock:
+            process = self._process
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
     def status(self) -> dict[str, Any]:
         """Whether a conversation is running, and how the last one ended."""
         with self._lock:

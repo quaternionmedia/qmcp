@@ -96,6 +96,7 @@ CONSENT_SECONDS = 600
 # The rules that can choose a clone, reported as data beside it.
 RULE_CWD = "passed as --cwd"
 RULE_RECORD = "the clone the project's last act ran in, from qmcp's record"
+RULE_SIBLING = "a clone named for the project, beside the others"
 
 # How the pending listing is read: pages of the server's own cap, so a queue
 # longer than one page is still searched to its end.
@@ -176,10 +177,11 @@ def configured_rows() -> Rows:
 
 
 def clone_for(rows: Rows, instruction_id: str, project: str | None,
-              cwd: str | Path | None) -> Clone | None:
-    """`cwd` when given; else the clone the project's last act ran in; else None."""
+              cwd: str | Path | None, cwd_rule: str = RULE_CWD) -> Clone | None:
+    """`cwd` when given, under the rule that chose it; else the clone the
+    project's last act ran in; else None."""
     if cwd is not None:
-        return Clone(cwd=Path(cwd), rule=RULE_CWD)
+        return Clone(cwd=Path(cwd), rule=cwd_rule)
     remembered = last_clone(rows, project, before=instruction_id)
     return Clone(cwd=remembered, rule=RULE_RECORD) if remembered is not None else None
 
@@ -218,8 +220,8 @@ def _is_pending(client: Any, request_id: str) -> bool:
 
 
 def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: Any,
-        cwd: str | Path | None = None, rows: Rows | None = None,
-        stt: Any = None, tts: Any = None,
+        cwd: str | Path | None = None, cwd_rule: str = RULE_CWD,
+        rows: Rows | None = None, stt: Any = None, tts: Any = None,
         on_event: OnEvent | None = None, poll_interval: float = 1.0,
         sleep: Callable[[float], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
@@ -253,7 +255,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
 
     # --- the clone -----------------------------------------------------------
     reached.append("clone")
-    clone = clone_for(rows, instruction_id, project, cwd)
+    clone = clone_for(rows, instruction_id, project, cwd, cwd_rule)
     if clone is None or not clone.cwd.is_dir():
         reason = (f"no clone for {project!r} in qmcp's record yet"
                   if project else "the instruction's project is unresolved")
@@ -386,6 +388,7 @@ __all__ = [
     "OPTIONS",
     "RULE_CWD",
     "RULE_RECORD",
+    "RULE_SIBLING",
     "STAGES",
     "Acted",
     "Clone",
