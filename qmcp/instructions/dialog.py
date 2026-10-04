@@ -45,9 +45,13 @@ from typing import Any, Iterable
 
 from qmcp.instructions import resolve
 from qmcp.integrations.voice.adapter import (
+    MAX_REPEATS,
     SpeechToText,
     TextToSpeech,
     UnclearResponse,
+    announce_to,
+    asks_repeat,
+    listen_for,
     match_option,
     parse_yes_no,
     say_options,
@@ -119,13 +123,13 @@ class InstructionDialog:
         self.tts.speak(said)
         return row
 
-    def _listen(self, *, long: bool) -> str:
+    def _listen(self, *, long: bool, hint: list[str] | None = None) -> str:
         """One take. The instruction gets the long cap and the long pause; a
         word in answer gets neither, so the engine's own default serves it."""
         if long:
             heard, _ = self.stt.listen(duration=self.listen_duration, pause_ms=self.pause_ms)
         else:
-            heard, _ = self.stt.listen(duration=self.answer_duration)
+            heard, _ = listen_for(self.stt, self.answer_duration, hint=hint)
         self.heard.append(heard)
         return heard
 
@@ -141,11 +145,12 @@ class InstructionDialog:
         grammar = say_options(CONFIRM)
         heard = ""
         answer: str | None = None
+        repeats = 0
         if first is not None and first.strip():
             self.heard.append(first)
             heard, answer = first, first.strip()
             readback = f"I heard: {_said(answer)}. {grammar}"
-            self._announce("speaking", readback, reason="confirm")
+            self._announce("speaking", readback, reason="confirm", options=CONFIRM)
             self.tts.speak(readback)
         else:
             self._announce("speaking", PROMPT)
@@ -157,12 +162,23 @@ class InstructionDialog:
                     if not heard.strip():
                         reask, reason = f"I didn't hear anything. {PROMPT}", "noinput"
                         break
+                    if asks_repeat(heard) and repeats < MAX_REPEATS:
+                        repeats += 1
+                        self._announce("speaking", PROMPT, reason="repeat")
+                        self.tts.speak(PROMPT)
+                        continue
                     answer = heard.strip()
                     readback = f"I heard: {_said(answer)}. {grammar}"
-                    self._announce("speaking", readback, reason="confirm")
+                    self._announce("speaking", readback, reason="confirm", options=CONFIRM)
                     self.tts.speak(readback)
                     continue
-                heard = self._listen(long=False)
+                heard = self._listen(long=False, hint=CONFIRM)
+                # Asked to say it again: the read-back again, and no retry spent.
+                if asks_repeat(heard) and repeats < MAX_REPEATS:
+                    repeats += 1
+                    self._announce("speaking", readback, reason="repeat", options=CONFIRM)
+                    self.tts.speak(readback)
+                    continue
                 decision = parse_yes_no(heard)
                 named = match_option(heard, CONFIRM)
                 # The decision is consulted before the option named, as the
@@ -177,7 +193,10 @@ class InstructionDialog:
                     reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
                 break
             if reasks < self.max_retries:
-                self._announce("speaking", reask, reason=reason)
+                # A re-ask of the read-back offers its options; a re-ask for
+                # the instruction itself has none to offer.
+                self._announce("speaking", reask, reason=reason,
+                               options=CONFIRM if answer is not None else None)
                 self.tts.speak(reask)
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
@@ -192,10 +211,17 @@ class InstructionDialog:
         and a project is never picked by position.
         """
         grammar = say_options(options)
-        self._announce("speaking", f"{prompt} {grammar}")
-        self.tts.speak(f"{prompt} {grammar}")
-        for attempt in range(self.max_retries + 1):
-            heard = self._listen(long=False)
+        question = f"{prompt} {grammar}"
+        self._announce("speaking", question, options=options)
+        self.tts.speak(question)
+        attempt = repeats = 0
+        while attempt <= self.max_retries:
+            heard = self._listen(long=False, hint=options)
+            if asks_repeat(heard) and repeats < MAX_REPEATS:
+                repeats += 1
+                self._announce("speaking", question, reason="repeat", options=options)
+                self.tts.speak(question)
+                continue
             named = match_option(heard, options)
             if named is not None:
                 return named
@@ -204,8 +230,9 @@ class InstructionDialog:
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
                     reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
-                self._announce("speaking", reask, reason=reason)
+                self._announce("speaking", reask, reason=reason, options=options)
                 self.tts.speak(reask)
+            attempt += 1
         return None
 
     def _ask_project_once(self) -> str | None:
@@ -221,13 +248,10 @@ class InstructionDialog:
         heard = self._listen(long=False)
         return resolve(heard, self.names).project
 
-    def _announce(self, state: str, text: str = "", reason: str | None = None) -> None:
+    def _announce(self, state: str, text: str = "", reason: str | None = None,
+                  options: list[str] | None = None) -> None:
         """Tell whatever shows the exchange what the dialog is doing, as the
-        approval dialog does; a backend without `announce` costs nothing."""
-        announce = getattr(self.stt, "announce", None)
-        if announce is None:
-            return
-        try:
-            announce(state, text, reason=reason)
-        except Exception:
-            pass
+        approval dialog does, a question carrying its options; a backend
+        without `announce` costs nothing."""
+        announce_to(self.stt, state, text, reason, options)
+
