@@ -253,3 +253,25 @@ def test_repeat_in_the_conversation_asks_the_last_question_again():
     assert taken == ["Deploy qmcp."]
     assert tts.spoken.count(ANYTHING_ELSE) == 2
     assert OKAY in tts.spoken  # the repeated "no" was a no
+
+
+def test_a_request_s_spoken_form_is_what_is_said_and_its_prompt_otherwise():
+    """Mutation: drop `context.spoken` -- red, the half-minute path is read out."""
+    from types import SimpleNamespace
+
+    class Client:
+        def __init__(self, context):
+            self.request = SimpleNamespace(prompt="Act on C:/a/very/long/path.",
+                                           options=["approve", "hold"], context=context)
+
+        def get_human_request(self, request_id):
+            return self.request, None
+
+        def submit_human_response(self, **kw):
+            return SimpleNamespace(response=kw["response"])
+
+    for context, said in (({"spoken": "Act on qmcp."}, "Act on qmcp. Say approve or hold."),
+                          (None, "Act on C:/a/very/long/path. Say approve or hold.")):
+        tts = _TTS()
+        VoiceApprovalLoop(_STT("approve"), tts, client=Client(context)).run_once("r")
+        assert tts.spoken[0] == said

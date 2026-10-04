@@ -290,7 +290,11 @@ class VoiceApprovalLoop:
             return existing
 
         options = request.options or ["approve", "reject"]
-        answer = self._ask(request.prompt, options)
+        # A request may carry a shorter form for the ear (`context.spoken`):
+        # what a page shows in full can be too long to listen to.
+        spoken = (request.context or {}).get("spoken")
+        answer = self._ask(spoken if isinstance(spoken, str) and spoken.strip() else request.prompt,
+                           options)
 
         response = self.client.submit_human_response(
             request_id=request_id, response=answer, responded_by="vox"
