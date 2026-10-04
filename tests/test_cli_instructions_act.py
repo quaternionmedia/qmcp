@@ -27,7 +27,6 @@ from tests.test_instructions_act import _Queue, _STT, _TTS
 def inbox(tmp_path, monkeypatch):
     rows = rows_at(tmp_path / "inbox.db")
     monkeypatch.setattr(act_module, "configured_rows", lambda: rows)
-    monkeypatch.setattr(act_module, "archive_sources", lambda: [])
     with rows() as session:
         row = Instruction(id="row-1", text="Deploy qmcp to the pi.", project="qmcp",
                           source=InstructionSource.TYPED, status=InstructionStatus.RECORDED)

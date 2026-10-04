@@ -310,7 +310,7 @@ def run_loop(echo: Callable[[str], None] = print, cases=LOOP_CASES) -> bool:
                             say(starting(row["project"]), tts, scripted)
 
                     done = act(row["id"], runtime, Budget(authorised=1), client=client,
-                               rows=rows, sources=[], cwd=clone, stt=scripted, tts=tts,
+                               rows=rows, cwd=clone, stt=scripted, tts=tts,
                                on_event=event, poll_interval=0.05, consent_seconds=60)
                     recorded = client.get_instruction(row["id"])
                     summary = summarise(recorded, why=done.why)

@@ -1,15 +1,14 @@
-"""`qmcp.instructions.act`: the clone, the budget, the consent, and what runs when.
+"""`qmcp.instructions.act`: the clone, the continuity, the budget, the consent,
+and what runs when.
 
 The human queue is stood in for by an in-memory object with the client's
 surface, so a test can decide how a consent ends -- approved, held, expired --
 and count what was read while it waited. The inbox is a database made for the
-test; the archive is a stand-in source carrying what `qmcp.threads.claudecode`
-puts in `context`. The runtime is the scripted one, whose `calls` say what ran.
+test, and it is also the record the clone and the history are read from. The
+runtime is the scripted one, whose `briefs` say what ran and what it was told.
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import pytest
 
@@ -17,19 +16,16 @@ from qmcp.client import HumanRequestConflictError
 from qmcp.client.mcp_client import HumanRequest, HumanResponse
 from qmcp.db.models import Instruction, InstructionSource, InstructionStatus
 from qmcp.instructions import act as act_module
+from qmcp.instructions import continuity
 from qmcp.instructions.act import (
-    RULE_ARCHIVE,
     RULE_CWD,
-    RULE_NAMED_DIR,
-    Clone,
+    RULE_RECORD,
     NoSuchInstruction,
     act,
-    clone_for,
     rows_at,
 )
 from qmcp.integrations.agents.scripted import ScriptedRuntime
 from qmcp.spend import Budget
-from qmcp.threads.base import Thread, Turn
 
 PROJECT = "qmcp"
 
@@ -115,23 +111,6 @@ class _Queue:
                     self.responses[request_id] = answer
 
 
-class _Source:
-    """An archive source: threads, and what each knew about its checkout."""
-
-    def __init__(self, *entries: tuple[Thread, dict]):
-        self.threads = [thread for thread, _ in entries]
-        self.context = {thread.id: context for thread, context in entries}
-
-    def fetch(self, ids, budget):
-        return list(self.threads)
-
-
-def _thread(identifier: str, *texts: str, title: str | None = None) -> Thread:
-    return Thread(id=identifier, title=title,
-                  turns=tuple(Turn(id=f"{identifier}-{n}", role="user", text=t)
-                              for n, t in enumerate(texts)))
-
-
 @pytest.fixture
 def inbox(tmp_path):
     rows = rows_at(tmp_path / "inbox.db")
@@ -159,147 +138,149 @@ def clone(tmp_path):
     return path
 
 
-def _archive(clone: Path, session="s-1", last_at="2026-10-03T10:00:00Z") -> _Source:
-    return _Source((_thread("t-1", "working here"),
-                    {"cwd": str(clone), "session": session, "last_at": last_at}))
-
-
 def _act(inbox, instruction_id, queue, runtime=None, budget=1, **kw):
-    runtime = runtime or ScriptedRuntime(text="pinned", session_ref="s-2")
-    kw.setdefault("sources", [])
+    runtime = runtime or ScriptedRuntime(text="pinned")
     return act(instruction_id, runtime, Budget(authorised=budget), client=queue, rows=inbox,
                sleep=queue.settle, clock=queue.clock, poll_interval=0.0, **kw), runtime
+
+
+def _approved(inbox, text, project=PROJECT, outcome="pinned", **kw):
+    """Record an instruction and act on it with an approve, as a person would."""
+    instruction_id = inbox.record(text, project=project)
+    queue = _Queue({f"instruction-{instruction_id}": "approve"})
+    done, runtime = _act(inbox, instruction_id, queue, runtime=ScriptedRuntime(text=outcome), **kw)
+    return instruction_id, done, runtime
 
 
 # --- the clone ------------------------------------------------------------------------
 
 
-def test_the_clone_is_the_newest_threads_checkout_that_exists(tmp_path):
-    """Mutation: sort `last_at` ascending -- red on `older`; drop the `exists`
-    check -- red on `gone`; `exists=Path.exists` -- red on `as_file`; the
-    named-directory rule as containment (`short in path.name`) -- red on
-    `sibling`, a checkout carrying the name as a prefix."""
-    newer, older = tmp_path / PROJECT, tmp_path / "elsewhere" / PROJECT
-    newer.mkdir(), older.mkdir(parents=True)
-    gone = tmp_path / "deleted" / PROJECT
-    sibling = tmp_path / f"{PROJECT}-old"
-    sibling.mkdir()
-    as_file = tmp_path / "file" / PROJECT
-    as_file.parent.mkdir()
-    as_file.write_text("a file named for the project is not a checkout")
-    source = _Source(
-        (_thread("old", f"about {PROJECT}", f"{PROJECT} again"),
-         {"cwd": str(older), "session": "s-old", "last_at": "2026-09-01T00:00:00Z"}),
-        (_thread("new", "nothing named"),
-         {"cwd": str(newer), "session": "s-new", "last_at": "2026-10-01T00:00:00Z"}),
-        (_thread("gone", "nothing named"),
-         {"cwd": str(gone), "session": "s-gone", "last_at": "2026-10-02T00:00:00Z"}),
-        (_thread("other", f"{PROJECT} {PROJECT}"),
-         {"cwd": str(tmp_path / "vox"), "session": "s-x", "last_at": "2026-10-03T00:00:00Z"}),
-        (_thread("sibling", "nothing named"),
-         {"cwd": str(sibling), "session": "s-sibling", "last_at": "2026-10-04T00:00:00Z"}),
-        (_thread("file", "nothing named"),
-         {"cwd": str(as_file), "session": "s-file", "last_at": "2026-10-05T00:00:00Z"}),
-    )
-
-    found = clone_for(PROJECT, [source])
-
-    assert found == Clone(cwd=newer, session_ref="s-new", rule=RULE_NAMED_DIR,
-                          thread_id="new", last_at="2026-10-01T00:00:00Z")
-
-
-def test_a_source_without_a_context_is_never_fetched():
-    """The web exports know nothing of checkouts, and reading them per act
-    would parse every export for nothing. Mutation: drop the `hasattr` check
-    -- red, the source is fetched."""
-    class Export:
-        fetched = 0
-
-        def fetch(self, ids, budget):
-            self.fetched += 1
-            return []
-
-    export = Export()
-
-    assert clone_for(PROJECT, [export]) is None
-    assert export.fetched == 0
-
-
-def test_a_thread_about_the_project_names_its_checkout_whatever_it_is_called(tmp_path):
-    """`consolidate.about`'s rule, when the directory is not named for the
-    project. Mutation: drop the `about` branch -- red."""
-    checkout = tmp_path / "work"
-    checkout.mkdir()
-    source = _Source((_thread("t", f"{PROJECT} first", f"{PROJECT} second"),
-                      {"cwd": str(checkout), "session": "s", "last_at": "x"}))
-
-    found = clone_for(PROJECT, [source])
-
-    assert found is not None and found.rule == RULE_ARCHIVE and found.cwd == checkout
-    assert clone_for(PROJECT, [_Source((_thread("t", "one passing qmcp"),
-                                        {"cwd": str(checkout)}))]) is None
-    assert clone_for(None, [source]) is None
-
-
-def test_an_owner_prefixed_project_matches_its_repository_name(tmp_path):
-    checkout = tmp_path / PROJECT
-    checkout.mkdir()
-    assert clone_for(f"quaternionmedia/{PROJECT}", [_archive(checkout)]).cwd == checkout
-
-
-def test_the_archives_clone_is_used_and_its_session_resumed(inbox, clone):
-    """Mutation: pass `resume=None` to the runtime -- red."""
-    queue = _Queue({f"instruction-{'{id}'}": "approve"})
-    instruction_id = inbox.record()
-    queue.script = {f"instruction-{instruction_id}": "approve"}
-
-    done, runtime = _act(inbox, instruction_id, queue, sources=[_archive(clone, session="s-7")])
+def test_cwd_is_taken_as_given(inbox, clone):
+    instruction_id, done, runtime = _approved(inbox, f"Deploy {PROJECT}.", cwd=clone)
 
     assert done.cwd == str(clone) and done.status == "done"
-    assert runtime.calls == [{"instruction": f"Deploy {PROJECT} to the pi.",
-                              "cwd": str(clone), "resume": "s-7"}]
-    assert inbox.read(instruction_id).detail["clone"]["rule"] == RULE_NAMED_DIR
+    assert runtime.calls == [{"instruction": f"Deploy {PROJECT}.", "cwd": str(clone)}]
+    assert inbox.read(instruction_id).detail["clone"] == {"cwd": str(clone), "rule": RULE_CWD}
 
 
-def test_cwd_wins_over_the_archive_and_starts_a_fresh_session(inbox, clone, tmp_path):
-    """A path the person typed is what they meant, so the archive is not read.
-    Mutation: consult the archive first and fall back to `cwd` -- red, the run
-    lands in the archive's checkout and resumes its session."""
-    instruction_id = inbox.record()
+def test_the_clone_is_remembered_from_the_projects_last_act(inbox, clone):
+    """A path given once serves the project's later instructions. Mutation:
+    drop the `last_clone` fallback -- red, the second act refuses."""
+    _approved(inbox, f"Deploy {PROJECT}.", cwd=clone)
+
+    second, done, runtime = _approved(inbox, f"Tag {PROJECT}.")
+
+    assert done.status == "done" and done.cwd == str(clone)
+    assert runtime.calls[0]["cwd"] == str(clone)
+    assert inbox.read(second).detail["clone"] == {"cwd": str(clone), "rule": RULE_RECORD}
+
+
+def test_a_remembered_clone_belongs_to_its_project(inbox, clone):
+    """Mutation: drop the project filter from `last_clone` -- red, another
+    project's instruction runs in this project's clone."""
+    _approved(inbox, f"Deploy {PROJECT}.", cwd=clone)
+
+    _, done, runtime = _approved(inbox, "Rotate the logs.", project="vox")
+
+    assert done.status == "recorded" and runtime.calls == []
+    assert "no clone for 'vox' in qmcp's record yet" in done.why
+
+
+def test_cwd_wins_over_the_remembered_clone(inbox, clone, tmp_path):
+    """Mutation: consult the record first and fall back to `cwd` -- red."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    _approved(inbox, f"Deploy {PROJECT}.", cwd=clone)
+
+    second, done, _ = _approved(inbox, f"Tag {PROJECT}.", cwd=elsewhere)
+
+    assert done.cwd == str(elsewhere)
+    assert inbox.read(second).detail["clone"]["rule"] == RULE_CWD
+
+
+def test_a_remembered_clone_that_is_gone_is_a_refusal(inbox, clone):
+    _approved(inbox, f"Deploy {PROJECT}.", cwd=clone)
+    clone.rmdir()
+
+    _, done, runtime = _approved(inbox, f"Tag {PROJECT}.")
+
+    assert runtime.calls == [] and "is not a directory" in done.why and "--cwd" in done.why
+
+
+# --- the continuity -----------------------------------------------------------------------
+
+
+def test_the_brief_carries_the_projects_earlier_outcomes_oldest_first(inbox, clone):
+    """Continuity comes from qmcp, not the model. Mutation: drop the project
+    filter from `history` -- red, vox's work is carried; carry held
+    instructions -- red, `Rotate` appears; order newest first -- red."""
+    first, *_ = _approved(inbox, "Find the README.", outcome="README.md, at the root.", cwd=clone)
+    second, *_ = _approved(inbox, "Read it.", outcome="It says qmcp is the local backend.")
+    _approved(inbox, "Elsewhere.", project="vox", outcome="vox things", cwd=clone)
+    held = inbox.record("Rotate the logs.")
+    _act(inbox, held, _Queue({f"instruction-{held}": "hold"}))
+
+    third, done, runtime = _approved(inbox, "Summarise what we found.")
+
+    brief = runtime.briefs[0]
+    assert [turn.instruction for turn in brief.history] == ["Find the README.", "Read it."]
+    assert [turn.outcome for turn in brief.history] == [
+        "README.md, at the root.", "It says qmcp is the local backend."]
+    assert all(turn.status == "done" and turn.runtime == "scripted" for turn in brief.history)
+    prompt = brief.prompt()
+    assert prompt.index("README.md, at the root.") < prompt.index("the local backend")
+    assert "vox things" not in prompt and "Rotate" not in prompt
+    assert done.carried == (first, second)
+    assert inbox.read(third).detail["continuity"] == [first, second]
+
+
+def test_the_consent_says_how_much_history_is_carried(inbox, clone):
+    """The person at the gate is told the runtime will be told about earlier
+    work. Mutation: drop `carried` from the prompt -- red."""
+    _approved(inbox, "Find the README.", cwd=clone)
+    instruction_id = inbox.record("Read it.")
+    queue = _Queue({f"instruction-{instruction_id}": "hold"})
+
+    _act(inbox, instruction_id, queue)
+
+    request = queue.requests[f"instruction-{instruction_id}"]
+    assert "carrying 1 earlier instruction(s) from qmcp's record" in request["prompt"]
+    assert len(request["context"]["carried"]) == 1
+
+
+def test_continuity_survives_a_change_of_runtime(inbox, clone):
+    """The history is in the record, so a different runtime carries the next
+    instruction knowing what the first one found."""
+    class Other(ScriptedRuntime):
+        name = "other"
+
+    _approved(inbox, "Find the README.", outcome="README.md, at the root.", cwd=clone)
+    instruction_id = inbox.record("Read it.")
     queue = _Queue({f"instruction-{instruction_id}": "approve"})
-    typed = tmp_path / "elsewhere"
-    typed.mkdir()
 
-    class Archive:
-        fetched = 0
+    done, runtime = _act(inbox, instruction_id, queue, runtime=Other(text="read"))
 
-        def __init__(self):
-            self.inner = _archive(clone, session="s-7")
-            self.context = self.inner.context
-
-        def fetch(self, ids, budget):
-            self.fetched += 1
-            return self.inner.fetch(ids, budget)
-
-    archive = Archive()
-    done, runtime = _act(inbox, instruction_id, queue, cwd=typed, sources=[archive])
-
-    assert done.cwd == str(typed) and done.status == "done"
-    assert runtime.calls[0]["cwd"] == str(typed) and runtime.calls[0]["resume"] is None
-    assert inbox.read(instruction_id).detail["clone"]["rule"] == RULE_CWD
-    assert archive.fetched == 0
+    (turn,) = runtime.briefs[0].history
+    assert (turn.runtime, turn.outcome) == ("scripted", "README.md, at the root.")
+    assert "done by scripted: README.md, at the root." in runtime.briefs[0].prompt()
+    assert inbox.read(instruction_id).runtime == "other"
 
 
-def test_cwd_serves_when_the_archives_checkout_is_gone(inbox, clone, tmp_path):
-    instruction_id = inbox.record()
-    queue = _Queue({f"instruction-{instruction_id}": "approve"})
-    gone = tmp_path / "gone" / PROJECT
+def test_the_history_is_capped_at_its_limit_keeping_the_newest(inbox, clone):
+    """Mutation: drop the `limit` -- red."""
+    for n in range(continuity.LIMIT + 2):
+        _approved(inbox, f"Step {n}.", cwd=clone)
 
-    done, runtime = _act(inbox, instruction_id, queue, cwd=clone, sources=[_archive(gone)])
+    _, _, runtime = _approved(inbox, "Next.")
 
-    assert done.cwd == str(clone)
-    assert runtime.calls[0]["resume"] is None
-    assert inbox.read(instruction_id).detail["clone"]["rule"] == RULE_CWD
+    names = [turn.instruction for turn in runtime.briefs[0].history]
+    assert names == [f"Step {n}." for n in range(2, continuity.LIMIT + 2)]
+
+
+def test_an_unresolved_instruction_carries_no_history(inbox, clone):
+    _approved(inbox, "Find the README.", cwd=clone)
+    assert continuity.history(inbox, None, before="x") == ()
+    assert continuity.last_clone(inbox, None, before="x") is None
 
 
 def test_no_clone_is_a_refusal_that_names_what_to_pass(inbox, tmp_path):
@@ -317,7 +298,7 @@ def test_no_clone_is_a_refusal_that_names_what_to_pass(inbox, tmp_path):
         assert "--cwd" in result.why and result.request_id is None
         assert result.stages == ("instruction", "clone")
         assert result.declared["made"] == 0 and "unknown" in result.declared["would_need"]
-    assert f"no checkout for {PROJECT!r}" in done.why
+    assert f"no clone for {PROJECT!r} in qmcp's record yet" in done.why
     assert "unresolved" in other.why
     assert "not a directory" in missing.why
     assert done.status == "recorded" and other.status == "unresolved"
@@ -327,7 +308,7 @@ def test_no_clone_is_a_refusal_that_names_what_to_pass(inbox, tmp_path):
 
 def test_an_unknown_instruction_is_refused_outright(inbox):
     with pytest.raises(NoSuchInstruction, match="nobody"):
-        act("nobody", ScriptedRuntime(), Budget(authorised=1), client=_Queue(), rows=inbox, sources=[])
+        act("nobody", ScriptedRuntime(), Budget(authorised=1), client=_Queue(), rows=inbox)
 
 
 # --- the budget ---------------------------------------------------------------------
@@ -385,7 +366,7 @@ def test_the_wait_reads_the_pending_listing_and_never_the_request_while_pending(
             answered.append(True)
 
     done = act(instruction_id, ScriptedRuntime(), Budget(authorised=1), client=queue,
-               rows=inbox, cwd=clone, sources=[], sleep=settle, poll_interval=0.0)
+               rows=inbox, cwd=clone, sleep=settle, poll_interval=0.0)
 
     assert done.status == "done"
     assert queue.listings >= 3
@@ -435,7 +416,7 @@ def test_approve_runs_in_the_clone_and_records_the_outcome(inbox, clone):
     row = inbox.read(instruction_id)
     assert row.status == InstructionStatus.DONE
     assert (row.runtime, row.cwd, row.exit_code, row.outcome_text) == ("scripted", str(clone), 0, "pinned")
-    assert row.session_ref == "s-2" and row.acted_at is not None
+    assert row.acted_at is not None and row.detail["continuity"] == []
     assert row.consent_request_id == f"instruction-{instruction_id}"
     assert row.declared == done.declared
     assert row.detail["outcome"]["spent"] == 0 and row.detail["candidates"] == [PROJECT]
@@ -489,7 +470,7 @@ def test_a_listing_that_never_drops_the_request_ends_at_the_acts_own_deadline(in
         assert len(waits) < 10, "the wait did not end at the deadline"
 
     done = act(instruction_id, ScriptedRuntime(), Budget(authorised=1), client=queue, rows=inbox,
-               cwd=clone, sources=[], sleep=wait, clock=queue.clock, poll_interval=0.0,
+               cwd=clone, sleep=wait, clock=queue.clock, poll_interval=0.0,
                consent_seconds=120)
 
     assert done.status == "unanswered" and not done.ran
@@ -548,7 +529,7 @@ def test_a_runtime_that_raises_is_a_failed_run_not_a_crash(inbox, clone):
     class Broken:
         name = "broken"
 
-        def run(self, instruction, cwd, resume=None, on_event=None):
+        def run(self, brief, on_event=None):
             raise OSError("no executable")
 
     instruction_id = inbox.record()

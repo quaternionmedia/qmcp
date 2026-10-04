@@ -96,8 +96,8 @@ class ActRequest(BaseModel):
     budget: int = Field(default=0, ge=0,
                         description="Runs the command may make; 0 declares and stops")
     cwd: str | None = Field(default=None,
-                            description="The clone, when the thread archive names none."
-                                        " Blank is none.")
+                            description="The clone to run in; without it, the one the"
+                                        " project's last act ran in. Blank is none.")
     voice: bool = Field(default=False,
                         description="Ask the consent aloud on this machine, in the command")
 

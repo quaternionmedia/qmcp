@@ -170,7 +170,6 @@ class Instruction(SQLModel, table=True):
     consent_request_id: str | None = Field(default=None, index=True)
     runtime: str | None = Field(default=None)
     cwd: str | None = Field(default=None)
-    session_ref: str | None = Field(default=None)
     outcome_text: str | None = Field(default=None)
     exit_code: int | None = Field(default=None)
     acted_at: datetime | None = Field(default=None)

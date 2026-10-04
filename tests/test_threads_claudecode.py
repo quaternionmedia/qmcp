@@ -292,34 +292,3 @@ def test_a_file_with_no_session_id_falls_back_to_its_name(tmp_path):
                 name=name)
     threads = ClaudeCodeThreads(root=tmp_path).fetch([], Budget())
     assert len({t.id for t in threads}) == 2
-
-
-# --- what a later run continues --------------------------------------------------
-
-
-def test_the_context_carries_the_checkout_the_session_and_when_it_was_last_active(tmp_path):
-    """What `qmcp.instructions.act` reads to continue a project's work where it
-    was. The last `cwd` wins, the session is the file's own id, and the time
-    is the last turn's. Mutation: keep the first `cwd` -- red."""
-    first = dict(turn(uuid="u-1"), cwd="/work/first")
-    second = dict(turn("assistant", "hi", "u-2"), cwd="/work/second",
-                  timestamp="2026-08-21T00:00:00Z")
-    session(tmp_path, [first, second])
-    source = ClaudeCodeThreads(root=tmp_path)
-    thread = source.fetch([], Budget())[0]
-
-    context = source.context[thread.id]
-    assert context["cwd"] == "/work/second"
-    assert context["session"] == "s-1"
-    assert context["last_at"] == "2026-08-21T00:00:00Z"
-
-
-def test_a_sidechain_continues_its_parent_session(tmp_path):
-    """A subagent's conversation is not one the tool reopens; the session to
-    resume is the one that launched it."""
-    session(tmp_path, [dict(turn(), agentId="a-1", isSidechain=True, cwd="/work")])
-    source = ClaudeCodeThreads(root=tmp_path)
-    thread = source.fetch([], Budget())[0]
-
-    assert thread.id == "s-1/agent-a-1"
-    assert source.context[thread.id]["session"] == "s-1"

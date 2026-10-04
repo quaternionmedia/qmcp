@@ -5,38 +5,38 @@
 **NOTHING RUNS BEFORE A PERSON SAYS APPROVE, AND NOTHING RUNS ON ANY OTHER
 ANSWER.** The inbox records an instruction and stops (`qmcp.instructions`).
 This is the step after it, and it is shaped by `qmcp.governed`: a fixed
-sequence of stages with exactly one that has no halting guarantee -- the agent
--- budgeted before it and recorded after it, with the human gate in front of it
-rather than behind. `governance/qm/records/DRAFT-no-unattended-spending.md`
+sequence of stages with exactly one that has no halting guarantee -- the
+runtime -- budgeted before it and recorded after it, with the human gate in
+front of it rather than behind. `governance/qm/records/DRAFT-no-unattended-spending.md`
 is the rule. The command is issued by a person (clause 1), it states the number
 of runs it may make before it asks (clause 2), zero is its default and a real
 count (clause 3), and the consent it asks for is for this run and does not
-carry (clause 5).
+carry (clause 5). Every runtime is asked, the local model included: a run that
+spends nothing still acts in somebody's clone, and growing a habit of approval
+into an automatic one is a later phase, decided by the person, not by this.
 
-**THE CLONE COMES FROM THE ARCHIVE, SO THE WORK CONTINUES WHERE IT WAS.** The
-thread archive knows which checkout each session worked in and which session
-it was (`qmcp.threads.claudecode` reads both). The most recently active thread
-about the instruction's project whose checkout still exists on disk names the
-clone and the session to resume, so an instruction lands in the conversation
-that was already doing the project's work rather than in a fresh one that has
-to rediscover it. **An explicit `--cwd` wins, and the archive is not read**: a
-path the person typed is what they meant, and it starts a fresh session there,
-so leaving it out is how to continue the archive's. With neither -- a project
-nobody has worked on here, or an instruction whose project is unresolved --
-the act refuses, leaves the row as it was, and says what to pass. A thread is
-about a project when `qmcp.threads.consolidate.about` reads
-it so, or when its checkout is a directory named for the project; the rule
-that chose the clone is kept in the row's `detail`, as the rule that chose
-the project is.
+**CONTINUITY COMES FROM QMCP, NOT THE MODEL.** The runtime is handed a `Brief`:
+the instruction, the project, the clone, and the project's earlier
+instructions and outcomes, read from this server's own record by
+`qmcp.instructions.continuity`. No runtime resumes a conversation of its own,
+so any runtime can carry out the next instruction and still know what the last
+one found. The ids of the turns handed over are written into the row's
+`detail`, so the record says what the runtime was told.
+
+**THE CLONE COMES FROM THE PERSON, THEN FROM THE RECORD.** `--cwd` names it
+outright. Without it, the clone is the one the project's last act ran in, so a
+path given once serves every later instruction in that project. With neither
+-- a project never acted on here, or an instruction whose project is
+unresolved -- the act refuses, leaves the row as it was, and says what to pass.
 
 **THE CONSENT IS THE EXISTING VOICE APPROVAL.** The request put on the human
 queue is an ordinary approval with the options `approve` and `hold`, so it is
 answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
 page, or by voice in this process when the command is given `--voice`. Its
-prompt says the instruction, the project, the clone, the runtime and the
-declared budget, because the person answering may not be the person who
-recorded it, and it expires after `CONSENT_SECONDS`: a consent nobody gave
-within that is `unanswered`, and the row says so.
+prompt says the instruction, the project, the clone, the runtime, the declared
+budget and how much history is carried, because the person answering may not
+be the person who recorded it, and it expires after `CONSENT_SECONDS`: a
+consent nobody gave within that is `unanswered`, and the row says so.
 
 **THE WAIT READS THE PENDING LISTING AND NOTHING ELSE.** `AGENTS.md` records
 that reading one request expires it when its time has passed, and the listing
@@ -58,23 +58,23 @@ is kept beside it, never folded into it.
 WHAT THIS CANNOT DO. Stop a runtime once it is running, or know what it will
 spend before it does -- `would_need` is unknown until the runtime reports, and
 a count it does not report stays unknown rather than becoming zero. Nor can it
-tell that the clone the archive named is the one the person meant: the prompt
-says which, and the person at the gate is the check.
+tell that the clone is the one the person meant: the prompt says which, and
+the person at the gate is the check.
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from qmcp.db.models import Instruction, InstructionStatus
-from qmcp.integrations.agents import AgentOutcome, AgentRuntime, OnEvent
+from qmcp.instructions.continuity import history, last_clone
+from qmcp.integrations.agents import AgentOutcome, AgentRuntime, Brief, OnEvent
 from qmcp.spend import Budget, declare, unknown
-from qmcp.threads.consolidate import about
 
 Rows = Callable[[], Any]
 """A callable returning a context manager that yields a `sqlmodel.Session` over
@@ -93,10 +93,9 @@ APPROVE, HOLD = OPTIONS
 # nobody saw does not sit answerable for a day.
 CONSENT_SECONDS = 600
 
-# The rules `clone_for` can report, as data, beside the clone it chose.
-RULE_ARCHIVE = "the checkout of the most recently active thread about the project"
-RULE_NAMED_DIR = "the checkout is a directory named for the project"
+# The rules that can choose a clone, reported as data beside it.
 RULE_CWD = "passed as --cwd"
+RULE_RECORD = "the clone the project's last act ran in, from qmcp's record"
 
 # How the pending listing is read: pages of the server's own cap, so a queue
 # longer than one page is still searched to its end.
@@ -108,14 +107,10 @@ class Clone:
     """Where an instruction is carried out, and what chose it."""
 
     cwd: Path
-    session_ref: str | None
     rule: str
-    thread_id: str | None = None
-    last_at: str | None = None
 
     def detail(self) -> dict[str, Any]:
-        return {"cwd": str(self.cwd), "session_ref": self.session_ref,
-                "rule": self.rule, "thread": self.thread_id, "last_at": self.last_at}
+        return {"cwd": str(self.cwd), "rule": self.rule}
 
 
 @dataclass(frozen=True)
@@ -135,7 +130,8 @@ class Acted:
     why: str = ""
     request_id: str | None = None
     cwd: str | None = None
-    session_ref: str | None = None
+    carried: tuple[str, ...] = ()
+    """The ids of the earlier instructions the brief carried."""
     answer: str | None = None
     outcome: AgentOutcome | None = None
 
@@ -179,76 +175,24 @@ def configured_rows() -> Rows:
     return lambda: Session(engine)
 
 
-def archive_sources() -> list[Any]:
-    """The configured archive stores, as the thread routes read them.
-
-    Every store, including the web exports that know nothing of checkouts:
-    `clone_for` reads only those that carry a `context`, and never fetches
-    the rest.
-    """
-    from qmcp.threads.cache import DEFAULT_ROOT
-    from qmcp.threads.service import sources_for
-
-    return list(sources_for(DEFAULT_ROOT).values())
+def clone_for(rows: Rows, instruction_id: str, project: str | None,
+              cwd: str | Path | None) -> Clone | None:
+    """`cwd` when given; else the clone the project's last act ran in; else None."""
+    if cwd is not None:
+        return Clone(cwd=Path(cwd), rule=RULE_CWD)
+    remembered = last_clone(rows, project, before=instruction_id)
+    return Clone(cwd=remembered, rule=RULE_RECORD) if remembered is not None else None
 
 
-def clone_for(project: str | None, sources: Iterable[Any],
-              exists: Callable[[Path], bool] = Path.is_dir) -> Clone | None:
-    """The clone the archive names for `project`, or None.
-
-    The most recently active thread about the project whose checkout still
-    exists. Threads are read, spending nothing, from every source handed in
-    that carries a `context` -- what `qmcp.threads.claudecode` keeps per
-    thread -- and a source without one is never fetched, because it has
-    nothing to say about checkouts. A thread is about the project when its
-    checkout is a directory named for it (exactly, ignoring case: a sibling
-    carrying the name as a prefix is another checkout), or by
-    `consolidate.about`'s rule for this project alone -- named in the title,
-    or in at least two turns. The roster is not read here, so the survey
-    reading `qmcp threads consolidate` makes across the whole roster is not
-    made, and a thread that surveyed the workspace counts as about each
-    project it named.
-    """
-    if not project:
-        return None
-    short = project.rsplit("/", 1)[-1]
-    found: list[Clone] = []
-    for source in sources:
-        if not hasattr(source, "context"):
-            continue
-        threads = source.fetch([], Budget())
-        contexts = source.context or {}
-        for thread in threads:
-            context = contexts.get(thread.id) or {}
-            cwd = context.get("cwd")
-            if not cwd:
-                continue
-            path = Path(cwd)
-            if path.name.lower() == short.lower():
-                rule = RULE_NAMED_DIR
-            elif short in about(thread, [short]).projects:
-                rule = RULE_ARCHIVE
-            else:
-                continue
-            if not exists(path):
-                continue
-            found.append(Clone(cwd=path, session_ref=context.get("session"), rule=rule,
-                               thread_id=thread.id, last_at=context.get("last_at")))
-    if not found:
-        return None
-    # Newest activity first. ISO timestamps order as text; a thread with no
-    # timestamp sorts last, since nothing says it was recent.
-    found.sort(key=lambda c: c.last_at or "", reverse=True)
-    return found[0]
-
-
-def consent_prompt(row: Instruction, clone: Clone, runtime: str, budget: Budget) -> str:
+def consent_prompt(row: Instruction, clone: Clone, runtime: str, budget: Budget,
+                   carried: int = 0) -> str:
     """What the person at the gate is asked, in full, because they may not be
     the person who recorded the instruction."""
+    history_note = (f", carrying {carried} earlier instruction(s) from qmcp's record"
+                    if carried else "")
     return (f"Act on the instruction: {row.text} "
             f"Project {row.project or 'unresolved'}, clone {clone.cwd}, "
-            f"runtime {runtime}, budget {budget.authorised} run(s)"
-            + (f", continuing session {clone.session_ref}." if clone.session_ref else "."))
+            f"runtime {runtime}, budget {budget.authorised} run(s){history_note}.")
 
 
 def _now() -> datetime:
@@ -275,7 +219,7 @@ def _is_pending(client: Any, request_id: str) -> bool:
 
 def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: Any,
         cwd: str | Path | None = None, rows: Rows | None = None,
-        sources: Iterable[Any] | None = None, stt: Any = None, tts: Any = None,
+        stt: Any = None, tts: Any = None,
         on_event: OnEvent | None = None, poll_interval: float = 1.0,
         sleep: Callable[[float], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
@@ -284,8 +228,8 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
 
     `client` is the human queue (`qmcp.client.MCPClient` or anything with its
     `create_human_request`, `list_human_requests` and `get_human_request`).
-    `rows` is the inbox, defaulting to the configured database. `sources` is
-    the archive, defaulting to the configured stores. `stt` and `tts` together
+    `rows` is the inbox, defaulting to the configured database; it is also the
+    record the clone and the history are read from. `stt` and `tts` together
     answer the consent by voice in this process, through the approval loop a
     `qmcp human voice` would run; without them the act waits for the answer to
     arrive from anywhere. `sleep` and `clock` are the wait and the seconds it
@@ -309,18 +253,18 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
 
     # --- the clone -----------------------------------------------------------
     reached.append("clone")
-    if cwd is not None:
-        clone = Clone(cwd=Path(cwd), session_ref=None, rule=RULE_CWD)
-    else:
-        clone = clone_for(project, archive_sources() if sources is None else sources)
+    clone = clone_for(rows, instruction_id, project, cwd)
     if clone is None or not clone.cwd.is_dir():
-        reason = (f"no checkout for {project!r} in the thread archive"
+        reason = (f"no clone for {project!r} in qmcp's record yet"
                   if project else "the instruction's project is unresolved")
         if clone is not None:
             reason = f"{clone.cwd} is not a directory"
         return Acted(instruction_id=instruction_id, status=status, stages=tuple(reached),
                      declared=declare(budget, unknown("nothing was resolved to run in")),
-                     why=f"{reason}; pass --cwd <path to the project's clone>.")
+                     why=(f"{reason}; pass --cwd <path to the project's clone>, and it is"
+                          " remembered for the project's later instructions."))
+    turns = history(rows, project, before=instruction_id)
+    carried = tuple(turn.id for turn in turns)
 
     # --- the budget ----------------------------------------------------------
     reached.append("budget")
@@ -331,7 +275,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
     if budget.free:
         return Acted(instruction_id=instruction_id, status=status, stages=tuple(reached),
                      declared=declare(budget, would_need), cwd=str(clone.cwd),
-                     session_ref=clone.session_ref,
+                     carried=carried,
                      why=("issued against 0 runs, so nothing was asked and nothing ran. "
                           "Re-issue with --budget 1 to ask consent for one run."))
 
@@ -340,7 +284,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
     from qmcp.client import HumanRequestConflictError
 
     request_id, attempt = f"instruction-{instruction_id}", 1
-    prompt = consent_prompt(row, clone, runtime_name, budget)
+    prompt = consent_prompt(row, clone, runtime_name, budget, carried=len(carried))
     declared = declare(budget, would_need)
     while True:
         try:
@@ -349,7 +293,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
                 options=list(OPTIONS), timeout_seconds=consent_seconds,
                 context={"instruction_id": instruction_id, "project": project,
                          "cwd": str(clone.cwd), "runtime": runtime_name,
-                         "session_ref": clone.session_ref, "spend": declared})
+                         "carried": list(carried), "spend": declared})
             break
         except HumanRequestConflictError:
             # Acted on before: the earlier consent stands as its own record,
@@ -358,8 +302,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
             request_id = f"instruction-{instruction_id}-{attempt}"
     _update(rows, instruction_id, status=InstructionStatus.ASKING,
             consent_request_id=request_id, runtime=runtime_name, cwd=str(clone.cwd),
-            session_ref=clone.session_ref, declared=declared,
-            detail_clone=clone.detail())
+            declared=declared, detail={"clone": clone.detail(), "continuity": list(carried)})
     if on_event:
         on_event("asking", request_id)
 
@@ -388,7 +331,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
         _update(rows, instruction_id, status=ended, declared=declared, acted_at=_now())
         return Acted(instruction_id=instruction_id, status=ended.value, stages=tuple(reached),
                      declared=declared, request_id=request_id, cwd=str(clone.cwd),
-                     session_ref=clone.session_ref, answer=answer,
+                     carried=carried, answer=answer,
                      why=(f"the consent was answered {answer!r}; nothing ran" if answer
                           else "nobody answered the consent before it expired; nothing ran"))
 
@@ -399,11 +342,11 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
     _update(rows, instruction_id, status=InstructionStatus.ACTING)
     if on_event:
         on_event("acting", str(clone.cwd))
+    brief = Brief(instruction=text, cwd=clone.cwd, project=project, history=turns)
     try:
-        outcome = runtime.run(text, clone.cwd, resume=clone.session_ref, on_event=on_event)
+        outcome = runtime.run(brief, on_event=on_event)
     except Exception as exc:  # noqa: BLE001 -- a runtime that raised is a failed run, recorded
         outcome = AgentOutcome(text=f"{type(exc).__name__}: {exc}", exit_code=-1,
-                               session_ref=clone.session_ref,
                                spent=unknown("the runtime raised before reporting"))
 
     # --- the record ----------------------------------------------------------------
@@ -412,31 +355,25 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
     ended = InstructionStatus.DONE if outcome.succeeded else InstructionStatus.FAILED
     _update(rows, instruction_id, status=ended, declared=declared, acted_at=_now(),
             outcome_text=outcome.text, exit_code=outcome.exit_code,
-            session_ref=outcome.session_ref or clone.session_ref,
-            detail_outcome={"elapsed_seconds": outcome.elapsed_seconds,
-                            "argv": list(outcome.argv), "spent": outcome.spent})
+            detail={"outcome": {"elapsed_seconds": outcome.elapsed_seconds,
+                                "argv": list(outcome.argv), "spent": outcome.spent,
+                                **outcome.detail}})
     return Acted(instruction_id=instruction_id, status=ended.value, stages=tuple(reached),
                  declared=declared, request_id=request_id, cwd=str(clone.cwd),
-                 session_ref=outcome.session_ref or clone.session_ref, answer=answer,
-                 outcome=outcome)
+                 carried=carried, answer=answer, outcome=outcome)
 
 
-def _update(rows: Rows, instruction_id: str, *, detail_clone: dict | None = None,
-            detail_outcome: dict | None = None, **fields: Any) -> None:
-    """Write `fields` onto the row and move `updated_at`. `detail` is merged,
-    never replaced: the evidence for the project stays beside the evidence
-    for the clone and the outcome."""
+def _update(rows: Rows, instruction_id: str, *, detail: dict | None = None,
+            **fields: Any) -> None:
+    """Write `fields` onto the row and move `updated_at`. `detail` is merged key
+    by key, never replaced: the evidence for the project stays beside the
+    evidence for the clone, the continuity and the outcome."""
     with rows() as session:
         row = session.get(Instruction, instruction_id)
         for name, value in fields.items():
             setattr(row, name, value)
-        if detail_clone is not None or detail_outcome is not None:
-            detail = dict(row.detail or {})
-            if detail_clone is not None:
-                detail["clone"] = detail_clone
-            if detail_outcome is not None:
-                detail["outcome"] = detail_outcome
-            row.detail = detail
+        if detail:
+            row.detail = {**(row.detail or {}), **detail}
         row.updated_at = _now()
         session.add(row)
         session.commit()
@@ -447,15 +384,13 @@ __all__ = [
     "CONSENT_SECONDS",
     "HOLD",
     "OPTIONS",
-    "RULE_ARCHIVE",
     "RULE_CWD",
-    "RULE_NAMED_DIR",
+    "RULE_RECORD",
     "STAGES",
     "Acted",
     "Clone",
     "NoSuchInstruction",
     "act",
-    "archive_sources",
     "clone_for",
     "configured_rows",
     "consent_prompt",
