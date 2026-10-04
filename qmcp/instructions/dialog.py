@@ -64,6 +64,12 @@ LISTEN_DURATION = 30.0
 PAUSE_MS = 1500
 
 
+def _said(text: str, chars: int | None = None) -> str:
+    """What was heard, to be said back inside a sentence. A transcript carries
+    its own closing stop, which the sentence around it would double."""
+    return text.strip()[:chars].rstrip(".!?")
+
+
 class InstructionDialog:
     """Takes one instruction by voice and records it. Nothing runs."""
 
@@ -141,7 +147,7 @@ class InstructionDialog:
                         reask, reason = f"I didn't hear anything. {PROMPT}", "noinput"
                         break
                     answer = heard.strip()
-                    readback = f"I heard: {answer}. {grammar}"
+                    readback = f"I heard: {_said(answer)}. {grammar}"
                     self._announce("speaking", readback, reason="confirm")
                     self.tts.speak(readback)
                     continue
@@ -157,7 +163,7 @@ class InstructionDialog:
                 elif not heard.strip():
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {heard.strip()[:80]}. {grammar}", "nomatch"
+                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
                 break
             if reasks < self.max_retries:
                 self._announce("speaking", reask, reason=reason)
@@ -186,7 +192,7 @@ class InstructionDialog:
                 if not heard.strip():
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {heard.strip()[:80]}. {grammar}", "nomatch"
+                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
                 self._announce("speaking", reask, reason=reason)
                 self.tts.speak(reask)
         return None

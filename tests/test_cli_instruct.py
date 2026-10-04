@@ -182,7 +182,7 @@ def test_a_spoken_instruction_is_read_back_and_recorded_on_record(fake_client, m
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[0] == "What should be done?"
-    assert tts.spoken[1] == "I heard: Deploy qmcp to the pi.. Say record or again."
+    assert tts.spoken[1] == "I heard: Deploy qmcp to the pi. Say record or again."
     assert tts.spoken[2] == "Recorded for qmcp."
     assert fake_client.recorded == [{
         "text": "Deploy qmcp to the pi.", "source": "voice", "project": None,
@@ -243,9 +243,9 @@ def test_again_takes_the_instruction_a_second_time(fake_client, monkeypatch):
     assert result.exit_code == 0, result.output
     assert tts.spoken == [
         "What should be done?",
-        "I heard: Deploy qmcp.. Say record or again.",
+        "I heard: Deploy qmcp. Say record or again.",
         "What should be done?",
-        "I heard: Deploy qmcp to the pi.. Say record or again.",
+        "I heard: Deploy qmcp to the pi. Say record or again.",
         "Recorded for qmcp.",
     ]
     assert fake_client.recorded[0]["text"] == "Deploy qmcp to the pi."
