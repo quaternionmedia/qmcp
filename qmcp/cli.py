@@ -1914,7 +1914,8 @@ def instructions_show(instruction_id: str, base_url: str | None) -> None:
 @click.option("--budget", default=0, type=int, show_default=True,
               help="runs this command may make; 0 declares what would be asked and stops")
 @click.option("--cwd", type=click.Path(path_type=Path), default=None,
-              help="the clone to run in, when the thread archive names none for the project")
+              help="the clone to run in, in a fresh session; without it the thread archive"
+                   " names one and its session is resumed")
 @click.option("--voice", is_flag=True,
               help="answer the consent by voice here, as `qmcp human voice` would")
 @click.option("--base-url", default=None,
@@ -1932,9 +1933,10 @@ def instructions_act(instruction_id: str, runtime_name: str | None, budget: int,
 
     The clone is --cwd when it is given, in a fresh session; without it, the
     checkout of the most recently active archive thread about the
-    instruction's project, whose session is resumed. A consent request `instruction-<id>` with the options approve and
-    hold goes on the human queue, saying the instruction, the project, the
-    clone, the runtime and the budget, and expires after a fixed wait
+    instruction's project, whose session is resumed. A consent request
+    `instruction-<id>` with the options approve and hold goes on the human
+    queue, saying the instruction, the project, the clone, the runtime and
+    the budget, and expires after a fixed wait
     (`qmcp.instructions.act.CONSENT_SECONDS`). Approve runs
     the runtime in the clone and records the outcome as `done` or `failed`;
     hold records `refused`; silence records `unanswered`. Nothing runs on any
