@@ -1,4 +1,8 @@
-"""The voice-approval loop: speak a prompt, listen, parse yes/no, submit.
+"""The voice-approval loop: speak a prompt, listen, parse the answer, submit.
+
+A request carrying `options` is a closed choice and the options are its
+grammar. A request carrying none is an open question: the transcript itself is
+the answer, read back once and recorded when the speaker says so.
 
 Structurally typed against vox's `SpeechToText`/`TextToSpeech` shape rather
 than importing vox at module load — this module only needs objects with a
@@ -43,6 +47,12 @@ _NO_WORDS = {
 _YES_PHRASES = ("go ahead", "do it", "sounds good")
 _NO_PHRASES = ("do not", "dont", "hold off", "not now")
 _UNCLEAR_PHRASES = ("not sure", "not certain", "dont know")
+
+# The grammar of an open question's read-back, in the order it is spoken.
+# `_ask_open` parses the confirmation with `parse_yes_no` and `match_option`:
+# a yes or `record` records the answer, a no or `again` asks the question
+# again. Neither word is in the yes/no vocabulary.
+_CONFIRM = ["record", "again"]
 
 
 def parse_yes_no(text: str) -> bool | None:
@@ -102,6 +112,12 @@ def match_option(text: str, options: list[str]) -> str | None:
     return named[0] if len(named) == 1 else None
 
 
+def _said(text: str, chars: int | None = None) -> str:
+    """What was heard, to be said back inside a sentence. A transcript carries
+    its own closing stop, which the sentence around it would double."""
+    return text.strip()[:chars].rstrip(".!?")
+
+
 def say_options(options: list[str]) -> str:
     """The spoken grammar: "Say approve or hold." / "Say red, green, or blue."."""
     if len(options) == 1:
@@ -120,7 +136,7 @@ class TextToSpeech(Protocol):
 
 
 class UnclearResponse(Exception):
-    """Raised when a spoken answer never parsed as yes/no within the retry budget."""
+    """Raised when no spoken answer was usable within the retry budget."""
 
 
 class VoiceApprovalLoop:
@@ -176,7 +192,59 @@ class VoiceApprovalLoop:
                 if not heard.strip():
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {heard.strip()[:80]}. {grammar}", "nomatch"
+                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                self._announce("speaking", reask, reason=reason)
+                self.tts.speak(reask)
+        self._announce("gave_up", heard.strip())
+        raise UnclearResponse(
+            f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
+        )
+
+    def _ask_open(self, prompt: str) -> str:
+        """Speak the prompt, listen, read the transcript back, and return it once confirmed.
+
+        An open question has no grammar for the answer, so the transcript is
+        the answer and the speaker is the only check on it: it is read back
+        as a closed choice between `record` and `again`, parsed with the same
+        helpers as any closed choice, so a yes records and a no re-asks.
+
+        One budget covers the whole dialog. Every turn the speaker has to be
+        asked for a second time costs a retry -- nothing heard for the answer
+        (noinput), nothing usable for the confirmation (noinput or nomatch),
+        or `again` -- and the turns that move the dialog forward cost nothing.
+        Exhausting it raises, and nothing is guessed or recorded.
+        """
+        grammar = say_options(_CONFIRM)
+        self._announce("speaking", prompt)
+        self.tts.speak(prompt)
+        heard = ""
+        answer: str | None = None
+        for reasks in range(self.max_retries + 1):
+            while True:
+                heard, _ = self.stt.listen(duration=self.listen_duration)
+                if answer is None:
+                    if not heard.strip():
+                        reask, reason = f"I didn't hear anything. {prompt}", "noinput"
+                        break
+                    answer = heard.strip()
+                    readback = f"I heard: {_said(answer)}. {grammar}"
+                    self._announce("speaking", readback, reason="confirm")
+                    self.tts.speak(readback)
+                    continue
+                decision = parse_yes_no(heard)
+                named = match_option(heard, _CONFIRM)
+                # The decision is consulted before the option named, as `_ask`
+                # does: "don't record" names record and is a no.
+                if decision is True or (decision is None and named == "record"):
+                    return answer
+                if decision is False or named == "again":
+                    reask, reason, answer = prompt, "again", None
+                elif not heard.strip():
+                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
+                else:
+                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                break
+            if reasks < self.max_retries:
                 self._announce("speaking", reask, reason=reason)
                 self.tts.speak(reask)
         self._announce("gave_up", heard.strip())
@@ -188,14 +256,16 @@ class VoiceApprovalLoop:
         """Answer one pending request by voice.
 
         If the request already has a response, returns it without asking
-        again. Raises `UnclearResponse` if the spoken answer never parses.
+        again. Raises `UnclearResponse` if no spoken answer was usable.
         """
         request, existing = self.client.get_human_request(request_id)
         if existing is not None:
             return existing
 
-        options = request.options or ["approve", "reject"]
-        answer = self._ask(request.prompt, options)
+        if request.options:
+            answer = self._ask(request.prompt, request.options)
+        else:
+            answer = self._ask_open(request.prompt)
 
         response = self.client.submit_human_response(
             request_id=request_id, response=answer, responded_by="vox"

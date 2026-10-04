@@ -33,29 +33,45 @@ from pathlib import Path
 
 from qmcp.integrations.voice.adapter import UnclearResponse, VoiceApprovalLoop
 
-OPTIONS = ["approve", "hold"]
+OPTIONS = ("approve", "hold")
 PROMPT = "Voice check."
 GRAMMAR = "Say approve or hold."
+OPEN_PROMPT = "Voice check. What should the branch be called?"
 
 
 @dataclass(frozen=True)
 class Case:
-    """One scripted answer, and what the queue should hold afterwards."""
+    """One scripted exchange, and what the queue should hold afterwards."""
 
     heard: str
     recorded: str | None
-    """The option recorded, or None when nothing may be submitted."""
+    """The answer recorded, or None when nothing may be submitted."""
     reasked: str | None = None
-    """How the re-ask must begin, for an answer that is not usable."""
+    """How a later turn must begin: the re-ask for an answer that is not
+    usable, or the read-back of an open question's transcript."""
+    then: tuple[str, ...] = ()
+    """What is heard on each listen after the first, for a dialog with turns."""
+    prompt: str = PROMPT
+    options: tuple[str, ...] | None = OPTIONS
+    """None asks the request as an open question."""
+
+    @property
+    def asked(self) -> str:
+        """What the prompt must be spoken as: the options are the grammar, when there are any."""
+        return f"{self.prompt} {GRAMMAR}" if self.options else self.prompt
 
 
-# One case per way a spoken approval can end. A yes read onto the options,
-# an option named, something heard that matches nothing, and nothing heard.
+# One case per way a spoken answer can end. A yes read onto the options, an
+# option named, something heard that matches nothing, nothing heard, and an
+# open question whose transcript is read back and recorded on "record".
 OFFLINE_CASES = (
     Case("Yes, go ahead.", "approve"),
     Case("Hold.", "hold"),
     Case("banana", None, reasked="I heard: banana."),
     Case("", None, reasked="I didn't hear anything."),
+    Case("release candidate", "release candidate", then=("record",),
+         reasked="I heard: release candidate. Say record or again.",
+         prompt=OPEN_PROMPT, options=None),
 )
 
 
@@ -69,6 +85,31 @@ class _Recorded:
     def speak(self, text: str, out_path: str | None = None) -> str:
         self.spoken.append(text)
         return self.tts.speak(text, out_path)
+
+
+class _Scripted:
+    """An STT client whose engine hears the next scripted line on each listen.
+
+    The deterministic engine answers every listen with its state's `heard`,
+    and a dialog with turns needs a different transcript per listen. The state
+    is this process's object and the engine reads it on each request, so
+    advancing it between listens scripts the speaker without touching the wire:
+    each transcript still travels the engine contract over HTTP.
+    """
+
+    def __init__(self, stt, state, then: tuple[str, ...]):
+        self.stt = stt
+        self.state = state
+        self.then = list(then)
+
+    def listen(self, duration: float = 5.0) -> tuple[str, str]:
+        heard = self.stt.listen(duration=duration)
+        if self.then:
+            self.state.heard = self.then.pop(0)
+        return heard
+
+    def announce(self, state: str, text: str = "", reason: str | None = None) -> bool:
+        return self.stt.announce(state, text, reason=reason)
 
 
 @contextlib.contextmanager
@@ -127,7 +168,7 @@ def throwaway_server(database: Path) -> Iterator[str]:
 
 
 def _outcome(client, request_id: str) -> tuple[str | None, str | None]:
-    """(the option recorded, who recorded it), or (None, None)."""
+    """(the answer recorded, who recorded it), or (None, None)."""
     _, response = client.get_human_request(request_id)
     if response is None:
         return None, None
@@ -157,31 +198,36 @@ def run_offline(echo: Callable[[str], None] = print, cases=OFFLINE_CASES) -> boo
         passed = 0
         for number, case in enumerate(cases, 1):
             request_id = f"voice-check-{number}"
+            # The type is the queue's record of what was asked; the loop reads
+            # only `options`, so the verdict below does not depend on it.
             client.create_human_request(
-                request_id=request_id, request_type="approval", prompt=PROMPT,
-                options=OPTIONS, timeout_seconds=300,
+                request_id=request_id,
+                request_type="approval" if case.options else "input",
+                prompt=case.prompt,
+                options=list(case.options) if case.options else None,
+                timeout_seconds=300,
             )
             state = EngineState(audio_dirs=[root], microphone="deterministic engine",
                                 heard=case.heard, contract=JOE)
             tts = _Recorded(RecordingTTS(out_dir=str(root / "spoken")))
             with serve_engine(state) as (engine_url, _), HttpSTT(engine_url, contract=JOE) as stt:
-                loop = VoiceApprovalLoop(stt=stt, tts=tts, client=client,
-                                         max_retries=1, listen_duration=1.0)
+                loop = VoiceApprovalLoop(stt=_Scripted(stt, state, case.then), tts=tts,
+                                         client=client, max_retries=1, listen_duration=1.0)
                 with contextlib.suppress(UnclearResponse):
                     loop.run_once(request_id)
 
             recorded, by = _outcome(client, request_id)
             problems = []
-            if not tts.spoken or tts.spoken[0] != f"{PROMPT} {GRAMMAR}":
+            if not tts.spoken or tts.spoken[0] != case.asked:
                 problems.append(f"prompt was {tts.spoken[:1]!r}")
             if recorded != case.recorded:
                 problems.append(f"recorded {recorded!r}, expected {case.recorded!r}")
             if recorded is not None and by != "vox":
                 problems.append(f"recorded by {by!r}, expected 'vox'")
             if case.reasked and not any(s.startswith(case.reasked) for s in tts.spoken[1:]):
-                problems.append(f"no re-ask beginning {case.reasked!r}")
+                problems.append(f"no turn beginning {case.reasked!r}")
 
-            heard = f'"{case.heard}"'
+            heard = '"' + '", "'.join((case.heard, *case.then)) + '"'
             if recorded is not None:
                 result = f'recorded "{recorded}" by {by}'
             else:
@@ -206,7 +252,7 @@ def run_live(client, stt, tts, echo: Callable[[str], None] = print,
     request_id = f"voice-check-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
     client.create_human_request(
         request_id=request_id, request_type="approval", prompt=PROMPT,
-        options=OPTIONS, timeout_seconds=300,
+        options=list(OPTIONS), timeout_seconds=300,
     )
     echo(f"queued:  {request_id} (expires in five minutes)")
     echo(f'asking:  "{PROMPT} {GRAMMAR}"')
