@@ -261,3 +261,34 @@ def test_a_service_that_does_not_answer_is_a_failed_run_naming_the_endpoint(tmp_
 
     assert outcome.exit_code == 1 and outcome.spent == 0
     assert ENDPOINT in outcome.text and "qmcp localmodel check" in outcome.text
+
+
+# --- readiness -----------------------------------------------------------------------
+
+
+def _tags(*names):
+    def answer(request):
+        assert request.url.path == "/api/tags"
+        return httpx.Response(200, json={"models": [{"name": n} for n in names]})
+    return httpx.Client(transport=httpx.MockTransport(answer))
+
+
+def test_a_service_serving_the_pinned_model_is_ready():
+    assert ollama.Runtime(client=_tags(MODEL, "other:1b")).ready() is None
+
+
+def test_a_service_without_the_pinned_model_says_how_to_get_it():
+    """Mutation: check only that the service answers -- red."""
+    reason = ollama.Runtime(client=_tags("other:1b")).ready()
+
+    assert MODEL in reason and "qmcp localmodel plan" in reason
+
+
+def test_a_service_that_does_not_answer_is_not_ready():
+    """Mutation: let the transport error out of `ready` -- red."""
+    def refuse(request):
+        raise httpx.ConnectError("refused", request=request)
+
+    reason = ollama.Runtime(client=httpx.Client(transport=httpx.MockTransport(refuse))).ready()
+
+    assert ENDPOINT in reason and "qmcp localmodel check" in reason

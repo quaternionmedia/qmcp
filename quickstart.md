@@ -99,6 +99,19 @@ or it fails with `no such table: human_requests`.
 which microphone the engine records from, which synthesizer speaks, and how
 a spoken answer maps onto a request's own options.
 
+## 6) The spoken instruction, on the local model
+
+The loop also runs the other way: an instruction spoken at the machine,
+consented to aloud, carried out by the model `qmcp localmodel` stands up, and
+said back -- with each instruction told what the project's earlier ones found.
+`docs/voice-loop-demo.md` runs it in three tiers; the first two need no
+microphone:
+
+```bash
+uv run qmcp cookbook instruct                     # the loop, with nothing real behind it
+uv run qmcp cookbook instruct --runtime local     # continuity, on the local model
+```
+
 ## Next Steps
 
 - Read `docs/overview.md` for architecture boundaries.
