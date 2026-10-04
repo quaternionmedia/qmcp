@@ -94,7 +94,7 @@ def test_live_records_the_spoken_option(tmp_path):
 
     assert ok is True
     assert response.response == "approve" and response.responded_by == "vox"
-    assert 'asking:  "Voice check. Say approve or hold."' in lines
+    assert 'asking:  "Voice check. Approve or hold?"' in lines
 
 
 def test_live_records_nothing_for_an_unclear_answer(tmp_path):

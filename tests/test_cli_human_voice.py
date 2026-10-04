@@ -103,7 +103,7 @@ def test_human_voice_answers_the_given_request(monkeypatch):
     fake_client.submit_human_response.assert_called_once_with(
         request_id="demo-1", response="approve", responded_by="vox"
     )
-    assert tts.spoken[0] == "Deploy? Say approve or reject."
+    assert tts.spoken[0] == "Deploy? Approve or reject?"
 
 
 def test_human_voice_without_request_id_uses_oldest_pending(monkeypatch):

@@ -35,7 +35,7 @@ from qmcp.integrations.voice.adapter import UnclearResponse, VoiceApprovalLoop
 
 OPTIONS = ["approve", "hold"]
 PROMPT = "Voice check."
-GRAMMAR = "Say approve or hold."
+GRAMMAR = "Approve or hold?"
 
 
 @dataclass(frozen=True)
@@ -54,8 +54,8 @@ class Case:
 OFFLINE_CASES = (
     Case("Yes, go ahead.", "approve"),
     Case("Hold.", "hold"),
-    Case("banana", None, reasked="I heard: banana."),
-    Case("", None, reasked="I didn't hear anything."),
+    Case("banana", None, reasked="Heard banana."),
+    Case("", None, reasked="Didn't catch that."),
 )
 
 

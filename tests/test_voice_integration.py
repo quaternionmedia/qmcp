@@ -106,8 +106,8 @@ def test_run_once_answers_clear_approval():
 
     assert result.response == "approve"
     assert client.submitted == [("deploy-001", "approve")]
-    assert tts.spoken[0] == "Deploy to production? Say approve or reject."
-    assert "Recorded: approve" in tts.spoken
+    assert tts.spoken[0] == "Deploy to production? Approve or reject?"
+    assert "Approved." in tts.spoken
 
 
 def test_run_once_answers_clear_rejection():
@@ -134,8 +134,8 @@ def test_run_once_retries_on_unclear_answer_then_succeeds():
 
     assert result.response == "approve"
     assert stt.calls == 3
-    assert tts.spoken[1] == "I heard: uh. Say approve or reject."
-    assert tts.spoken[2] == "I heard: hmm. Say approve or reject."
+    assert tts.spoken[1] == "Heard uh. Approve or reject?"
+    assert tts.spoken[2] == "Heard hmm. Approve or reject?"
 
 
 def test_run_once_raises_when_never_clear():
@@ -331,9 +331,9 @@ def test_noinput_and_nomatch_are_reprompted_differently():
 
     assert loop.run_once("dr-3").response == "approve"
     assert tts.spoken[:3] == [
-        "Launch the audit? Say approve or hold.",
-        "I didn't hear anything. Say approve or hold.",
-        "I heard: banana. Say approve or hold.",
+        "Launch the audit? Approve or hold?",
+        "Didn't catch that. Approve or hold?",
+        "Heard banana. Approve or hold?",
     ]
 
 
@@ -365,7 +365,7 @@ def test_three_or_more_options_are_spoken_as_a_list():
     tts = RecordingTTS()
     VoiceApprovalLoop(stt=ScriptedSTT(["green"]), tts=tts, client=client).run_once("pick-1")
 
-    assert tts.spoken[0] == "Which? Say red, green, or blue."
+    assert tts.spoken[0] == "Which? Red, green, or blue?"
 
 
 # --- what the loop tells a display ---------------------------------------------
@@ -394,7 +394,7 @@ def test_a_clear_answer_is_announced_as_asked_then_recorded():
     VoiceApprovalLoop(stt=stt, tts=RecordingTTS(), client=client).run_once("deploy-1")
 
     assert stt.announced == [
-        ("speaking", "Deploy? Say approve or hold.", None),
+        ("speaking", "Deploy? Approve or hold?", None),
         ("recorded", "approve", None),
     ]
 
@@ -412,7 +412,7 @@ def test_each_reask_is_announced_with_its_reason():
         ("speaking", "nomatch"),
         ("recorded", None),
     ]
-    assert stt.announced[2][1].startswith("I heard: banana.")
+    assert stt.announced[2][1].startswith("Heard banana.")
 
 
 def test_giving_up_is_announced_with_what_was_last_heard():

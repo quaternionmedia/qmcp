@@ -191,14 +191,24 @@ def consent_prompt(row: Instruction, clone: Clone, runtime: str, budget: Budget,
     """What the person at the gate is asked, in full, because they may not be
     the person who recorded the instruction.
 
-    `spoken` names the clone by its folder, for the form said aloud: an
-    absolute path read character by character kept a consent talking for
-    half a minute. The written prompt keeps the whole path.
+    `spoken` is the form said aloud: a few plain words -- where, what, how,
+    how many runs in words, and whether it carries what came before. The
+    clone is not named: an absolute path read character by character kept a
+    consent talking for half a minute. The written prompt keeps everything.
     """
+    if spoken:
+        from qmcp.integrations.voice.adapter import counted
+
+        how = {"local": "The local model", "scripted": "A script"}.get(runtime, f"Runtime {runtime}")
+        remembers = ", with what came before" if carried else ""
+        asked = row.text.strip()
+        asked += "" if asked.endswith((".", "?", "!")) else "."
+        return (f"Run in {row.project or 'no project'}: {asked} "
+                f"{how}, {counted(budget.authorised, 'run')}{remembers}.")
     history_note = (f", carrying {carried} earlier instruction(s) from qmcp's record"
                     if carried else "")
     return (f"Act on the instruction: {row.text} "
-            f"Project {row.project or 'unresolved'}, clone {clone.cwd.name if spoken else clone.cwd}, "
+            f"Project {row.project or 'unresolved'}, clone {clone.cwd}, "
             f"runtime {runtime}, budget {budget.authorised} run(s){history_note}.")
 
 
