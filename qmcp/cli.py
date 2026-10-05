@@ -2002,6 +2002,9 @@ def vocabulary_command(as_json: bool) -> None:
     for name, project in known.items():
         click.echo(f"{'projects.' + name:<24} {project['says']}")
         click.echo(f"{'':<24} {' / '.join(project['terms'])}")
+        for check in project["checks"]:
+            click.echo(f"{'  check ' + check['name']:<24} {check['says']}: {' / '.join(check['phrases'])}")
+            click.echo(f"{'':<24} runs `{check['command']}`")
 
 
 @cli.command("instruct")

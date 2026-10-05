@@ -323,8 +323,16 @@ class Conversation:
         from qmcp.instructions.spoken import starting, summarise
         from qmcp.spend import Budget
 
+        from qmcp.integrations.agents.check import CheckRuntime
+
         project = row.get("project")
         self.echo(f"recorded: {row['id']} for {project or 'no project'}")
+        # An instruction naming one of the project's declared checks runs that
+        # command, behind the same consent, instead of the model.
+        check = vocabulary.match_check(plain(row.get("text", "")), project)
+        runtime = CheckRuntime(check) if check else self.runtime
+        if check:
+            self.echo(f"check: {check.project}.{check.name}: {check.command}")
 
         def event(state: str, text: str) -> None:
             if state == "acting":
@@ -332,7 +340,7 @@ class Conversation:
             elif state == "output":
                 self.echo(f"read: {text}")
 
-        done = act(row["id"], self.runtime, Budget(authorised=1), client=self.client,
+        done = act(row["id"], runtime, Budget(authorised=1), client=self.client,
                    rows=self.rows, cwd=self._clone_for(project, row["id"]),
                    cwd_rule=RULE_SIBLING, stt=self.stt, tts=self.tts, on_event=event,
                    poll_interval=self.poll_interval)

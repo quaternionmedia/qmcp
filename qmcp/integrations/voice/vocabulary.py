@@ -18,6 +18,7 @@ again and is no request to repeat a question.
 from __future__ import annotations
 
 import tomllib
+from dataclasses import dataclass
 from functools import cache
 from importlib.resources import files
 from typing import Any
@@ -55,9 +56,54 @@ def says(key: str) -> str:
     return entry(key).get("says", "")
 
 
+@dataclass(frozen=True)
+class Check:
+    """One of a project's own commands, run by voice behind consent."""
+
+    project: str
+    name: str
+    says: str
+    phrases: tuple[str, ...]
+    argv: tuple[str, ...]
+    minutes: float
+
+    @property
+    def command(self) -> str:
+        return " ".join(self.argv)
+
+
+def checks(project: str | None = None) -> list[Check]:
+    """The declared checks of one project, or of every core project."""
+    found = []
+    for name, body in load().get("projects", {}).items():
+        if project is not None and name != project:
+            continue
+        for item in body.get("checks", ()):
+            found.append(Check(project=name, name=item["name"], says=item.get("says", ""),
+                               phrases=tuple(item.get("phrases", ())),
+                               argv=tuple(item["argv"]), minutes=float(item.get("minutes", 5))))
+    return found
+
+
+def match_check(words: str, project: str | None) -> Check | None:
+    """The project's check whose phrase the words contain, as whole words, or
+    None. Only the project's own checks are read: "run the tests" means the
+    tests of the project the instruction was recorded for."""
+    if not project:
+        return None
+    padded = f" {words} "
+    for check in checks(project):
+        if any(f" {phrase} " in padded for phrase in check.phrases):
+            return check
+    return None
+
+
 def projects() -> dict[str, dict[str, Any]]:
-    """The core projects, each with what it is and the terms its instructions carry."""
-    return {name: {"says": body.get("says", ""), "terms": list(body.get("terms", ()))}
+    """The core projects, each with what it is, the terms its instructions
+    carry, and the checks it declares."""
+    return {name: {"says": body.get("says", ""), "terms": list(body.get("terms", ())),
+                   "checks": [{"name": c.name, "says": c.says, "phrases": list(c.phrases),
+                               "command": c.command} for c in checks(name)]}
             for name, body in load().get("projects", {}).items()}
 
 
@@ -82,4 +128,5 @@ def entries() -> list[dict[str, Any]]:
     return shown
 
 
-__all__ = ["entries", "entry", "load", "phrases", "projects", "says", "terms", "words"]
+__all__ = ["Check", "checks", "entries", "entry", "load", "match_check", "phrases", "projects",
+           "says", "terms", "words"]
