@@ -452,7 +452,8 @@ def converse(runtime_name: str | None, clones: Path | None, wake: str | None,
         wait_for(client, stt, echo=click.echo)
         conversation = Conversation(stt, tts, client, runtime, roster_names(),
                                     clones=clones, wake=wake, echo=click.echo,
-                                    tacit_above=settings.voice_tacit_confidence)
+                                    tacit_above=settings.voice_tacit_confidence,
+                                    hint_terms=settings.voice_hint_terms)
         ready = getattr(runtime, "ready", None)
         missing = ready() if ready else None
         if missing:
@@ -1977,6 +1978,34 @@ def _print_instruction(row: dict) -> None:
     if row.get("runtime"):
         click.echo(f"      runtime: {row['runtime']}  clone: {row.get('cwd')}"
                    + (f"  exit {row['exit_code']}" if row.get("exit_code") is not None else ""))
+
+
+@cli.command("vocabulary")
+@click.option("--json", "as_json", is_flag=True, help="print it as JSON, as the API serves it")
+def vocabulary_command(as_json: bool) -> None:
+    """What can be said to the spoken loop, and what each phrase does.
+
+    Read from `qmcp/integrations/voice/vocabulary.toml`, the one place the
+    loop's words are declared; the loop acts on these lists and no others.
+    """
+    import json
+
+    from qmcp.integrations.voice import vocabulary
+
+    shown, known = vocabulary.entries(), vocabulary.projects()
+    if as_json:
+        click.echo(json.dumps({"phrases": shown, "projects": known}, indent=2))
+        return
+    for item in shown:
+        click.echo(f"{item['key']:<24} {item['says']}")
+        said = item["phrases"] + item["words"]
+        click.echo(f"{'':<24} {' / '.join(said)}")
+    for name, project in known.items():
+        click.echo(f"{'projects.' + name:<24} {project['says']}")
+        click.echo(f"{'':<24} {' / '.join(project['terms'])}")
+        for check in project["checks"]:
+            click.echo(f"{'  check ' + check['name']:<24} {check['says']}: {' / '.join(check['phrases'])}")
+            click.echo(f"{'':<24} runs `{check['command']}`")
 
 
 @cli.command("instruct")

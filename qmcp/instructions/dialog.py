@@ -45,6 +45,8 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from qmcp.instructions import resolve
+from qmcp.integrations.voice import vocabulary
+from qmcp.integrations.voice.adapter import Abandoned, plain_words
 from qmcp.integrations.voice.adapter import (
     MAX_REPEATS,
     SpeechToText,
@@ -62,9 +64,12 @@ from qmcp.integrations.voice.adapter import (
 
 PROMPT = "What should be done?"
 WHICH_PROJECT = "Which project?"
-CONFIRM = ["agree", "again"]
-# Said by someone used to the read-back's earlier word; taken as `agree`, never said.
-AGREE_ALIASES = ("record",)
+# The read-back's options, as offered, and the other words taken as `agree` --
+# the read-back's earlier word among them -- which are never said
+# (`vocabulary.toml`, `answer.agree` and `answer.again`).
+_AGREE, *_ALIASES = vocabulary.phrases("answer.agree")
+CONFIRM = [_AGREE, vocabulary.phrases("answer.again")[0]]
+AGREE_ALIASES = tuple(_ALIASES)
 # How sure the engine must be of an instruction for the read-back to ask nothing
 # (`tacit_above`), and how long it then listens for an interruption. Measured
 # on synthesized instructions, whisper's base model scored 0.5 to 0.75; above
@@ -207,6 +212,7 @@ class InstructionDialog:
             reask = reason = None
             if answer is None:
                 heard = self._listen(long=True)
+                _drop_if_asked(heard)
                 if not heard.strip():
                     reask, reason = f"Didn't catch that. {PROMPT}", "noinput"
                 elif asks_repeat(heard) and repeats < MAX_REPEATS:
@@ -221,6 +227,7 @@ class InstructionDialog:
             elif tacit:
                 tacit = False  # one tacit offer per answer
                 heard = self._offer_tacitly(answer)
+                _drop_if_asked(heard)
                 agreed = self._agreement(heard)
                 if not heard.strip() or agreed is True:
                     return answer
@@ -237,6 +244,7 @@ class InstructionDialog:
                 continue
             else:
                 heard = self._listen(long=False, hint=CONFIRM)
+                _drop_if_asked(heard)
                 if asks_repeat(heard) and repeats < MAX_REPEATS:
                     repeats += 1
                     readback = f"I heard: {_said(answer)}. {grammar}"
@@ -341,3 +349,11 @@ class InstructionDialog:
         without `announce` costs nothing."""
         announce_to(self.stt, state, text, reason, options)
 
+
+NEVER_MIND = vocabulary.phrases("iteration.never_mind")
+
+
+def _drop_if_asked(heard: str) -> None:
+    """Raise `Abandoned` when the whole take says to drop the instruction."""
+    if plain_words(heard) in NEVER_MIND:
+        raise Abandoned(f"dropped on {heard.strip()!r}")
