@@ -97,3 +97,27 @@ def test_an_instruction_is_hinted_with_names_alone_unless_the_terms_are_asked_fo
     hinted = termed.vocabulary()
     assert hinted[:4] == ["vox", "qmcp", "joe", "qm"] and "walkthrough" in hinted
     assert len(hinted) == converse.HINT_ENTRIES
+
+
+# --- served for a page ---------------------------------------------------------------
+
+
+def test_the_vocabulary_is_served_as_the_command_prints_it():
+    """Mutation: serve the phrases without the projects -- red."""
+    import json
+
+    from click.testing import CliRunner
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from qmcp.cli import cli
+    from qmcp.instructions.service import register
+
+    app = FastAPI()
+    register(app, runs=None, names=lambda: ["qmcp"], sessions=lambda: None)
+    served = TestClient(app).get("/v1/voice/vocabulary").json()
+    printed = json.loads(CliRunner().invoke(cli, ["vocabulary", "--json"]).output)
+
+    assert served == printed
+    assert {e["key"] for e in served["phrases"]} >= {"conversation.stop", "answer.agree"}
+    assert served["projects"]["joe"]["terms"][0] == "joe"
