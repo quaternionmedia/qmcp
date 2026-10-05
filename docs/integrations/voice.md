@@ -204,6 +204,15 @@ exactly what is acted on. A phrase is compared lower-case with punctuation and
 apostrophes gone; a phrase heard as a whole utterance means one thing, and no
 word is both a yes and a no.
 
+Between instructions, the conversation answers a few things itself, without
+a model: `iteration.*` takes the last instruction again ("try again"), for
+another project ("same in vox"), or drops what is being asked ("never mind",
+which raises `Abandoned` at a read-back and is a hold to a consent); and
+`diagnostic.*` says what it heard last, how the last instruction ended, how
+many questions are waiting, that it can hear, which projects it knows, and what
+can be said. Each is matched on the whole utterance, so "what happened in vox
+yesterday" is an instruction and "what happened" is a question about the loop.
+
 The projects' terms are shown, and reach the transcriber with an instruction's
 take only when `QMCP_VOICE_HINT_TERMS` is set. On synthesized speech they helped
 the jargon be heard; on the first real takes they lowered whisper's confidence --
