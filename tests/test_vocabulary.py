@@ -62,3 +62,38 @@ def test_an_unknown_key_is_refused_by_name():
 
     with pytest.raises(KeyError, match="conversation.nothing"):
         vocabulary.phrases("conversation.nothing")
+
+
+# --- the core projects' terms -----------------------------------------------------
+
+
+def test_every_core_project_says_what_it_is_and_names_itself_first():
+    known = vocabulary.projects()
+    assert set(known) >= {"qmcp", "joe", "vox", "qm"}
+    for name, project in known.items():
+        assert project["says"] and project["terms"][0] == name
+
+
+def test_the_terms_follow_the_projects_named_without_repeats():
+    terms = vocabulary.terms(["qm", "qmcp"])
+    assert terms[0] == "qm" and terms.count("preflight") == 1
+    assert terms.index("qm") < terms.index("qmcp")
+
+
+class _Client:
+    def list_instructions(self, limit=50):
+        return [{"project": "vox"}]
+
+
+def test_an_instruction_is_hinted_with_names_alone_unless_the_terms_are_asked_for():
+    """Measured: on synthesized speech the terms helped, and on the first real
+    takes they lowered the transcriber's confidence and lost one take's words.
+    Mutation: hint the terms by default -- red."""
+    plain = converse.Conversation(None, None, _Client(), None, ["qmcp", "joe", "vox", "qm"])
+    termed = converse.Conversation(None, None, _Client(), None, ["qmcp", "joe", "vox", "qm"],
+                                   hint_terms=True)
+
+    assert plain.vocabulary() == ["vox", "qmcp", "joe", "qm"]
+    hinted = termed.vocabulary()
+    assert hinted[:4] == ["vox", "qmcp", "joe", "qm"] and "walkthrough" in hinted
+    assert len(hinted) == converse.HINT_ENTRIES

@@ -55,3 +55,26 @@ phrases = ["agree", "record", "thats right", "exactly", "spot on"]
 [answer.again]
 says = "Take the instruction read back again"
 phrases = ["again", "start again", "redo"]
+
+# --- the core projects: the words their instructions carry ---------------------------
+# `terms` are shown with what can be said. They reach the transcriber with an
+# instruction's take only when `QMCP_VOICE_HINT_TERMS` is set: on synthesized
+# speech they helped the jargon be heard, and on the first real takes they lowered
+# whisper's confidence and lost one take's words.
+
+[projects.qmcp]
+says = "The harness: the human queue, the instructions, the spoken loop"
+terms = ["qmcp", "preflight", "cookbook", "converse", "consent", "runtime", "roadmap", "vocabulary"]
+
+[projects.joe]
+says = "The speech engine and the visualiser"
+terms = ["joe", "whisper", "transcript", "datapoints", "segments", "endpointer", "piano roll",
+         "microphone"]
+
+[projects.vox]
+says = "The seam between a dialog and a speech engine"
+terms = ["vox", "contract", "engine", "walkthrough", "mutations", "closed loop", "voice"]
+
+[projects.qm]
+says = "The constitution every project adopts"
+terms = ["qm", "governance", "handoff", "records", "gates", "estate", "preflight", "leaks"]

@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # How sure the speech engine must be of a spoken instruction for its
     # read-back to ask nothing, silence agreeing; above 1 always asks.
     voice_tacit_confidence: float = 0.7
+    # Whether an instruction's take is hinted with the core projects' terms as
+    # well as their names (`qmcp vocabulary`); off until real takes say it helps.
+    voice_hint_terms: bool = False
 
 
 @lru_cache

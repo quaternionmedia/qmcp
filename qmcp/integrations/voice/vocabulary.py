@@ -55,6 +55,20 @@ def says(key: str) -> str:
     return entry(key).get("says", "")
 
 
+def projects() -> dict[str, dict[str, Any]]:
+    """The core projects, each with what it is and the terms its instructions carry."""
+    return {name: {"says": body.get("says", ""), "terms": list(body.get("terms", ()))}
+            for name, body in load().get("projects", {}).items()}
+
+
+def terms(names: Any = None) -> list[str]:
+    """The terms of the projects named, in that order, or of every core
+    project; without repeats."""
+    known = projects()
+    order = list(names) if names is not None else list(known)
+    return list(dict.fromkeys(t for name in order for t in known.get(name, {}).get("terms", ())))
+
+
 def entries() -> list[dict[str, Any]]:
     """Every entry with its key, what it does, and what to say: for a page or
     a command that shows what can be said."""
@@ -68,4 +82,4 @@ def entries() -> list[dict[str, Any]]:
     return shown
 
 
-__all__ = ["entries", "entry", "load", "phrases", "says", "words"]
+__all__ = ["entries", "entry", "load", "phrases", "projects", "says", "terms", "words"]

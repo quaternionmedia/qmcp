@@ -452,7 +452,8 @@ def converse(runtime_name: str | None, clones: Path | None, wake: str | None,
         wait_for(client, stt, echo=click.echo)
         conversation = Conversation(stt, tts, client, runtime, roster_names(),
                                     clones=clones, wake=wake, echo=click.echo,
-                                    tacit_above=settings.voice_tacit_confidence)
+                                    tacit_above=settings.voice_tacit_confidence,
+                                    hint_terms=settings.voice_hint_terms)
         ready = getattr(runtime, "ready", None)
         missing = ready() if ready else None
         if missing:
@@ -1990,14 +1991,17 @@ def vocabulary_command(as_json: bool) -> None:
 
     from qmcp.integrations.voice import vocabulary
 
-    shown = vocabulary.entries()
+    shown, known = vocabulary.entries(), vocabulary.projects()
     if as_json:
-        click.echo(json.dumps(shown, indent=2))
+        click.echo(json.dumps({"phrases": shown, "projects": known}, indent=2))
         return
     for item in shown:
         click.echo(f"{item['key']:<24} {item['says']}")
         said = item["phrases"] + item["words"]
         click.echo(f"{'':<24} {' / '.join(said)}")
+    for name, project in known.items():
+        click.echo(f"{'projects.' + name:<24} {project['says']}")
+        click.echo(f"{'':<24} {' / '.join(project['terms'])}")
 
 
 @cli.command("instruct")
