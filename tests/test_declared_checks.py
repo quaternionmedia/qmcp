@@ -50,14 +50,14 @@ def test_a_check_is_read_from_the_words_and_the_project_recorded():
     would run qmcp's."""
     assert match_check("run the tests in qmcp", "qmcp").argv == vocabulary.checks("qmcp")[0].argv
     assert match_check("please run the tests", "vox").project == "vox"
-    assert match_check("list the gates", "qm").name == "gates"
+    assert match_check("check the gates", "qm").name == "gates"
 
 
 @pytest.mark.parametrize(("words", "project"), [
     ("run the tests", None),
     ("read the readme", "qmcp"),
     ("protest it", "qmcp"),
-    ("list the gates", "qmcp"),
+    ("check the gates", "qmcp"),
 ])
 def test_words_that_name_no_check_of_the_project_run_none(words, project):
     """A phrase counts as whole words only. Mutation: match a phrase anywhere
@@ -193,3 +193,14 @@ def test_the_conversation_runs_a_named_check_and_the_model_otherwise(monkeypatch
 class _Silent:
     def speak(self, text, out_path=None):
         pass
+
+
+def test_a_check_that_names_its_answering_line_says_that_one(tmp_path):
+    """Mutation: say the last line whatever `said` names -- red."""
+    check = Check(project="qm", name="scan", says="a scan", phrases=("scan",),
+                  argv=(sys.executable, "-c", "print('clean   12 files'); print(''); print('3 allowed')"),
+                  minutes=1, said="^(clean|found) ")
+
+    outcome = CheckRuntime(check).run(_brief(tmp_path))
+
+    assert outcome.text.splitlines()[0] == "clean   12 files"

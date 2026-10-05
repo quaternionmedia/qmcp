@@ -66,6 +66,9 @@ class Check:
     phrases: tuple[str, ...]
     argv: tuple[str, ...]
     minutes: float
+    said: str | None = None
+    """A regular expression for the line of the output that answers, where
+    the last line printed is not it."""
 
     @property
     def command(self) -> str:
@@ -81,7 +84,8 @@ def checks(project: str | None = None) -> list[Check]:
         for item in body.get("checks", ()):
             found.append(Check(project=name, name=item["name"], says=item.get("says", ""),
                                phrases=tuple(item.get("phrases", ())),
-                               argv=tuple(item["argv"]), minutes=float(item.get("minutes", 5))))
+                               argv=tuple(item["argv"]), minutes=float(item.get("minutes", 5)),
+                               said=item.get("said")))
     return found
 
 

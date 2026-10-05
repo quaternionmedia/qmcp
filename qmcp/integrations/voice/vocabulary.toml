@@ -115,7 +115,9 @@ phrases = ["help", "what can i say", "what can you do", "what are my options"]
 # whose words contain a check's phrase, recorded for the project, runs `argv` in
 # the project's clone behind a consent, as any act does. `argv` is fixed here;
 # nothing heard is ever added to it. Each is chosen to leave the clone as it was
-# -- nothing tracked is written -- and to finish within `minutes`.
+# -- nothing tracked is written -- and to finish within `minutes`. The line said
+# back is the last one the command printed, or the last matching `said`, a
+# regular expression, where the last line is not the one that answers.
 
 [projects.qmcp]
 says = "The harness: the human queue, the instructions, the spoken loop"
@@ -152,6 +154,7 @@ name = "devices"
 says = "The microphones joe can see, without recording from any"
 phrases = ["list the microphones", "which microphones", "list the devices", "show the devices"]
 argv = ["uv", "run", "--frozen", "joe", "voice", "devices"]
+said = "^\\* \\["
 minutes = 2
 
 [projects.vox]
@@ -178,9 +181,9 @@ terms = ["qm", "governance", "handoff", "records", "gates", "estate", "preflight
 
 [[projects.qm.checks]]
 name = "gates"
-says = "The gates, and what each one cannot see"
-phrases = ["list the gates", "which gates", "show the gates"]
-argv = ["uv", "run", "--frozen", "qm", "gates"]
+says = "Whether the gates page matches the document it is rendered from"
+phrases = ["check the gates", "are the gates current", "check the gates page"]
+argv = ["uv", "run", "--frozen", "qm", "gates", "--check", "handbook/gates.md"]
 minutes = 2
 
 [[projects.qm.checks]]
@@ -188,6 +191,7 @@ name = "estate"
 says = "What is in flight across every rostered repository"
 phrases = ["check the estate", "show the estate", "whats in flight"]
 argv = ["uv", "run", "--frozen", "qm", "estate"]
+said = "repositories named"
 minutes = 5
 
 [[projects.qm.checks]]
@@ -195,4 +199,5 @@ name = "leaks"
 says = "The scan for anything of a workstation in tracked files"
 phrases = ["check for leaks", "run the leak check", "scan for leaks"]
 argv = ["uv", "run", "--frozen", "qm", "leaks"]
+said = "^(clean|found) "
 minutes = 2

@@ -8,7 +8,8 @@ said back. It runs the declared `argv` in the project's clone and nothing else:
 no shell, and no word of the instruction added to the command.
 
 The outcome's first line is the last line the command printed -- a test suite's
-summary, a scan's verdict -- so the sentence said back is the one that answers;
+summary -- or the last matching the check's `said` where the last line printed
+is a note rather than the verdict, so the sentence said back is the one that answers;
 the output's tail follows it on the record. A command that cannot be found, or
 outlives its minutes, ends as a failed run that says so.
 """
@@ -16,6 +17,7 @@ outlives its minutes, ends as a failed run that says so.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import time
 
@@ -56,8 +58,10 @@ class CheckRuntime:
                                   encoding="utf-8", errors="replace",
                                   timeout=self.check.minutes * 60)
             code, printed = done.returncode, (done.stdout or "") + (done.stderr or "")
-            last = next((line.strip() for line in reversed(printed.splitlines()) if line.strip()),
-                        f"It printed nothing, exit {code}.")
+            lines = [line.strip() for line in printed.splitlines() if line.strip()]
+            answering = [line for line in lines
+                         if self.check.said and re.search(self.check.said, line)]
+            last = (answering or lines or [f"It printed nothing, exit {code}."])[-1]
         except FileNotFoundError:
             code, printed = NOT_FOUND, ""
             last = f"{argv[0]} was not found on this machine."
