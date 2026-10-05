@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import Any
 
 from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, VOCABULARY, InstructionDialog
+from qmcp.integrations.voice import vocabulary
 from qmcp.integrations.voice.adapter import REPEAT, ask_over, speakably
 
 READY = "Ready. What should be done?"
@@ -66,12 +67,16 @@ QUESTION_WAITING = "A question is waiting."
 FAILED = "That failed. Nothing ran."
 NOT_RECORDED = "Nothing recorded."
 
+# The most entries a hint carries with the projects' terms in it: the engine
+# keeps no more than this many (joe's `HINT_WORDS`).
+HINT_ENTRIES = 12
+
 # What ends the conversation, what goes back to waiting, and what asks for an
-# instruction, matched on the whole utterance with punctuation and case gone.
-STOP = ("stop", "stop listening", "goodbye", "good bye", "stop the conversation", "stop talking")
-DONE = ("no", "nope", "nothing", "no thanks", "no thank you", "thats all", "that is all",
-        "nothing else", "not now")
-MORE = ("yes", "yeah", "yep", "sure", "yes please", "please")
+# instruction, matched on the whole utterance with punctuation and case gone
+# (`vocabulary.toml`, `conversation.*`).
+STOP = vocabulary.phrases("conversation.stop")
+DONE = vocabulary.phrases("conversation.done")
+MORE = vocabulary.phrases("conversation.more")
 # The answers "Anything else?" offers as keys and buttons, and hints to the engine.
 MORE_OPTIONS = ("yes", "no")
 
@@ -124,10 +129,11 @@ class Conversation:
                  answer_duration: float = 5.0, max_retries: int = 2,
                  idle_limit: int | None = None, poll_interval: float = 1.0,
                  echo: Callable[[str], None] | None = None,
-                 tacit_above: float | None = None) -> None:
+                 tacit_above: float | None = None, hint_terms: bool = False) -> None:
         self.stt = stt
         self.tts = speakably(tts)
         self.client = client
+        self.hint_terms = hint_terms
         self.runtime = runtime
         self.names = tuple(names)
         self.rows = rows
@@ -165,7 +171,8 @@ class Conversation:
         """The project names an instruction is likely to carry: those of the
         most recent instructions first, from the record, then the roster's,
         without repeats and at most `VOCABULARY`. A record that cannot be read
-        leaves the roster's."""
+        leaves the roster's. With `hint_terms`, the core projects' terms follow
+        the names, in the same order, within the engine's bound on a hint."""
         recent: list[str] = []
         try:
             for row in self.client.list_instructions(limit=20):
@@ -173,7 +180,10 @@ class Conversation:
                     recent.append(row["project"])
         except Exception:  # noqa: BLE001 -- a hint is no reason to stop listening
             pass
-        return list(dict.fromkeys([*recent, *self.names]))[:VOCABULARY]
+        names = list(dict.fromkeys([*recent, *self.names]))[:VOCABULARY]
+        if not self.hint_terms:
+            return names
+        return list(dict.fromkeys([*names, *vocabulary.terms(names)]))[:HINT_ENTRIES]
 
     def ask(self, text: str, options: tuple[str, ...] = ()) -> None:
         """Say a question and leave the turn to the person: announced as

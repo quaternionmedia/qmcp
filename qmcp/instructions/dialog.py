@@ -45,6 +45,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from qmcp.instructions import resolve
+from qmcp.integrations.voice import vocabulary
 from qmcp.integrations.voice.adapter import (
     MAX_REPEATS,
     SpeechToText,
@@ -62,9 +63,12 @@ from qmcp.integrations.voice.adapter import (
 
 PROMPT = "What should be done?"
 WHICH_PROJECT = "Which project?"
-CONFIRM = ["agree", "again"]
-# Said by someone used to the read-back's earlier word; taken as `agree`, never said.
-AGREE_ALIASES = ("record",)
+# The read-back's options, as offered, and the other words taken as `agree` --
+# the read-back's earlier word among them -- which are never said
+# (`vocabulary.toml`, `answer.agree` and `answer.again`).
+_AGREE, *_ALIASES = vocabulary.phrases("answer.agree")
+CONFIRM = [_AGREE, vocabulary.phrases("answer.again")[0]]
+AGREE_ALIASES = tuple(_ALIASES)
 # How sure the engine must be of an instruction for the read-back to ask nothing
 # (`tacit_above`), and how long it then listens for an interruption. Measured
 # on synthesized instructions, whisper's base model scored 0.5 to 0.75; above
