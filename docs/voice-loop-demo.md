@@ -314,7 +314,7 @@ instruction.
 
 ### Run a project's checks
 
-"Run the tests in vox." -- or "list the gates in qm", "check the estate",
+"Run the tests in vox." -- or "check the gates in qm", "check the estate",
 "run the closed loop in vox", "list the microphones in joe" -- names one of the
 project's declared checks, and the check runs instead of the model: the
 instruction is read back and recorded as any other, the consent says *A declared
