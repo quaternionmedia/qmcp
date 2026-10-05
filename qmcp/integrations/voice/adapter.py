@@ -285,6 +285,11 @@ class UnclearResponse(Exception):
     """Raised when a spoken answer never parsed as yes/no within the retry budget."""
 
 
+class Abandoned(UnclearResponse):
+    """Raised when the person said to drop what was being asked ("never mind"):
+    nothing is recorded, as for an answer that never parsed."""
+
+
 class VoiceApprovalLoop:
     """Answers pending qmcp human-approval requests by voice.
 

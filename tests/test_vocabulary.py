@@ -16,7 +16,10 @@ from qmcp.integrations.voice import adapter, vocabulary
 # The groups heard as a whole utterance, where one phrase in two would make the
 # loop's answer depend on which it checked first.
 WHOLE_UTTERANCE = ("conversation.stop", "conversation.repeat", "conversation.done",
-                   "conversation.more")
+                   "conversation.more", "iteration.try_again", "iteration.never_mind",
+                   "diagnostic.what_heard", "diagnostic.how_did_it_go",
+                   "diagnostic.whats_waiting", "diagnostic.test_voice",
+                   "diagnostic.which_projects", "diagnostic.help")
 
 
 def test_every_list_the_loop_acts_on_is_the_declared_one():
@@ -54,6 +57,7 @@ def test_every_entry_says_what_it_does_and_is_written_as_heard():
     for item in shown:
         assert item["says"], item["key"]
         for phrase in item["phrases"] + item["words"]:
+            phrase = phrase.replace("{project}", "qmcp")
             assert phrase == converse.plain(phrase), (item["key"], phrase)
 
 

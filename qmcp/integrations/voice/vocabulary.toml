@@ -42,7 +42,7 @@ phrases = ["go ahead", "do it", "sounds good", "go for it", "please do", "make i
 says = "No, to a question with a no in it -- hold, again"
 words = ["no", "nope", "nah", "negative", "reject", "rejected", "deny", "denied", "stop", "cancel"]
 phrases = ["do not", "dont", "hold off", "not now", "not yet", "hold on", "hang on", "leave it",
-           "not today"]
+           "not today", "never mind", "forget it"]
 
 [answer.unclear]
 says = "Neither: the question is asked again"
@@ -55,6 +55,55 @@ phrases = ["agree", "record", "thats right", "exactly", "spot on"]
 [answer.again]
 says = "Take the instruction read back again"
 phrases = ["again", "start again", "redo"]
+
+# --- iteration: the last instruction again, or nothing at all; the whole utterance --
+
+[iteration.try_again]
+says = "The last instruction again, recorded anew and asked for consent"
+phrases = ["try again", "again", "once more", "run that again", "do that again", "again please",
+           "one more time", "redo that", "same again", "repeat the last instruction"]
+
+[iteration.same_in]
+says = "The last instruction again, for the project named"
+phrases = ["same in {project}", "same for {project}", "the same in {project}",
+           "same thing in {project}", "do that in {project}", "again in {project}",
+           "now in {project}", "and in {project}"]
+
+[iteration.never_mind]
+says = "Drop what is being asked: nothing is recorded"
+phrases = ["never mind", "nevermind", "cancel", "cancel that", "forget it", "forget that",
+           "scrap that"]
+
+# --- diagnostics: the loop says how it stands; the whole utterance -----------------
+
+[diagnostic.what_heard]
+says = "Say what was heard last"
+phrases = ["what did you hear", "what did i say", "read that back", "what did you get",
+           "what was the last thing i said"]
+
+[diagnostic.how_did_it_go]
+says = "Say again how the last instruction ended"
+phrases = ["how did that go", "how did it go", "what happened", "did it work",
+           "what was the result", "say the result again"]
+
+[diagnostic.whats_waiting]
+says = "Say how many questions are waiting"
+phrases = ["whats waiting", "what is waiting", "anything waiting", "is anything waiting",
+           "any questions", "whats on the queue"]
+
+[diagnostic.test_voice]
+says = "Check both ways: it answers that it can hear"
+phrases = ["test the voice", "voice check", "can you hear me", "testing", "mic check",
+           "microphone check", "are you there"]
+
+[diagnostic.which_projects]
+says = "Say which projects it knows"
+phrases = ["which projects", "which projects do you know", "what projects do you know",
+           "list the projects"]
+
+[diagnostic.help]
+says = "Say what can be said"
+phrases = ["help", "what can i say", "what can you do", "what are my options"]
 
 # --- the core projects: the words their instructions carry ---------------------------
 # `terms` are shown with what can be said. They reach the transcriber with an

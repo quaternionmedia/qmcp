@@ -66,6 +66,13 @@ STOPPING = "Stopping."
 QUESTION_WAITING = "A question is waiting."
 FAILED = "That failed. Nothing ran."
 NOT_RECORDED = "Nothing recorded."
+NOTHING_TO_TRY = "Nothing to try again."
+NO_SUCH_PROJECT = "No such project."
+NOTHING_HEARD = "Nothing heard yet."
+NOTHING_RAN = "Nothing has run yet."
+HEARING_YOU = "I can hear you."
+HELP_SAID = ("Say an instruction. Or say: try again, same in a project, what did you hear, "
+             "how did that go, what is waiting, or stop.")
 
 # The most entries a hint carries with the projects' terms in it: the engine
 # keeps no more than this many (joe's `HINT_WORDS`).
@@ -77,6 +84,18 @@ HINT_ENTRIES = 12
 STOP = vocabulary.phrases("conversation.stop")
 DONE = vocabulary.phrases("conversation.done")
 MORE = vocabulary.phrases("conversation.more")
+# What the conversation does itself, without a model, between instructions:
+# the last instruction again, for its project or another, and what it can say
+# of how it stands (`vocabulary.toml`, `iteration.*` and `diagnostic.*`).
+TRY_AGAIN = vocabulary.phrases("iteration.try_again")
+SAME_IN = vocabulary.phrases("iteration.same_in")
+NEVER_MIND = vocabulary.phrases("iteration.never_mind")
+WHAT_HEARD = vocabulary.phrases("diagnostic.what_heard")
+HOW_DID_IT_GO = vocabulary.phrases("diagnostic.how_did_it_go")
+WHATS_WAITING = vocabulary.phrases("diagnostic.whats_waiting")
+TEST_VOICE = vocabulary.phrases("diagnostic.test_voice")
+WHICH_PROJECTS = vocabulary.phrases("diagnostic.which_projects")
+HELP = vocabulary.phrases("diagnostic.help")
 # The answers "Anything else?" offers as keys and buttons, and hints to the engine.
 MORE_OPTIONS = ("yes", "no")
 
@@ -157,6 +176,9 @@ class Conversation:
         # The question the next take answers, and the options it offered, so
         # "repeat" can say it again and the engine can be hinted.
         self._question: tuple[str, tuple[str, ...]] = (READY, ())
+        # The last utterance taken as an instruction or an iteration, for
+        # "what did you hear".
+        self._last_heard = ""
         self._vocabulary: list[str] = []
 
     # --- speaking ---------------------------------------------------------------
@@ -259,6 +281,14 @@ class Conversation:
             if words in MORE:
                 self.ask(PROMPT)
                 continue
+            if words in NEVER_MIND:
+                self.ask(OKAY)
+                continue
+            if self._diagnose(words, ended):
+                continue
+            self._last_heard = heard.strip()
+            if self._iterate(words, ended):
+                continue
             try:
                 ended.turns.append(self._take(heard))
                 self._vocabulary = self.vocabulary()
@@ -285,6 +315,14 @@ class Conversation:
         except UnclearResponse:
             self.say(NOT_RECORDED)
             return Turn(None, heard.strip(), "not recorded", NOT_RECORDED)
+        return self._act_on(row)
+
+    def _act_on(self, row: dict[str, Any]) -> Turn:
+        """A recorded instruction, acted on with consent, and its outcome said."""
+        from qmcp.instructions.act import RULE_SIBLING, act
+        from qmcp.instructions.spoken import starting, summarise
+        from qmcp.spend import Budget
+
         project = row.get("project")
         self.echo(f"recorded: {row['id']} for {project or 'no project'}")
 
@@ -304,6 +342,73 @@ class Conversation:
             self.echo(f"why: {done.why}")
         self.say(summary)
         return Turn(row["id"], row["text"], recorded["status"], summary, done.carried)
+
+    def _iterate(self, words: str, ended: Ended) -> bool:
+        """"try again", and "same in <project>": the last instruction taken,
+        recorded anew -- for the project named, or its own -- and acted on
+        behind a new consent. False when the words are neither."""
+        from qmcp.instructions import resolve
+
+        named = None
+        if words not in TRY_AGAIN:
+            named = same_in(words)
+            if named is None:
+                return False
+        last = next((t for t in reversed(ended.turns) if t.instruction_id), None)
+        if last is None:
+            self.ask(NOTHING_TO_TRY)
+            return True
+        if named is None:
+            project = (self.client.get_instruction(last.instruction_id) or {}).get("project")
+        else:
+            project = resolve(named, self.names).project
+            if project is None:
+                self.ask(NO_SUCH_PROJECT)
+                return True
+        try:
+            row = self.client.create_instruction(last.text, source="voice", project=project,
+                                                 heard=[self._last_heard])
+            self.echo(f"recorded again: {row['id']} for {row.get('project') or 'no project'}")
+            ended.turns.append(self._act_on(row))
+        except Exception as exc:  # noqa: BLE001 -- a standing conversation outlives a turn
+            self.echo(f"turn failed: {type(exc).__name__}: {exc}")
+            self.ask(FAILED)
+            return True
+        self.ask(ANYTHING_ELSE, MORE_OPTIONS)
+        return True
+
+    def _diagnose(self, words: str, ended: Ended) -> bool:
+        """What the conversation can say of how it stands, said and the turn
+        left open; False when the words ask none of it."""
+        from qmcp.integrations.voice.adapter import counted
+
+        if words in WHAT_HEARD:
+            said = f"I heard: {self._last_heard.rstrip('.!?')}." if self._last_heard else NOTHING_HEARD
+        elif words in HOW_DID_IT_GO:
+            said = ended.turns[-1].summary if ended.turns else NOTHING_RAN
+        elif words in WHATS_WAITING:
+            waiting = self._waiting()
+            said = ("Nothing is waiting." if waiting == 0 else
+                    f"{counted(waiting, 'question').capitalize()} {'is' if waiting == 1 else 'are'} waiting.")
+        elif words in TEST_VOICE:
+            said = HEARING_YOU
+        elif words in WHICH_PROJECTS:
+            said = f"I know {_listed(list(self.names))}." if self.names else "I know no projects."
+        elif words in HELP:
+            said = HELP_SAID
+        else:
+            return False
+        self.ask(said)
+        return True
+
+    def _waiting(self) -> int:
+        """How many questions on the human queue are waiting for a person."""
+        try:
+            pending = self.client.list_human_requests(status_filter="pending", limit=20,
+                                                      oldest_first=True)
+        except Exception:  # noqa: BLE001 -- an unreachable queue holds nothing to say
+            return 0
+        return sum(1 for request in pending if not request.id.startswith(OWN))
 
     def _clone_for(self, project: str | None, instruction_id: str) -> Path | None:
         """None when the record knows the project's clone -- the act reads it
@@ -376,6 +481,22 @@ def wait_for(client: Any, stt: Any, echo: Callable[[str], None] = print,
             return False
         waits += 1
         sleep(every)
+
+
+def same_in(words: str) -> str | None:
+    """The project words of "same in <project>" and its kin, or None."""
+    for phrase in SAME_IN:
+        lead = phrase.replace("{project}", "").strip()
+        if words.startswith(lead + " ") and words[len(lead):].strip():
+            return words[len(lead):].strip()
+    return None
+
+
+def _listed(names: list[str]) -> str:
+    """"qmcp, joe and vox", the first six named and how many more."""
+    shown, more = names[:6], len(names) - 6
+    said = shown[0] if len(shown) == 1 else f"{', '.join(shown[:-1])} and {shown[-1]}"
+    return f"{said}, and {more} more" if more > 0 else said
 
 
 def _after(heard: str, wake: str) -> str:
