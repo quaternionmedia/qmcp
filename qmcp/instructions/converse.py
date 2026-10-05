@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import Any
 
 from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, VOCABULARY, InstructionDialog
+from qmcp.integrations.voice import vocabulary
 from qmcp.integrations.voice.adapter import REPEAT, ask_over, speakably
 
 READY = "Ready. What should be done?"
@@ -67,11 +68,11 @@ FAILED = "That failed. Nothing ran."
 NOT_RECORDED = "Nothing recorded."
 
 # What ends the conversation, what goes back to waiting, and what asks for an
-# instruction, matched on the whole utterance with punctuation and case gone.
-STOP = ("stop", "stop listening", "goodbye", "good bye", "stop the conversation", "stop talking")
-DONE = ("no", "nope", "nothing", "no thanks", "no thank you", "thats all", "that is all",
-        "nothing else", "not now")
-MORE = ("yes", "yeah", "yep", "sure", "yes please", "please")
+# instruction, matched on the whole utterance with punctuation and case gone
+# (`vocabulary.toml`, `conversation.*`).
+STOP = vocabulary.phrases("conversation.stop")
+DONE = vocabulary.phrases("conversation.done")
+MORE = vocabulary.phrases("conversation.more")
 # The answers "Anything else?" offers as keys and buttons, and hints to the engine.
 MORE_OPTIONS = ("yes", "no")
 

@@ -14,41 +14,20 @@ from typing import Protocol
 
 from qmcp.client import HumanRequestExpiredError, MCPClient
 from qmcp.client.mcp_client import HumanResponse
+from qmcp.integrations.voice import vocabulary
 
-_YES_WORDS = {
-    "yes",
-    "yeah",
-    "yep",
-    "yup",
-    "sure",
-    "affirmative",
-    "correct",
-    "approve",
-    "approved",
-    "confirm",
-    "confirmed",
-}
-_NO_WORDS = {
-    "no",
-    "nope",
-    "nah",
-    "negative",
-    "reject",
-    "rejected",
-    "deny",
-    "denied",
-    "stop",
-    "cancel",
-}
-_YES_PHRASES = ("go ahead", "do it", "sounds good")
-_NO_PHRASES = ("do not", "dont", "hold off", "not now")
-_UNCLEAR_PHRASES = ("not sure", "not certain", "dont know")
+# A yes or a no: a word anywhere in the answer, or a phrase inside it
+# (`vocabulary.toml`, `answer.*`).
+_YES_WORDS = set(vocabulary.words("answer.yes"))
+_NO_WORDS = set(vocabulary.words("answer.no"))
+_YES_PHRASES = vocabulary.phrases("answer.yes")
+_NO_PHRASES = vocabulary.phrases("answer.no")
+_UNCLEAR_PHRASES = vocabulary.phrases("answer.unclear")
 
 # Asks for the question again rather than answering it, matched on the whole
 # utterance -- what a key on joe's page sends as well. "again" alone is not
 # one: it is the read-back's own option.
-REPEAT = ("repeat", "repeat that", "say that again", "come again", "pardon", "what",
-          "what was that", "sorry")
+REPEAT = vocabulary.phrases("conversation.repeat")
 # Repeats granted per question before a request to repeat is read as no answer.
 MAX_REPEATS = 3
 

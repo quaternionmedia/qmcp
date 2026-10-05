@@ -1978,6 +1978,28 @@ def _print_instruction(row: dict) -> None:
                    + (f"  exit {row['exit_code']}" if row.get("exit_code") is not None else ""))
 
 
+@cli.command("vocabulary")
+@click.option("--json", "as_json", is_flag=True, help="print it as JSON, as the API serves it")
+def vocabulary_command(as_json: bool) -> None:
+    """What can be said to the spoken loop, and what each phrase does.
+
+    Read from `qmcp/integrations/voice/vocabulary.toml`, the one place the
+    loop's words are declared; the loop acts on these lists and no others.
+    """
+    import json
+
+    from qmcp.integrations.voice import vocabulary
+
+    shown = vocabulary.entries()
+    if as_json:
+        click.echo(json.dumps(shown, indent=2))
+        return
+    for item in shown:
+        click.echo(f"{item['key']:<24} {item['says']}")
+        said = item["phrases"] + item["words"]
+        click.echo(f"{'':<24} {' / '.join(said)}")
+
+
 @cli.command("instruct")
 @click.argument("text", required=False)
 @click.option("--project", default=None,
