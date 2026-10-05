@@ -136,7 +136,8 @@ def test_a_check_is_asked_with_its_command_and_runs_only_on_approve(inbox, clone
     """The written consent names the command, the spoken one calls it a declared
     check and claims no history, and the declaration says it spends nothing.
     Mutation: drop the command from the written consent -- red."""
-    _approved(inbox, f"Read the README in {PROJECT}.")
+    _, earlier, _ = _approved(inbox, f"Read the README in {PROJECT}.", cwd=clone)
+    assert earlier.status == "done"  # so the check's act has history it could carry
     instruction_id = inbox.record(f"Run the probe in {PROJECT}.")
     queue = _Queue({f"instruction-{instruction_id}": "approve"})
     runtime = CheckRuntime(_check("print('2 passed')"))
