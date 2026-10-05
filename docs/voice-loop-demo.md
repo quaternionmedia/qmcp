@@ -312,6 +312,19 @@ that there is, the yes and no answers, and the words for agreeing to a read-back
 or taking it again. Anything else said to *What should be done?* is an
 instruction.
 
+### Run a project's checks
+
+"Run the tests in vox." -- or "check the gates in qm", "check the estate",
+"run the closed loop in vox", "list the microphones in joe" -- names one of the
+project's declared checks, and the check runs instead of the model: the
+instruction is read back and recorded as any other, the consent says *A declared
+check, one run.* and the written request on the queue names the exact command,
+and only "approve" runs it, in the project's clone. The last line it printed is
+said back -- a test suite's summary, a scan's verdict -- and the rest of its
+output is on the record. `uv run qmcp vocabulary` lists every check, the phrases
+that name it and the command it runs. "Try again" runs it again, and "same in
+joe" runs the same check in joe, where joe declares one.
+
 ### Try it again, or in another project
 
 After an instruction, "try again" records the same instruction anew and asks

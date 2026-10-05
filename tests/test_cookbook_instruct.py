@@ -203,7 +203,8 @@ def test_the_loop_fails_when_the_panel_is_told_recorded(monkeypatch):
 def test_the_loop_fails_when_the_consent_does_not_say_the_instruction(monkeypatch):
     """The person at the gate may not be the person who spoke the instruction."""
     monkeypatch.setattr("qmcp.instructions.act.consent_prompt",
-                        lambda row, clone, runtime, budget, carried=0, spoken=False: "Act on the instruction?")
+                        lambda row, clone, runtime, budget, carried=0, spoken=False, command=None:
+                        "Act on the instruction?")
 
     result = CliRunner().invoke(cli, ["cookbook", "instruct"])
 

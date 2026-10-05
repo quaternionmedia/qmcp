@@ -213,6 +213,19 @@ many questions are waiting, that it can hear, which projects it knows, and what
 can be said. Each is matched on the whole utterance, so "what happened in vox
 yesterday" is an instruction and "what happened" is a question about the loop.
 
+Each core project also declares **checks**: its own commands an instruction
+can run by voice -- the test suite, an offline loop, a scan. An instruction
+whose words contain a check's phrase, as whole words, and that is recorded for
+that project, is acted on by `qmcp.integrations.agents.check.CheckRuntime`
+instead of the conversation's runtime: through the same gate, consent asked for
+every run, the written consent naming the command, the declared spend nothing.
+The command is the declared `argv`, run without a shell in the project's clone
+with no word of the instruction added to it, stopped after its `minutes`; each
+declared one leaves the clone's tracked files as they were. Its outcome's first
+line is the last line the command printed, which is what is said back. Unlike
+the model runtimes, which only read, a check runs a command: that is the
+reason each is declared by name and asked for every time.
+
 The projects' terms are shown, and reach the transcriber with an instruction's
 take only when `QMCP_VOICE_HINT_TERMS` is set. On synthesized speech they helped
 the jargon be heard; on the first real takes they lowered whisper's confidence --

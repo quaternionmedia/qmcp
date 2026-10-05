@@ -110,20 +110,94 @@ phrases = ["help", "what can i say", "what can you do", "what are my options"]
 # instruction's take only when `QMCP_VOICE_HINT_TERMS` is set: on synthesized
 # speech they helped the jargon be heard, and on the first real takes they lowered
 # whisper's confidence and lost one take's words.
+#
+# `checks` are the project's own commands an instruction can run by voice: one
+# whose words contain a check's phrase, recorded for the project, runs `argv` in
+# the project's clone behind a consent, as any act does. `argv` is fixed here;
+# nothing heard is ever added to it. Each is chosen to leave the clone as it was
+# -- nothing tracked is written -- and to finish within `minutes`. The line said
+# back is the last one the command printed, or the last matching `said`, a
+# regular expression, where the last line is not the one that answers.
 
 [projects.qmcp]
 says = "The harness: the human queue, the instructions, the spoken loop"
 terms = ["qmcp", "preflight", "cookbook", "converse", "consent", "runtime", "roadmap", "vocabulary"]
+
+[[projects.qmcp.checks]]
+name = "tests"
+says = "The test suite"
+phrases = ["run the tests", "run the test suite", "run the suite", "test it"]
+argv = ["uv", "run", "--frozen", "--all-extras", "pytest", "-q", "-p", "no:cacheprovider"]
+minutes = 10
+
+[[projects.qmcp.checks]]
+name = "offline"
+says = "The spoken loop's offline check, every take scripted"
+phrases = ["run the offline check", "run the cookbook", "check the loop"]
+argv = ["uv", "run", "--frozen", "qmcp", "cookbook", "converse"]
+minutes = 5
 
 [projects.joe]
 says = "The speech engine and the visualiser"
 terms = ["joe", "whisper", "transcript", "datapoints", "segments", "endpointer", "piano roll",
          "microphone"]
 
+[[projects.joe.checks]]
+name = "tests"
+says = "The test suite"
+phrases = ["run the tests", "run the test suite", "run the suite", "test it"]
+argv = ["uv", "run", "--frozen", "pytest", "tests/", "-q", "-p", "no:cacheprovider"]
+minutes = 5
+
+[[projects.joe.checks]]
+name = "devices"
+says = "The microphones joe can see, without recording from any"
+phrases = ["list the microphones", "which microphones", "list the devices", "show the devices"]
+argv = ["uv", "run", "--frozen", "joe", "voice", "devices"]
+said = "^\\* \\["
+minutes = 2
+
 [projects.vox]
 says = "The seam between a dialog and a speech engine"
 terms = ["vox", "contract", "engine", "walkthrough", "mutations", "closed loop", "voice"]
 
+[[projects.vox.checks]]
+name = "tests"
+says = "The test suite"
+phrases = ["run the tests", "run the test suite", "run the suite", "test it"]
+argv = ["uv", "run", "--frozen", "--extra", "dev", "pytest", "-q", "-p", "no:cacheprovider"]
+minutes = 5
+
+[[projects.vox.checks]]
+name = "loop"
+says = "The closed loop, offline"
+phrases = ["run the closed loop", "close the loop", "run the loop offline"]
+argv = ["uv", "run", "--frozen", "vox", "loop", "--offline"]
+minutes = 2
+
 [projects.qm]
 says = "The constitution every project adopts"
 terms = ["qm", "governance", "handoff", "records", "gates", "estate", "preflight", "leaks"]
+
+[[projects.qm.checks]]
+name = "gates"
+says = "Whether the gates page matches the document it is rendered from"
+phrases = ["check the gates", "are the gates current", "check the gates page"]
+argv = ["uv", "run", "--frozen", "qm", "gates", "--check", "handbook/gates.md"]
+minutes = 2
+
+[[projects.qm.checks]]
+name = "estate"
+says = "What is in flight across every rostered repository"
+phrases = ["check the estate", "show the estate", "whats in flight"]
+argv = ["uv", "run", "--frozen", "qm", "estate"]
+said = "repositories named"
+minutes = 5
+
+[[projects.qm.checks]]
+name = "leaks"
+says = "The scan for anything of a workstation in tracked files"
+phrases = ["check for leaks", "run the leak check", "scan for leaks"]
+argv = ["uv", "run", "--frozen", "qm", "leaks"]
+said = "^(clean|found) "
+minutes = 2
