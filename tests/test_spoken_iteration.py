@@ -186,3 +186,15 @@ def test_a_long_roster_is_named_six_and_counted():
     _, tts, _, _ = _talk("which projects", "stop", names=[f"p{i}" for i in range(8)])
 
     assert "I know p0, p1, p2, p3, p4 and p5, and 2 more." in tts.spoken
+
+
+def test_the_conversations_own_consents_are_not_counted_as_waiting():
+    """Mutation: count every pending request -- red."""
+
+    class Own(_Client):
+        def list_human_requests(self, **kw):
+            return [SimpleNamespace(id="agent-1"), SimpleNamespace(id="instruction-abc")]
+
+    _, tts, _, _ = _talk("whats waiting", "stop", client=Own())
+
+    assert "One question is waiting." in tts.spoken
