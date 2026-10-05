@@ -9,21 +9,25 @@
 
 [conversation.stop]
 says = "End the conversation"
-phrases = ["stop", "stop listening", "goodbye", "good bye", "stop the conversation", "stop talking"]
+phrases = ["stop", "stop listening", "goodbye", "good bye", "stop the conversation", "stop talking",
+           "end the conversation", "bye", "good night", "goodnight", "quit", "stop now"]
 
 [conversation.repeat]
 says = "Say the last question again"
 phrases = ["repeat", "repeat that", "say that again", "come again", "pardon", "what",
-           "what was that", "sorry"]
+           "what was that", "sorry", "say again", "what did you say", "can you repeat that",
+           "could you repeat that", "i didnt catch that", "huh"]
 
 [conversation.done]
 says = "Nothing more for now: go back to waiting"
 phrases = ["no", "nope", "nothing", "no thanks", "no thank you", "thats all", "that is all",
-           "nothing else", "not now"]
+           "nothing else", "not now", "thats it", "no more", "all done", "im done", "nothing more",
+           "not right now", "thats everything", "nah", "no thats all", "no thats it"]
 
 [conversation.more]
 says = "Ask for the next instruction now"
-phrases = ["yes", "yeah", "yep", "sure", "yes please", "please"]
+phrases = ["yes", "yeah", "yep", "sure", "yes please", "please", "one more", "another one",
+           "go on", "next", "keep going", "yes one more", "yeah one more"]
 
 # --- answers to a closed question --------------------------------------------------
 
@@ -31,21 +35,23 @@ phrases = ["yes", "yeah", "yep", "sure", "yes please", "please"]
 says = "Yes, to a question with a yes in it -- approve, agree"
 words = ["yes", "yeah", "yep", "yup", "sure", "affirmative", "correct", "approve", "approved",
          "confirm", "confirmed"]
-phrases = ["go ahead", "do it", "sounds good"]
+phrases = ["go ahead", "do it", "sounds good", "go for it", "please do", "make it so",
+           "carry on", "lets do it"]
 
 [answer.no]
 says = "No, to a question with a no in it -- hold, again"
 words = ["no", "nope", "nah", "negative", "reject", "rejected", "deny", "denied", "stop", "cancel"]
-phrases = ["do not", "dont", "hold off", "not now"]
+phrases = ["do not", "dont", "hold off", "not now", "not yet", "hold on", "hang on", "leave it",
+           "not today"]
 
 [answer.unclear]
 says = "Neither: the question is asked again"
-phrases = ["not sure", "not certain", "dont know"]
+phrases = ["not sure", "not certain", "dont know", "maybe", "let me think"]
 
 [answer.agree]
 says = "Record the instruction read back; the first is the option offered"
-phrases = ["agree", "record"]
+phrases = ["agree", "record", "thats right", "exactly", "spot on"]
 
 [answer.again]
 says = "Take the instruction read back again"
-phrases = ["again"]
+phrases = ["again", "start again", "redo"]
