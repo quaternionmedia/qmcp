@@ -93,8 +93,9 @@ testpaths = ["tests", "walkthrough"]
 # Without this the walkthrough pages are collected as nothing: pytest sees a
 # directory of markdown and reports success for zero tests. Naming the path is
 # necessary and not sufficient.
-addopts = "--doctest-glob=*.md"
+addopts = "--doctest-glob=*.md -m 'not live_anthropic'"
 markers = [
+    "live_anthropic: needs pydantic-ai and ANTHROPIC_API_KEY - deselected by default, run with `-m live_anthropic`",
     "asyncio: marks tests as async (handled by pytest-asyncio)",
     "integration: marks tests that require external services (Ollama, live MCP server, etc.) - skipped by default in CI",
     "slow: marks tests that are intentionally slow",
