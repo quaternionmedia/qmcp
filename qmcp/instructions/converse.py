@@ -72,7 +72,8 @@ NOTHING_HEARD = "Nothing heard yet."
 NOTHING_RAN = "Nothing has run yet."
 HEARING_YOU = "I can hear you."
 HELP_SAID = ("Say an instruction. Or say: try again, same in a project, what did you hear, "
-             "how did that go, what is waiting, or stop.")
+             "how did that go, what is waiting, or stop. To add a phrase of your own, say "
+             "add vocabulary phrase, the words, to, and the command.")
 
 # The most entries a hint carries with the projects' terms in it: the engine
 # keeps no more than this many (joe's `HINT_WORDS`).
@@ -96,6 +97,22 @@ WHATS_WAITING = vocabulary.phrases("diagnostic.whats_waiting")
 TEST_VOICE = vocabulary.phrases("diagnostic.test_voice")
 WHICH_PROJECTS = vocabulary.phrases("diagnostic.which_projects")
 HELP = vocabulary.phrases("diagnostic.help")
+
+
+def _said(declared: tuple[str, ...], key: str) -> tuple[str, ...]:
+    """A command's declared phrases and the ones a person has added, read as
+    they stand so an approved edit is heard on the next utterance."""
+    return (*declared, *vocabulary.overrides(key))
+
+
+# "add vocabulary phrase <words> to <command>", and its reverse. The command is
+# the last "to" or "from" and one of `vocabulary.TARGETS`, so a phrase may
+# itself contain "to".
+_COMMANDS = "|".join(sorted(map(re.escape, vocabulary.TARGETS), key=len, reverse=True))
+ADD_PHRASE = re.compile(rf"add vocabulary phrase (.+) to ({_COMMANDS})")
+REMOVE_PHRASE = re.compile(rf"remove vocabulary phrase (.+) from ({_COMMANDS})")
+UNDO_PHRASE = vocabulary.phrases("vocabulary.undo")
+EDIT_OPTIONS = ("approve", "hold")
 # The answers "Anything else?" offers as keys and buttons, and hints to the engine.
 MORE_OPTIONS = ("yes", "no")
 
@@ -173,6 +190,10 @@ class Conversation:
         self.tacit_above = tacit_above
         self._confidence: float | None = None
         self._asked: set[str] = set()
+        # A phrase edit waiting for "approve" or "hold", and how often the
+        # answer was neither.
+        self._pending_edit: vocabulary.PhraseEdit | None = None
+        self._edit_retries = 0
         # The question the next take answers, and the options it offered, so
         # "repeat" can say it again and the engine can be hinted.
         self._question: tuple[str, tuple[str, ...]] = (READY, ())
@@ -268,23 +289,28 @@ class Conversation:
                 if not words:
                     self.say(PROMPT)
                     continue
-            if words in STOP:
+            if self._pending_edit is not None:
+                self._confirm_edit(heard)
+                continue
+            if words in _said(STOP, "conversation.stop"):
                 self.say(STOPPING)
                 ended.reason = "told to stop"
                 return ended
-            if words in REPEAT:
+            if words in _said(REPEAT, "conversation.repeat"):
                 self.ask(*self._question)
                 continue
-            if words in DONE:
+            if words in _said(DONE, "conversation.done"):
                 self.ask(OKAY)
                 continue
-            if words in MORE:
+            if words in _said(MORE, "conversation.more"):
                 self.ask(PROMPT)
                 continue
-            if words in NEVER_MIND:
+            if words in _said(NEVER_MIND, "iteration.never_mind"):
                 self.ask(OKAY)
                 continue
             if self._diagnose(words, ended):
+                continue
+            if self._edit_vocabulary(words):
                 continue
             self._last_heard = heard.strip()
             if self._iterate(words, ended):
@@ -358,7 +384,7 @@ class Conversation:
         from qmcp.instructions import resolve
 
         named = None
-        if words not in TRY_AGAIN:
+        if words not in _said(TRY_AGAIN, "iteration.try_again"):
             named = same_in(words)
             if named is None:
                 return False
@@ -390,24 +416,79 @@ class Conversation:
         left open; False when the words ask none of it."""
         from qmcp.integrations.voice.adapter import counted
 
-        if words in WHAT_HEARD:
+        if words in _said(WHAT_HEARD, "diagnostic.what_heard"):
             said = f"I heard: {self._last_heard.rstrip('.!?')}." if self._last_heard else NOTHING_HEARD
-        elif words in HOW_DID_IT_GO:
+        elif words in _said(HOW_DID_IT_GO, "diagnostic.how_did_it_go"):
             said = ended.turns[-1].summary if ended.turns else NOTHING_RAN
-        elif words in WHATS_WAITING:
+        elif words in _said(WHATS_WAITING, "diagnostic.whats_waiting"):
             waiting = self._waiting()
             said = ("Nothing is waiting." if waiting == 0 else
                     f"{counted(waiting, 'question').capitalize()} {'is' if waiting == 1 else 'are'} waiting.")
-        elif words in TEST_VOICE:
+        elif words in _said(TEST_VOICE, "diagnostic.test_voice"):
             said = HEARING_YOU
-        elif words in WHICH_PROJECTS:
+        elif words in _said(WHICH_PROJECTS, "diagnostic.which_projects"):
             said = f"I know {_listed(list(self.names))}." if self.names else "I know no projects."
-        elif words in HELP:
+        elif words in _said(HELP, "diagnostic.help"):
             said = HELP_SAID
         else:
             return False
         self.ask(said)
         return True
+
+    def _edit_vocabulary(self, words: str) -> bool:
+        """Prepare one phrase edit and ask for approval; nothing is saved
+        until it comes. False when the words ask for no edit."""
+        add, remove = ADD_PHRASE.fullmatch(words), REMOVE_PHRASE.fullmatch(words)
+        if not (add or remove or words in UNDO_PHRASE):
+            return False
+        try:
+            if add:
+                edit = vocabulary.prepare_add(add.group(2), add.group(1))
+            elif remove:
+                edit = vocabulary.prepare_remove(remove.group(2), remove.group(1))
+            else:
+                edit = vocabulary.prepare_undo()
+        except (ValueError, OSError) as exc:
+            self.echo(f"vocabulary edit refused: {exc}")
+            self.ask(f"That cannot be changed: {exc}")
+            return True
+        if edit is None:
+            self.ask("There is no vocabulary change to undo.")
+            return True
+        self._pending_edit, self._edit_retries = edit, 0
+        self.ask(f"{_edit_said(edit)} Approve or hold?", EDIT_OPTIONS)
+        return True
+
+    def _confirm_edit(self, heard: str) -> None:
+        """Save the pending edit on "approve", drop it on "hold" or a no, and
+        ask again on anything else until `max_retries`."""
+        from qmcp.integrations.voice.adapter import match_option, parse_yes_no
+
+        edit = self._pending_edit
+        choice = match_option(heard, list(EDIT_OPTIONS))
+        both = set(EDIT_OPTIONS) <= set(plain(heard).split())
+        decision = None if both else parse_yes_no(heard)
+        if not both and (choice == "hold" or decision is False):
+            self._pending_edit = None
+            self.ask("Held. The vocabulary is unchanged.")
+            return
+        if not both and (choice == "approve" or decision is True):
+            self._pending_edit = None
+            try:
+                vocabulary.apply_edit(edit)
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.echo(f"vocabulary edit failed: {type(exc).__name__}: {exc}")
+                self.ask("The vocabulary is unchanged: the edit could not be saved.")
+                return
+            self.echo(f"vocabulary: {edit.action} {edit.phrase!r} for {edit.key}")
+            self.ask(f"Saved. {_edit_said(edit, past=True)}")
+            return
+        self._edit_retries += 1
+        if self._edit_retries > self.max_retries:
+            self._pending_edit = None
+            self.ask("No clear answer. The vocabulary is unchanged.")
+            return
+        self.ask("Say approve to save the change, or hold to leave it.", EDIT_OPTIONS)
 
     def _waiting(self) -> int:
         """How many questions on the human queue are waiting for a person."""
@@ -493,11 +574,21 @@ def wait_for(client: Any, stt: Any, echo: Callable[[str], None] = print,
 
 def same_in(words: str) -> str | None:
     """The project words of "same in <project>" and its kin, or None."""
-    for phrase in SAME_IN:
+    for phrase in _said(SAME_IN, "iteration.same_in"):
         lead = phrase.replace("{project}", "").strip()
         if words.startswith(lead + " ") and words[len(lead):].strip():
             return words[len(lead):].strip()
     return None
+
+
+def _edit_said(edit: vocabulary.PhraseEdit, *, past: bool = False) -> str:
+    """A phrase edit as a sentence: "Add 'halt' to stop." or, saved, "Added"."""
+    command, phrase = vocabulary.target(edit.key), repr(vocabulary.shown(edit.phrase))
+    if edit.action == "undo":
+        return f"{'Undid' if past else 'Undo'} the last change, to {phrase} in {command}."
+    if edit.action == "add":
+        return f"{'Added' if past else 'Add'} {phrase} to {command}."
+    return f"{'Removed' if past else 'Remove'} {phrase} from {command}."
 
 
 def _listed(names: list[str]) -> str:
