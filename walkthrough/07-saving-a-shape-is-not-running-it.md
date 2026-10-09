@@ -153,6 +153,12 @@ shape as the harness reads it:
     >>> [ref["name"] for ref in saved["config"]["components"]]
     ['evidence-checker', 'consistency-checker']
 
+The plane's verdict comes back beside it. This one runs, and wants more than
+one checker:
+
+    >>> saved["capability"]["status"], [n["key"] for n in saved["capability"]["needs"]]
+    ('runs', ['workers'])
+
 A design naming a component nobody saved is refused, rather than kept with a
 reference to nothing:
 
@@ -162,12 +168,6 @@ reference to nothing:
     ...     "config": {"components": [{"name": "no-such-checker"}]}})
     >>> unknown.status_code, unknown.json()["detail"]
     (422, 'unknown reusable component(s): no-such-checker')
-
-The plane's verdict comes back beside it. This one runs, and wants more than
-one checker:
-
-    >>> saved["capability"]["status"], [n["key"] for n in saved["capability"]["needs"]]
-    ('runs', ['workers'])
 
 A config the class refuses is refused here, with the field named so a window
 can put the message beside the input:
