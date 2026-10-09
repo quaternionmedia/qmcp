@@ -264,19 +264,28 @@ def call_tool(root: Path, name: str, arguments: dict[str, Any]) -> str:
 
 
 class Runtime:
-    """The local model, reading the clone with tools that cannot write."""
+    """The local model, reading the clone with tools that cannot write.
+
+    `max_steps` bounds tool-loop calls; a run that reaches the bound may make
+    one final request to answer from what it read. `recover_timeouts` is off
+    only for callers that need a strict request budget.
+    """
 
     name = NAME
 
     def __init__(self, endpoint: str = ENDPOINT, model: str = MODEL,
                  client: httpx.Client | None = None,
                  clock: Callable[[], float] = time.monotonic,
-                 max_steps: int = MAX_STEPS) -> None:
+                 max_steps: int = MAX_STEPS, recover_timeouts: bool = True,
+                 max_tokens: int = MAX_TOKENS, timeout: float = TIMEOUT) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.model = model
         self.client = client
         self.clock = clock
         self.max_steps = max_steps
+        self.recover_timeouts = recover_timeouts
+        self.max_tokens = max_tokens
+        self.timeout = timeout
         # Stalled calls recovered in the current run; reported in its detail.
         self.recovered = 0
 
@@ -303,16 +312,18 @@ class Runtime:
 
     def _chat(self, client: httpx.Client, messages: list[dict[str, Any]]) -> dict[str, Any]:
         body = {"model": self.model, "messages": messages, "stream": False,
-                "options": {"temperature": 0, "num_predict": MAX_TOKENS}}
+                "options": {"temperature": 0, "num_predict": self.max_tokens}}
         try:
-            response = client.post(f"{self.endpoint}/api/chat", json=body, timeout=TIMEOUT)
+            response = client.post(f"{self.endpoint}/api/chat", json=body, timeout=self.timeout)
         except httpx.ReadTimeout:
+            if not self.recover_timeouts:
+                raise
             # The runner stalled: unload it, as the service's `stop` does, and
             # ask once more of a fresh load. A second timeout propagates.
             self.recovered += 1
             client.post(f"{self.endpoint}/api/generate",
                         json={"model": self.model, "keep_alive": 0}, timeout=30.0)
-            response = client.post(f"{self.endpoint}/api/chat", json=body, timeout=TIMEOUT)
+            response = client.post(f"{self.endpoint}/api/chat", json=body, timeout=self.timeout)
         response.raise_for_status()
         return response.json().get("message") or {}
 
@@ -375,10 +386,15 @@ class Runtime:
             # Only the retry, or the unload before it, lets a read timeout out
             # of `_chat`: the service answers and is not generating, which
             # `localmodel check` would report as served.
-            text, code = (f"The local model at {self.endpoint} stopped replying"
-                          f" ({type(exc).__name__}), and again after it was reloaded."
-                          " The service answers but is not generating; `uv run qmcp"
-                          " localmodel plan` prints the commands that restart it."), 1
+            if self.recover_timeouts:
+                text = (f"The local model at {self.endpoint} stopped replying"
+                        f" ({type(exc).__name__}), and again after it was reloaded."
+                        " The service answers but is not generating; `uv run qmcp"
+                        " localmodel plan` prints the commands that restart it.")
+            else:
+                text = (f"The local model at {self.endpoint} stopped replying"
+                        f" ({type(exc).__name__}); this run did not retry the request.")
+            code = 1
         except httpx.HTTPError as exc:
             text, code = (f"The local model did not answer at {self.endpoint}"
                           f" ({type(exc).__name__}). `uv run qmcp localmodel check` says"

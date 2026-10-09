@@ -176,6 +176,7 @@ def test_an_advisory_council_reads_its_own_declaration(served):
     assert capability["option"] == ADVISORY
     assert capability["status"] == plane.BRAINSTORM
     assert capability["why"] == plane.ADVISORY_COUNCIL.why
+    assert capability["voice_runnable"] is True
     assert capability["refusal"] is None
     assert "saved_anyway" not in capability
 
@@ -211,6 +212,10 @@ def test_the_capability_block_is_the_planes_declaration(served):
     assert capability["declared"] is True
     assert capability["decides"] is declared.decides
     assert capability["spends"] is declared.spends
+    assert capability["voice_runnable"] is declared.voice_runnable
+    assert capability["voice_spends"] is declared.voice_spends
+    assert capability["voice_writes"] is declared.voice_writes
+    assert capability["voice_decides"] is declared.voice_decides
     assert capability["why"] == declared.why
     assert [n["key"] for n in capability["needs"]] == [n.key for n in declared.needs]
 

@@ -54,6 +54,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, VOCABULARY, InstructionDialog
 from qmcp.integrations.voice import vocabulary
 from qmcp.integrations.voice.adapter import REPEAT, ask_over, speakably
@@ -73,7 +75,10 @@ NOTHING_RAN = "Nothing has run yet."
 HEARING_YOU = "I can hear you."
 HELP_SAID = ("Say an instruction. Or say: try again, same in a project, what did you hear, "
              "how did that go, what is waiting, or stop. To add a phrase of your own, say "
-             "add vocabulary phrase, the words, to, and the command.")
+             "add vocabulary phrase, the words, to, and the command. For topologies, say "
+             "list topologies in a project, show topology and its name in a project, create "
+             "a topology or a component, compose topologies, or run a topology in a project "
+             "about a task; every change and every run asks for approval.")
 
 # The most entries a hint carries with the projects' terms in it: the engine
 # keeps no more than this many (joe's `HINT_WORDS`).
@@ -310,6 +315,8 @@ class Conversation:
                 continue
             if self._diagnose(words, ended):
                 continue
+            if self._browse(heard):
+                continue
             if self._edit_vocabulary(words):
                 continue
             self._last_heard = heard.strip()
@@ -354,9 +361,53 @@ class Conversation:
         project = row.get("project")
         self.echo(f"recorded: {row['id']} for {project or 'no project'}")
         # An instruction naming one of the project's declared checks runs that
-        # command, behind the same consent, instead of the model.
-        check = vocabulary.match_check(plain(row.get("text", "")), project)
-        runtime = CheckRuntime(check) if check else self.runtime
+        # command, behind the same consent, instead of the model. One that is a
+        # topology command acts on saved designs, and one that starts with an
+        # executable topology's phrase runs that topology.
+        text = row.get("text", "")
+        check = vocabulary.match_check(plain(text), project)
+        design_command = vocabulary.match_topology_command(text) if check is None else None
+        topology_attempt = plain(text).startswith((
+            "create topology", "create component", "edit component",
+            "add component", "remove component", "compose topology", "run topology",
+        ))
+        topology = (vocabulary.match_topology(text)
+                    if check is None and design_command is None else None)
+        if check:
+            runtime = CheckRuntime(check)
+        elif design_command:
+            if project is None or project.casefold() != design_command.project.casefold():
+                message = (f"The topology command names {design_command.project}, but the "
+                           f"instruction was recorded for {project or 'no project'}. Nothing ran.")
+                self.say(message)
+                recorded = self.client.get_instruction(row["id"])
+                return Turn(row["id"], text, recorded["status"], message)
+            from qmcp.integrations.agents.topology_design import TopologyDesignRuntime
+
+            try:
+                runtime = TopologyDesignRuntime(self.client, design_command)
+            except (httpx.HTTPError, ValueError, OSError, RuntimeError) as exc:
+                message = (f"I cannot prepare topology {design_command.name}: "
+                           f"{type(exc).__name__}: {exc}. Nothing ran.")
+                self.echo(f"topology preparation failed: {message}")
+                self.say(message)
+                recorded = self.client.get_instruction(row["id"])
+                return Turn(row["id"], text, recorded["status"], message)
+            self.echo(f"topology command: {design_command.action} "
+                      f"{design_command.name} in {design_command.project}")
+        elif topology_attempt:
+            message = ("I could not parse that topology command. Say help for the exact "
+                       "create, edit, compose and run forms. Nothing ran.")
+            self.say(message)
+            recorded = self.client.get_instruction(row["id"])
+            return Turn(row["id"], text, recorded["status"], message)
+        elif topology and topology.name == "crosscheck":
+            from qmcp.integrations.agents.crosscheck import CrossCheckRuntime
+
+            runtime = CrossCheckRuntime(topology.prompt)
+            self.echo(f"topology: {topology.name}: {topology.prompt}")
+        else:
+            runtime = self.runtime
         if check:
             self.echo(f"check: {check.project}.{check.name}: {check.command}")
 
@@ -434,6 +485,49 @@ class Conversation:
             return False
         self.ask(said)
         return True
+
+    def _browse(self, heard: str) -> bool:
+        """Say what saved designs and components a project holds. Read-only:
+        no consent, no model, no record. False when the words ask none of it."""
+        query = vocabulary.match_topology_query(heard)
+        if query is None:
+            return False
+        try:
+            said = self._describe(query)
+        except (httpx.HTTPError, ValueError, OSError) as exc:
+            self.echo(f"browse failed: {type(exc).__name__}: {exc}")
+            said = f"I could not read {query.project}'s designs. Nothing changed."
+        self.ask(said)
+        return True
+
+    def _describe(self, query: vocabulary.TopologyCommand) -> str:
+        project = query.project
+        if query.action == "list_topologies":
+            items = self.client.list_topologies(project=project)["topologies"]
+            names = [f"{i['name']}, a {i['topology_type']}" for i in items]
+            return _named_list(names, "topology", "topologies", project)
+        if query.action == "list_components":
+            items = self.client.list_topology_components(project=project)["components"]
+            return _named_list([i["name"] for i in items], "component", "components", project)
+        if query.action == "show_topology":
+            try:
+                row = self.client.get_topology(query.name, project=project)
+            except Exception as exc:  # noqa: BLE001 -- only a 404 is an answer
+                if _status(exc) != 404:
+                    raise
+                return f"No topology {query.name} in {project}."
+            used = [c.get("name") if isinstance(c, dict) else str(c)
+                    for c in row.get("config", {}).get("components", [])]
+            said = f"Topology {row['name']} in {project} is a {row['topology_type']}"
+            said += f" with {_listed(used)}." if used else "."
+            return said
+        try:
+            row = self.client.get_topology_component(query.name, project=project)
+        except Exception as exc:  # noqa: BLE001 -- only a 404 is an answer
+            if _status(exc) != 404:
+                raise
+            return f"No component {query.name} in {project}."
+        return f"Component {row['name']} in {project}: {row['instruction']}"
 
     def _edit_vocabulary(self, words: str) -> bool:
         """Prepare one phrase edit and ask for approval; nothing is saved
@@ -579,6 +673,18 @@ def same_in(words: str) -> str | None:
         if words.startswith(lead + " ") and words[len(lead):].strip():
             return words[len(lead):].strip()
     return None
+
+
+def _status(exc: Exception) -> int | None:
+    """The HTTP status an error carries, whichever client library raised it."""
+    return getattr(getattr(exc, "response", None), "status_code", None)
+
+
+def _named_list(names: list[str], one: str, many: str, project: str) -> str:
+    if not names:
+        return f"No {many} in {project}."
+    noun = one if len(names) == 1 else many
+    return f"{len(names)} {noun} in {project}: {_listed(names)}."
 
 
 def _edit_said(edit: vocabulary.PhraseEdit, *, past: bool = False) -> str:

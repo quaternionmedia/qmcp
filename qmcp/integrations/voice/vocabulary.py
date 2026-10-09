@@ -82,6 +82,112 @@ class Check:
         return " ".join(self.argv)
 
 
+@dataclass(frozen=True)
+class TopologyInvocation:
+    """A voice request for an explicitly executable topology."""
+
+    name: str
+    prompt: str
+
+
+@dataclass(frozen=True)
+class TopologyCommand:
+    """A bounded, explicit spoken operation on reusable topology designs."""
+
+    action: str
+    project: str
+    name: str = ""
+    kind: str = ""
+    component: str = ""
+    child: str = ""
+    route_terms: str = ""
+    instruction: str = ""
+    prompt: str = ""
+
+
+_TOPOLOGY_KINDS = {
+    "debate": "debate",
+    "chain": "chain",
+    "chain of command": "chain",
+    "delegation": "delegation",
+    "crosscheck": "crosscheck",
+    "cross check": "crosscheck",
+    "ensemble": "ensemble",
+    "pipeline": "pipeline",
+    "compound": "compound",
+    "council": "council",
+}
+
+
+def match_topology_command(text: str) -> TopologyCommand | None:
+    """Parse explicit create/edit/compose/run commands with one named project."""
+    spoken = " ".join(text.strip().split())
+    project = r"(?P<project>[a-zA-Z0-9_-]+)"
+    name = r"(?P<name>[a-zA-Z0-9_-]+)"
+    patterns = (
+        ("create_topology",
+         rf"create topology {name} as (?P<kind>[a-zA-Z ]+) in {project}[.!]?"),
+        ("create_component",
+         rf"create component {name} with instruction (?P<instruction>.+) in {project}[.!]?"),
+        ("edit_component",
+         rf"edit component {name} instruction (?P<instruction>.+) in {project}[.!]?"),
+        ("add_component",
+         rf"add component (?P<component>[a-zA-Z0-9_-]+) to topology {name} in {project}[.!]?"),
+        ("remove_component",
+         rf"remove component (?P<component>[a-zA-Z0-9_-]+) from topology {name} in {project}[.!]?"),
+        ("route_component",
+         rf"set component (?P<component>[a-zA-Z0-9_-]+) routes (?P<route_terms>.+) "
+         rf"in topology {name} in {project}[.!]?"),
+        ("compose",
+         rf"compose topology {name} with topology (?P<child>[a-zA-Z0-9_-]+) in {project}[.!]?"),
+        ("run",
+         rf"run topology {name} in {project} about (?P<prompt>.+)"),
+    )
+    for action, pattern in patterns:
+        match = re.fullmatch(pattern, spoken, flags=re.IGNORECASE)
+        if match is None:
+            continue
+        values = {key: value.strip() for key, value in match.groupdict().items()
+                  if value is not None}
+        values["project"] = values["project"].lower()
+        if action == "create_topology":
+            kind_spoken = " ".join(values["kind"].lower().split())
+            kind = _TOPOLOGY_KINDS.get(kind_spoken)
+            if kind is None:
+                return None
+            from qmcp.agentframework.models.enums import TopologyType
+            from qmcp.orchestration import by_type
+
+            try:
+                if TopologyType(kind) not in by_type():
+                    return None
+            except ValueError:
+                return None
+            values["kind"] = kind
+        return TopologyCommand(action=action, **values)
+    return None
+
+
+def match_topology_query(text: str) -> TopologyCommand | None:
+    """Parse a read-only "list" or "show" of designs and components in a project."""
+    spoken = " ".join(text.strip().split())
+    project = r"(?P<project>[a-zA-Z0-9_-]+)"
+    name = r"(?P<name>[a-zA-Z0-9_-]+)"
+    patterns = (
+        ("list_topologies", rf"list topologies in {project}[.!?]?"),
+        ("list_components", rf"list components in {project}[.!?]?"),
+        ("show_topology", rf"show topology {name} in {project}[.!?]?"),
+        ("show_component", rf"show component {name} in {project}[.!?]?"),
+    )
+    for action, pattern in patterns:
+        match = re.fullmatch(pattern, spoken, flags=re.IGNORECASE)
+        if match is not None:
+            values = {k: v for k, v in match.groupdict().items() if v is not None}
+            values["project"] = values["project"].lower()
+            return TopologyCommand(action=action, **values)
+    return None
+
+
 def checks(project: str | None = None) -> list[Check]:
     """The declared checks of one project, or of every core project."""
     found = []
@@ -106,6 +212,33 @@ def match_check(words: str, project: str | None) -> Check | None:
     for check in checks(project):
         if any(f" {phrase} " in padded for phrase in check.phrases):
             return check
+    return None
+
+
+def match_topology(text: str) -> TopologyInvocation | None:
+    """Match an executable topology only at the start of an utterance.
+
+    The remainder is retained verbatim as the topology's prompt. A phrase in
+    the middle of an ordinary instruction cannot turn that instruction into
+    a topology run.
+    """
+    tokens = list(re.finditer(r"\w+", text, flags=re.UNICODE))
+    spoken = [token.group().casefold() for token in tokens]
+    for name, body in load().get("topology", {}).items():
+        if not body.get("executable"):
+            continue
+        phrases = sorted(
+            body.get("phrases", ()),
+            key=lambda phrase: len(re.findall(r"\w+", phrase, flags=re.UNICODE)),
+            reverse=True,
+        )
+        for phrase in phrases:
+            prefix = [word.casefold() for word in re.findall(r"\w+", phrase, flags=re.UNICODE)]
+            if not prefix or spoken[:len(prefix)] != prefix or len(spoken) <= len(prefix):
+                continue
+            prompt = text[tokens[len(prefix) - 1].end():].strip(" \t\r\n,.;:!?-")
+            if prompt:
+                return TopologyInvocation(name=name, prompt=prompt)
     return None
 
 
@@ -388,7 +521,8 @@ def apply_edit(edit: PhraseEdit, *, actor: str = "voice") -> None:
             os.unlink(temporary)
 
 
-__all__ = ["EDITABLE", "SLOT", "TARGETS", "Check", "PhraseEdit", "apply_edit", "checks",
-           "entries", "entry", "load", "match_check", "overlay_path", "overrides",
-           "phrases", "prepare_add", "prepare_remove", "prepare_undo", "projects", "says",
-           "shown", "target", "terms", "words"]
+__all__ = ["EDITABLE", "SLOT", "TARGETS", "Check", "PhraseEdit", "TopologyCommand",
+           "TopologyInvocation", "apply_edit", "checks", "entries", "entry", "load",
+           "match_check", "match_topology", "match_topology_command", "match_topology_query",
+           "overlay_path", "overrides", "phrases", "prepare_add", "prepare_remove",
+           "prepare_undo", "projects", "says", "shown", "target", "terms", "words"]

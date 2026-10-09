@@ -451,7 +451,7 @@ Each phase's tests run with the whole suite under `uv run pytest -q`; the count 
 - Comprehensive test coverage
 
 **Next Steps (Future Work):**
-- Topology runtime execution (Pipeline, Council, etc.) with PydanticAI built-in -- Phase 9's execution route is the governed way in
+- Topology runtime execution (Pipeline, Council, etc.) with PydanticAI built-in -- Phase 9's execution route is the governed way in. Shipped separately: the consent-gated, read-only voice runner for saved designs (`qmcp.integrations.agents.topology_design`); the framework `BaseTopology.run` is still a stub
 - CI/CD pipeline (GitHub Actions)
 - HumanInLoopMixin HITL API integration
 - AsyncRunner implementation

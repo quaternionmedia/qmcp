@@ -116,6 +116,17 @@ class Capability:
     order to act.
     """
 
+    voice_runnable: bool = False
+    """A saved design of this shape runs through the voice runner,
+    `qmcp.integrations.agents.topology_design`: bounded, read-only, behind a
+    consent. Separate from `status`, which is about the framework class."""
+
+    voice_spends: bool = False
+    voice_writes: bool = False
+    voice_decides: bool = False
+    """What the voice runner's run of this shape does. The runner refuses a
+    shape whose voice run would spend, write or decide."""
+
     @property
     def can_run(self) -> bool:
         return self.status == RUNS
@@ -134,7 +145,8 @@ PLANE: tuple[Capability, ...] = (
         needs=(Need(BUILD,
                     "the registered class is a stub whose `run` raises",
                     "somebody writes it; `qmcp.feedback` and `intake` are the "
-                    "concrete pipelines that already work"),)),
+                    "concrete pipelines that already work"),),
+        voice_runnable=True),
     Capability(
         TopologyType.DELEGATION, RUNS, spends=False, writes=False, decides=False,
         why="route each unit of work to the worker registered for its shape. "
@@ -145,14 +157,16 @@ PLANE: tuple[Capability, ...] = (
                     "it routes each unit of work to the worker registered for "
                     "its shape, and an unregistered shape has nowhere to go",
                     "pass `workers` to `delegate`; an unrouted shape is "
-                    "reported, never dropped"),)),
+                    "reported, never dropped"),),
+        voice_runnable=True),
     Capability(
         TopologyType.CROSS_CHECK, RUNS, spends=False, writes=False, decides=False,
         why="several independent checkers on one claim, and a consensus that "
             "is reported rather than acted on. Reports; does not decide",
         needs=(Need(WORKERS,
                     "a consensus of one checker is not a consensus",
-                    "pass more than one checker to `cross_check`"),)),
+                    "pass more than one checker to `cross_check`"),),
+        voice_runnable=True),
     Capability(
         TopologyType.ENSEMBLE, BRAINSTORM, spends=True, writes=False,
         decides=False,
@@ -164,7 +178,8 @@ PLANE: tuple[Capability, ...] = (
                     "N answers to one question is N paid calls, and the "
                     "default budget is zero",
                     "issue it against an authorised budget; consent is an "
-                    "amount rather than a category"),)),
+                    "amount rather than a category"),),
+        voice_runnable=True),
     Capability(
         TopologyType.DEBATE, BRAINSTORM, spends=True, writes=False, decides=True,
         why="positions argued to a conclusion. A good shape for a question with "
@@ -172,7 +187,8 @@ PLANE: tuple[Capability, ...] = (
             "attested act",
         needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
                Need(BUDGET, "positions are argued by paid calls",
-                    "issue it against an authorised budget"),)),
+                    "issue it against an authorised budget"),),
+        voice_runnable=True),
     Capability(
         TopologyType.CHAIN_OF_COMMAND, BRAINSTORM, spends=True, writes=False,
         decides=True,
@@ -180,7 +196,8 @@ PLANE: tuple[Capability, ...] = (
             "in something choosing",
         needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
                Need(BUDGET, "each escalation is a paid call",
-                    "issue it against an authorised budget"),)),
+                    "issue it against an authorised budget"),),
+        voice_runnable=True),
     Capability(
         TopologyType.COMPOUND, BRAINSTORM, spends=True, writes=False,
         decides=False,
@@ -191,7 +208,8 @@ PLANE: tuple[Capability, ...] = (
                     "it composes topologies, and more than one of its parts "
                     "has to run first",
                     "build the parts; this is an ordering fact rather than a "
-                    "judgement about the shape"),)),
+                    "judgement about the shape"),),
+        voice_runnable=True),
     Capability(
         TopologyType.COUNCIL, REFUSED, spends=True, writes=False, decides=True,
         why="its default config gives the arbiter the final decision when "
@@ -241,7 +259,8 @@ ADVISORY_COUNCIL = Capability(
     needs=(Need(BUILD, "the registered class is a stub whose `run` raises",
                 "somebody writes it"),
            Need(BUDGET, "each perspective is a paid call",
-                "issue it against an authorised budget"),))
+                "issue it against an authorised budget"),),
+    voice_runnable=True)
 
 OPTIONS: tuple[Option, ...] = (
     Option("arbiter_can_override", False, ADVISORY_COUNCIL),
@@ -393,6 +412,8 @@ def _rendered(entry: Capability, label: str) -> list[str]:
         marks.append("writes")
     if entry.decides:
         marks.append("decides")
+    if entry.voice_runnable:
+        marks.append("saved-design voice runner")
     return [f"{entry.status.upper():<10} {label:<12}"
             f"{'  [' + ', '.join(marks) + ']' if marks else ''}",
             f"           {entry.why}"]

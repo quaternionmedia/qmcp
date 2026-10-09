@@ -154,10 +154,13 @@ shape as the harness reads it:
     ['evidence-checker', 'consistency-checker']
 
 The plane's verdict comes back beside it. This one runs, and wants more than
-one checker:
+one checker; `voice_runnable` says the voice runner takes a saved design of
+this shape, which is a separate question from whether the framework class runs:
 
     >>> saved["capability"]["status"], [n["key"] for n in saved["capability"]["needs"]]
     ('runs', ['workers'])
+    >>> saved["capability"]["voice_runnable"]
+    True
 
 A design naming a component nobody saved is refused, rather than kept with a
 reference to nothing:
@@ -286,7 +289,8 @@ There is no delete. A saved design is a record:
 
 ## What this page does not claim
 
-That a saved design runs. Nothing here executes a topology: a design with every
-need met is a drawing until a command runs it, and the run is what the plane
-judges. Nor that the window honours any of this -- the harness answers what it
+That these routes run a saved design. They create, change and judge designs and
+invoke no model; the voice runner runs a saved design only after a fresh
+approval, and `docs/voice-loop-demo.md` says what it runs and within which
+limits. Nor that the window honours any of this -- the harness answers what it
 is asked, and a window that did not ask would be drawing from memory.
