@@ -105,6 +105,24 @@ phrases = ["which projects", "which projects do you know", "what projects do you
 says = "Say what can be said"
 phrases = ["help", "what can i say", "what can you do", "what are my options"]
 
+# --- adding phrases: matched as the start of the whole utterance -----------------------
+# After "add vocabulary phrase" come the words, then "to" and the command: stop, repeat,
+# done, more, try again, same in, never mind, or a diagnostic by its name (what heard,
+# how did it go, whats waiting, test voice, which projects, help). Nothing changes until
+# the edit is approved, and the phrases live in one file per user.
+
+[vocabulary.add]
+says = "Add a phrase to a command: add vocabulary phrase, the words, to, the command"
+phrases = ["add vocabulary phrase"]
+
+[vocabulary.remove]
+says = "Remove an added phrase: remove vocabulary phrase, the words, from, the command"
+phrases = ["remove vocabulary phrase"]
+
+[vocabulary.undo]
+says = "Undo the last vocabulary change, after approval"
+phrases = ["undo vocabulary change", "undo vocabulary"]
+
 # --- the core projects: the words their instructions carry ---------------------------
 # `terms` are shown with what can be said. They reach the transcriber with an
 # instruction's take only when `QMCP_VOICE_HINT_TERMS` is set: on synthesized
