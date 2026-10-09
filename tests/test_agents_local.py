@@ -382,6 +382,20 @@ def test_a_second_stall_is_a_failed_run_naming_the_endpoint(tmp_path):
     assert "not generating" in outcome.text and "qmcp localmodel plan" in outcome.text
 
 
+def test_a_strict_budgeted_run_does_not_retry_or_unload_after_timeout(tmp_path):
+    service = _Stalling(stalls=1)
+    client = httpx.Client(transport=httpx.MockTransport(service))
+
+    outcome = ollama.Runtime(client=client, recover_timeouts=False).run(
+        _brief(_project(tmp_path)))
+
+    assert outcome.exit_code == 1
+    assert "did not retry" in outcome.text
+    assert [path for path, _ in service.paths] == ["/api/chat"]
+    assert outcome.detail["model_calls"] == 1
+    assert outcome.detail["recovered"] == 0
+
+
 # --- the tools' other refusals, and the search through the dispatch ------------------------
 
 

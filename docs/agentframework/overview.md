@@ -261,7 +261,7 @@ topology = Topology(
 
 | Feature | Status |
 |---------|--------|
-| Full topology execution engine | Design only |
+| General framework topology execution engine | Design only; saved designs have a separate consent-gated, bounded, read-only voice runner |
 | Metaflow DAG generation | Design only |
 | FastAPI router integration | Planned |
 | CLI commands | Design only |
