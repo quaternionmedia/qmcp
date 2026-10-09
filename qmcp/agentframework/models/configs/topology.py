@@ -2,15 +2,53 @@
 
 from __future__ import annotations
 
-from .base import Field, SQLModel
+from pydantic import field_validator, model_validator
+
 from ..enums import (
     AggregationMethod,
     ConsensusMethod,
     ErrorStrategy,
 )
+from .base import Field, SQLModel
 
 
-class DebateConfig(SQLModel):
+class TopologyComponentRef(SQLModel):
+    """A reusable component selected by a saved topology."""
+
+    name: str = Field(min_length=1, max_length=64)
+    route_terms: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("route_terms")
+    @classmethod
+    def validate_route_terms(cls, terms: list[str]) -> list[str]:
+        cleaned = [" ".join(term.lower().split()) for term in terms]
+        if any(not term for term in cleaned):
+            raise ValueError("route terms cannot be empty")
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("route terms must be unique")
+        return cleaned
+
+
+class ComposableTopologyConfig(SQLModel):
+    """Shared component and child-topology references for every topology kind."""
+
+    components: list[TopologyComponentRef] = Field(default_factory=list, max_length=12)
+    compose: list[str] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_composition(self):
+        names = [component.name.casefold() for component in self.components]
+        if len(set(names)) != len(names):
+            raise ValueError("component references must be unique")
+        children = [name.casefold() for name in self.compose]
+        if len(set(children)) != len(children):
+            raise ValueError("composed topology references must be unique")
+        if any(not name.strip() for name in self.compose):
+            raise ValueError("composed topology names cannot be empty")
+        return self
+
+
+class DebateConfig(ComposableTopologyConfig):
     """Configuration for Debate topology."""
 
     max_rounds: int = Field(default=3, ge=1, le=10)
@@ -22,7 +60,7 @@ class DebateConfig(SQLModel):
     min_argument_length: int = Field(default=50, ge=0)
 
 
-class ChainOfCommandConfig(SQLModel):
+class ChainOfCommandConfig(ComposableTopologyConfig):
     """Configuration for Chain of Command topology."""
 
     authority_levels: list[str] = Field(
@@ -34,7 +72,7 @@ class ChainOfCommandConfig(SQLModel):
     timeout_per_level_ms: int = Field(default=60000, ge=5000)
 
 
-class DelegationConfig(SQLModel):
+class DelegationConfig(ComposableTopologyConfig):
     """Configuration for Delegation topology."""
 
     routing_strategy: str = Field(default="capability_match")
@@ -44,7 +82,7 @@ class DelegationConfig(SQLModel):
     priority_queue: bool = Field(default=False)
 
 
-class CrossCheckConfig(SQLModel):
+class CrossCheckConfig(ComposableTopologyConfig):
     """Configuration for Cross-Check topology."""
 
     num_checkers: int = Field(default=3, ge=2, le=10)
@@ -55,7 +93,7 @@ class CrossCheckConfig(SQLModel):
     share_reasoning: bool = Field(default=False)
 
 
-class EnsembleConfig(SQLModel):
+class EnsembleConfig(ComposableTopologyConfig):
     """Configuration for Ensemble topology."""
 
     aggregation_method: AggregationMethod = Field(default=AggregationMethod.SYNTHESIS)
@@ -65,7 +103,7 @@ class EnsembleConfig(SQLModel):
     weight_by_confidence: bool = Field(default=True)
 
 
-class PipelineConfig(SQLModel):
+class PipelineConfig(ComposableTopologyConfig):
     """Configuration for Pipeline topology."""
 
     stages: list[str] = Field(default_factory=list)
@@ -76,7 +114,7 @@ class PipelineConfig(SQLModel):
     parallel_stages: list[list[str]] = Field(default_factory=list)
 
 
-class CompoundConfig(SQLModel):
+class CompoundConfig(ComposableTopologyConfig):
     """Configuration for Compound topology."""
 
     sub_topologies: list[str] = Field(default_factory=list)
@@ -85,7 +123,7 @@ class CompoundConfig(SQLModel):
     merge_outputs: bool = Field(default=True)
 
 
-class MeshConfig(SQLModel):
+class MeshConfig(ComposableTopologyConfig):
     """Configuration for Mesh topology."""
 
     connection_density: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -94,7 +132,7 @@ class MeshConfig(SQLModel):
     max_hops: int = Field(default=3, ge=1)
 
 
-class StarConfig(SQLModel):
+class StarConfig(ComposableTopologyConfig):
     """Configuration for Star topology."""
 
     hub_agent_name: str = Field(description="Central hub agent")
@@ -103,7 +141,7 @@ class StarConfig(SQLModel):
     hub_aggregation: AggregationMethod = Field(default=AggregationMethod.SYNTHESIS)
 
 
-class RingConfig(SQLModel):
+class RingConfig(ComposableTopologyConfig):
     """Configuration for Ring topology."""
 
     direction: str = Field(default="clockwise")
@@ -112,7 +150,7 @@ class RingConfig(SQLModel):
     pass_full_context: bool = Field(default=False)
 
 
-class CouncilConfig(SQLModel):
+class CouncilConfig(ComposableTopologyConfig):
     """Configuration for Council topology.
 
     A council topology where an arbiter presides over a plurality/majority
