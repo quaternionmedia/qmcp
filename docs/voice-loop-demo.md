@@ -309,8 +309,8 @@ does stopping the server: *Stopping.*
 `uv run qmcp vocabulary` lists every phrase the loop acts on, with what it does:
 the ways to stop, to ask for a question again, to say there is nothing more or
 that there is, the yes and no answers, and the words for agreeing to a read-back
-or taking it again. Anything else said to *What should be done?* is an
-instruction.
+or taking it again. It also lists the fixed vocabulary-edit commands and
+declared checks. Anything else said to *What should be done?* is an instruction.
 
 ### Run a project's checks
 
@@ -324,6 +324,65 @@ said back -- a test suite's summary, a scan's verdict -- and the rest of its
 output is on the record. `uv run qmcp vocabulary` lists every check, the phrases
 that name it and the command it runs. "Try again" runs it again, and "same in
 joe" runs the same check in joe, where joe declares one.
+
+The direct "cross-check whether the local model tools can modify files in
+qmcp" command remains available: it uses three fixed independent checker
+perspectives and needs fresh approval. Each checker gets the same claim and
+clone, no earlier instruction history, and only the local model's read-only
+project-file tools. There is no shell or write tool. That direct run is capped
+at 12 chat requests total, 512 generated tokens and 90 seconds per request, and
+a timeout is not retried. A response counts only when its cited project file
+was actually read; failures are not treated as NO votes.
+
+Saved designs can also be created, edited, composed and run by voice. Start
+with a reusable component, make a design, attach the component, then run the
+named design:
+
+```text
+create component critic with instruction Find evidence that contradicts the claim in qmcp
+approve
+create topology review as pipeline in qmcp
+approve
+add component critic to topology review in qmcp
+approve
+run topology review in qmcp about Does the implementation support this claim?
+approve
+```
+
+The supported design types are `debate`, `chain` (or `chain of command`),
+`delegation`, `crosscheck`, `ensemble`, `pipeline`, `compound`, and `council`.
+Say `create component`, `edit component`, `add component`, `remove component`,
+`set component <name> routes <term> or <term> in topology <name>`, or
+`compose topology <name> with topology <child>`; each form ends with
+`in <project>`. Shared components are reused by name across designs, so editing
+one changes every design that refers to it. Composition is persisted and
+validated against missing references, cycles, and the execution limits.
+Delegation routes only when one component's declared route terms match the
+task; no match is reported, not silently sent to a default worker.
+
+To hear what exists, say `list topologies in <project>`, `list components in
+<project>`, `show topology <name> in <project>` or `show component <name> in
+<project>`. These only read: no approval, no model, nothing recorded.
+
+Every design mutation and every run gets a fresh explicit approval. Before a
+run, the consent names the complete saved design tree, component instructions,
+route terms, task and request ceiling. The design and shared components are
+snapshotted before the approval; if any of them changes before execution,
+nothing runs and new approval is required. Runs use a local model with
+read-only project-file tools, no shell or write tool, and report advice rather
+than acting on it. A composed run is bounded to 48 model requests total, at
+most 12 component references and 8 designs; each request is capped at 512
+generated tokens and 90 seconds without timeout retries. CrossCheck designs
+retain the evidence rule: each cited project file must actually have been
+read. A council runs only when it is advisory -- saved with
+`arbiter_can_override` false, so its arbiter synthesizes and decides nothing; a
+deciding council is refused before the approval is asked, and an attested act
+such as ratification is refused to either.
+
+The framework topology classes for some of these shapes are still stubs; the
+saved-design voice runner is a separate path and does not make those framework
+classes runnable. "Show the topology gallery in qmcp" and "show the governed
+topology in qmcp" continue to inspect descriptions only.
 
 ### Try it again, or in another project
 
@@ -347,6 +406,29 @@ Without a model, and without recording anything:
 | "can you hear me" / "testing" | *I can hear you.* -- the voice and the microphone both working |
 | "which projects" | the projects it can act in |
 | "help" | what can be said |
+
+### Add phrases to the commands
+
+"Add vocabulary phrase farewell now to stop" asks *Add 'farewell now' to stop.
+Approve or hold?*, and only "approve" saves it: from the next utterance,
+"farewell now" ends the conversation. "Hold", or a no, leaves everything as it
+was. The commands that take a phrase are named as they are said: stop, repeat,
+done, more, try again, same in, never mind, and the diagnostics above as what
+heard, how did it go, whats waiting, test voice, which projects and help. A
+phrase for "same in" is the words before the project -- "add vocabulary phrase
+redo in to same in" makes "redo in vox" mean "same in vox".
+
+"Remove vocabulary phrase farewell now from stop" takes one away, and "undo
+vocabulary change" reverses the last change; both ask for approval the same
+way. The answers to a consent take no phrases, so what agreeing sounds like
+never changes, and the declared phrases cannot be removed.
+
+A phrase that already means something -- another command, an answer, a check,
+a project's name, or a phrase added before -- is refused and the reason said,
+as is an empty phrase or one longer than eight words. The phrases are kept for
+each user in `~/.qmcp/voice-vocabulary.json`, or the file
+`QMCP_VOICE_VOCABULARY_PATH` names, with every change journalled; `uv run qmcp
+vocabulary` and joe's page list them after the declared ones.
 
 ### Answer before the question ends
 

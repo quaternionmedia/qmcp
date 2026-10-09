@@ -2,6 +2,14 @@
 
 Topologies define collaboration patterns for multi-agent systems. Each topology specifies how agents communicate, share information, and reach conclusions.
 
+This page describes two separate surfaces. The framework classes and registry
+below define topology shapes, and several framework runners are still stubs.
+The saved-design voice runner is a separate, consent-gated path: it runs the
+reusable components and composed designs a saved design names, with its own
+behaviour and limits documented in the [voice loop demo](../voice-loop-demo.md).
+A framework class's status does not by itself say whether the voice runner can
+run a configuration of that kind; the `voice_runnable` declaration does.
+
 ## Architecture
 
 ### Base Classes
@@ -32,6 +40,11 @@ class BaseTopology(ABC):
 ```
 
 ## Topology Types
+
+The role slots and flows in this section are illustrative framework shapes.
+The saved-design voice runner instead runs the components a design selects in
+`config.components` and composes the saved designs in `config.compose`. The
+schemas and capability responses below are the contract, not the sketches.
 
 ### Debate
 
@@ -224,6 +237,11 @@ class CrossCheckConfig(SQLModel):
 - Content moderation
 - Fact verification
 
+For the saved-design voice runner, selected component instructions become the
+checker perspectives, and their count sets the number of checkers. With no
+component references, `num_checkers` chooses the generated perspectives. Other
+non-default framework options are refused rather than silently ignored.
+
 ### Delegation
 
 Capability-based dynamic routing.
@@ -248,7 +266,7 @@ class DelegationConfig(SQLModel):
 Deliberative plurality-seeking topology where an arbiter presides over a council of diverse agent perspectives. Each council member brings a unique viewpoint, and decisions are reached through structured deliberation until consensus or majority is achieved.
 
 **Required Slots:**
-- `arbiter` - Council Manager: Facilitates discussion, synthesizes positions, makes final decisions
+- `arbiter` - Council Manager: Facilitates discussion, synthesizes positions, makes final decisions unless the council is advisory
 - `storyteller` - Relatable Storyteller: Frames issues in narrative form, makes abstract concepts tangible
 - `dreamer` - Infinite Dreamer: Explores possibilities without constraint, generates creative alternatives
 - `strategist` - Pragmatic Strategist: Focuses on practical implementation, resource constraints
@@ -276,6 +294,19 @@ class CouncilConfig(SQLModel):
     track_position_changes: bool = True
     synthesis_after_each_round: bool = True
 ```
+
+**Two councils, one setting.** With `arbiter_can_override` true, the default,
+the arbiter takes the final decision when consensus fails, and
+`qmcp.orchestration` refuses that council whatever it is pointed at. With it
+false the council is advisory: the arbiter synthesizes, a split is reported as
+a split, and the plane declares it separately in `OPTIONS` -- a proposal for
+an ordinary question, still refused an attested act, because a consensus is a
+conclusion a machine reached. `uv run qmcp council create --no-arbiter-override`
+creates one, and a saved design's `capability` block says which it is read as.
+
+The saved-design voice runner runs only the advisory council, in the order its
+`speaking_order` gives the selected components, and reports a synthesis without
+choosing. A deciding council is refused before the approval is asked.
 
 **Flow:**
 ```
@@ -359,11 +390,9 @@ council = Topology(
     ).model_dump(),
 )
 
-# Run council deliberation
+# The framework runner is still a stub; `topo.run` raises NotImplementedError.
+# A saved advisory council runs through the voice runner instead.
 topo = TopologyRegistry.create(council, agents, session)
-result = await topo.run(ExecutionContext(
-    input_data={"question": "Should we migrate from REST to GraphQL?"}
-))
 ```
 
 **Full Implementation:**
@@ -395,7 +424,7 @@ cannot be answered arrives as a reason rather than an empty list.
 |---|---|
 | `GET /v1/topology/shape/{kind}` | the shape as boxes and arrows, at a level; `governed` is served here too |
 | `GET /v1/topology/schema/{kind}` | the JSON schema of the kind's configuration class -- what a form is built from; `governed` is a 404 saying it is a seam, not a configurable shape |
-| `GET /v1/orchestration/plane` | `qmcp.orchestration.PLANE` as a document: per shape its status, whether it spends, writes or decides, why, and its needs with what supplies each; the needs and attested-act vocabularies; the drift reports |
+| `GET /v1/orchestration/plane` | `qmcp.orchestration.PLANE` as a document: per shape its status, whether it spends, writes or decides, why, and its needs with what supplies each; the `options` one setting selects instead; the needs and attested-act vocabularies; the drift reports |
 | `GET /v1/orchestration/runnable?workers=&budget=&model=&built=` | what that hand could run now, and per shape what it is still short of. There is no `person` parameter and there will not be one |
 | `POST /v1/topology-components` | save a reusable component by name, with its description and instruction |
 | `GET /v1/topology-components` | every saved component of one project |
@@ -425,9 +454,18 @@ project and references resolve within it. `config.compose` may name another
 project's design as `project/name`, and the cycle and depth checks follow
 references across projects. A listing returns one project at a time.
 
+**The block reads the design's own config.** A council saved with
+`arbiter_can_override` false comes back with `option` naming that setting and
+the advisory declaration in place of the refused one; changing the setting
+with `PUT` changes the block.
+
 `walkthrough/07-saving-a-shape-is-not-running-it.md` exercises every route
 above through the test client, and `qmcp/topology_designs.py` and
-`qmcp/orchestration_service.py` hold the reasoning.
+`qmcp/orchestration_service.py` hold the reasoning. These routes save and
+judge designs and invoke no model; the voice runner runs a supported saved
+design only after a fresh approval, and each `capability` block carries the
+runner's `voice_runnable`, `voice_spends`, `voice_writes` and `voice_decides`
+beside the framework's declaration.
 
 ## Topology Registry
 
@@ -497,7 +535,8 @@ topology = Topology(
     config=DebateConfig(max_rounds=3).model_dump(),
 )
 
-# Persist and run
+# Persist and build. `topo.run` is still a stub that raises
+# `NotImplementedError`; a saved design runs through the voice runner.
 async with session:
     for agent in [proponent, opponent, mediator]:
         session.add(agent)
@@ -517,5 +556,5 @@ async with session:
         input_data={"topic": "Should AI development be regulated?"},
     )
 
-    result = await topo.run(context)
+    # await topo.run(context)  # NotImplementedError until the framework runner exists
 ```

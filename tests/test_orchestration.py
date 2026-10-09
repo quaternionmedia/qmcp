@@ -10,19 +10,24 @@ from __future__ import annotations
 
 import pytest
 
+from qmcp.agentframework.models.entities.topologies import config_class_for
 from qmcp.agentframework.models.enums import TopologyType
 from qmcp.agentframework.topologies import TopologyRegistry
 from qmcp.orchestration import (
+    ADVISORY_COUNCIL,
     ATTESTED,
     BRAINSTORM,
+    OPTIONS,
     PLANE,
     REFUSED,
     RUNS,
     by_type,
+    capability_for,
     cross_check,
     delegate,
     refuses,
     render,
+    selected,
     undeclared,
     unregistered_types,
 )
@@ -64,6 +69,86 @@ def test_a_refused_topology_is_refused_whatever_it_is_pointed_at():
     shape carries the problem rather than the pairing."""
     assert refuses(TopologyType.COUNCIL, "anything at all") is not None
     assert refuses(TopologyType.COUNCIL, "ratify a record") is not None
+
+
+ADVISORY = {"arbiter_can_override": False}
+
+
+def test_an_advisory_council_is_allowed_an_ordinary_question():
+    """The option, beside the refused default rather than instead of it.
+
+    Mutation: drop the `OPTIONS` entry and this fails.
+    """
+    assert refuses(TopologyType.COUNCIL, "which colour for the chart",
+                   ADVISORY) is None
+
+
+def test_an_advisory_council_is_still_refused_an_attested_act():
+    """A consensus is a conclusion a machine reached. Advisory withholds the
+    arbiter's override; it does not make the council a reporting shape.
+
+    Mutation: declare `ADVISORY_COUNCIL` with `decides=False` and this fails.
+    """
+    why = refuses(TopologyType.COUNCIL, "ratify a record", ADVISORY)
+    assert why is not None
+    assert "arbiter_can_override=False" in why and "person" in why
+
+
+def test_only_the_declared_value_selects_the_option():
+    """A council that omits the setting, sets it true, or sets something
+    merely falsy is the deciding default, refused whatever it is pointed at.
+
+    Mutation: compare with `==` alone, or with truthiness, and the `0` case
+    fails.
+    """
+    for config in (None, {}, {"arbiter_can_override": True},
+                   {"arbiter_can_override": 0},
+                   {"arbiter_can_override": None}):
+        assert selected(TopologyType.COUNCIL, config) is None, config
+        assert refuses(TopologyType.COUNCIL, "which colour for the chart",
+                       config) is not None, config
+
+
+def test_an_option_names_a_real_setting_of_a_declared_shape():
+    """An option keyed on a setting the config class no longer has would never
+    be selected, and the refused default would quietly stand for both.
+
+    Mutation: rename the option's setting and this fails.
+    """
+    for option in OPTIONS:
+        assert option.capability.topology in by_type()
+        fields = config_class_for(option.capability.topology).model_fields
+        assert option.setting in fields, option.setting
+        assert fields[option.setting].default != option.value
+
+
+def test_the_option_does_not_reach_another_kind():
+    assert capability_for(TopologyType.DEBATE, ADVISORY) is by_type()[
+        TopologyType.DEBATE]
+    assert capability_for(TopologyType.COUNCIL, ADVISORY) is ADVISORY_COUNCIL
+
+
+def test_the_voice_runner_takes_the_advisory_council_and_not_the_deciding_one():
+    """Mutation: mark the deciding council row voice-runnable, or leave the
+    advisory one unmarked, and this fails."""
+    assert by_type()[TopologyType.COUNCIL].voice_runnable is False
+    assert ADVISORY_COUNCIL.voice_runnable is True
+
+
+def test_no_voice_run_is_declared_to_spend_write_or_decide():
+    """The runner refuses a shape whose voice run would; declaring one here
+    would make the declaration and the runner disagree."""
+    for entry in (*PLANE, *(o.capability for o in OPTIONS)):
+        if entry.voice_runnable:
+            assert entry.status != REFUSED, entry.topology
+            assert not (entry.voice_spends or entry.voice_writes or entry.voice_decides)
+
+
+def test_the_printed_plane_marks_what_the_voice_runner_takes():
+    printed = render()
+    assert "[spends, decides, saved-design voice runner]" in printed
+    refused = next(line for line in printed.splitlines() if line.startswith("REFUSED"))
+    assert "voice runner" not in refused
 
 
 def test_an_undeclared_topology_is_refused_rather_than_allowed():
@@ -139,6 +224,14 @@ def test_names_in_the_vocabulary_with_no_implementation_are_reported():
     absent = unregistered_types()
     assert "mesh" in absent
     assert render().count("implemented by nothing") == 1
+
+
+def test_the_printed_plane_shows_the_option_beside_the_refused_row():
+    """`uv run qmcp orchestration plane` is where a reader looks, and a reader
+    who saw only the refused council would not know the advisory one exists."""
+    printed = render()
+    assert "REFUSED    council" in printed
+    assert "council with arbiter_can_override=False" in printed
 
 
 # --- delegation ---------------------------------------------------------------

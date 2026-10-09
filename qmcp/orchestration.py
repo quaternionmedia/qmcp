@@ -116,6 +116,17 @@ class Capability:
     order to act.
     """
 
+    voice_runnable: bool = False
+    """A saved design of this shape runs through the voice runner,
+    `qmcp.integrations.agents.topology_design`: bounded, read-only, behind a
+    consent. Separate from `status`, which is about the framework class."""
+
+    voice_spends: bool = False
+    voice_writes: bool = False
+    voice_decides: bool = False
+    """What the voice runner's run of this shape does. The runner refuses a
+    shape whose voice run would spend, write or decide."""
+
     @property
     def can_run(self) -> bool:
         return self.status == RUNS
@@ -134,7 +145,8 @@ PLANE: tuple[Capability, ...] = (
         needs=(Need(BUILD,
                     "the registered class is a stub whose `run` raises",
                     "somebody writes it; `qmcp.feedback` and `intake` are the "
-                    "concrete pipelines that already work"),)),
+                    "concrete pipelines that already work"),),
+        voice_runnable=True),
     Capability(
         TopologyType.DELEGATION, RUNS, spends=False, writes=False, decides=False,
         why="route each unit of work to the worker registered for its shape. "
@@ -145,14 +157,16 @@ PLANE: tuple[Capability, ...] = (
                     "it routes each unit of work to the worker registered for "
                     "its shape, and an unregistered shape has nowhere to go",
                     "pass `workers` to `delegate`; an unrouted shape is "
-                    "reported, never dropped"),)),
+                    "reported, never dropped"),),
+        voice_runnable=True),
     Capability(
         TopologyType.CROSS_CHECK, RUNS, spends=False, writes=False, decides=False,
         why="several independent checkers on one claim, and a consensus that "
             "is reported rather than acted on. Reports; does not decide",
         needs=(Need(WORKERS,
                     "a consensus of one checker is not a consensus",
-                    "pass more than one checker to `cross_check`"),)),
+                    "pass more than one checker to `cross_check`"),),
+        voice_runnable=True),
     Capability(
         TopologyType.ENSEMBLE, BRAINSTORM, spends=True, writes=False,
         decides=False,
@@ -164,7 +178,8 @@ PLANE: tuple[Capability, ...] = (
                     "N answers to one question is N paid calls, and the "
                     "default budget is zero",
                     "issue it against an authorised budget; consent is an "
-                    "amount rather than a category"),)),
+                    "amount rather than a category"),),
+        voice_runnable=True),
     Capability(
         TopologyType.DEBATE, BRAINSTORM, spends=True, writes=False, decides=True,
         why="positions argued to a conclusion. A good shape for a question with "
@@ -172,7 +187,8 @@ PLANE: tuple[Capability, ...] = (
             "attested act",
         needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
                Need(BUDGET, "positions are argued by paid calls",
-                    "issue it against an authorised budget"),)),
+                    "issue it against an authorised budget"),),
+        voice_runnable=True),
     Capability(
         TopologyType.CHAIN_OF_COMMAND, BRAINSTORM, spends=True, writes=False,
         decides=True,
@@ -180,7 +196,8 @@ PLANE: tuple[Capability, ...] = (
             "in something choosing",
         needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
                Need(BUDGET, "each escalation is a paid call",
-                    "issue it against an authorised budget"),)),
+                    "issue it against an authorised budget"),),
+        voice_runnable=True),
     Capability(
         TopologyType.COMPOUND, BRAINSTORM, spends=True, writes=False,
         decides=False,
@@ -191,22 +208,87 @@ PLANE: tuple[Capability, ...] = (
                     "it composes topologies, and more than one of its parts "
                     "has to run first",
                     "build the parts; this is an ordering fact rather than a "
-                    "judgement about the shape"),)),
+                    "judgement about the shape"),),
+        voice_runnable=True),
     Capability(
         TopologyType.COUNCIL, REFUSED, spends=True, writes=False, decides=True,
-        why="its config gives the arbiter the final decision when consensus "
-            "fails -- 'Council manager who facilitates and makes final "
-            "decisions'. That is adjudication by construction. Deliberation is "
-            "welcome here and the deciding is not: a council that reached a "
-            "verdict on whether to ratify would be a machine performing an act "
-            "`ci/attested-registry.yaml` reserves for a person, and the verdict "
-            "would be indistinguishable from one somebody made",
+        why="its default config gives the arbiter the final decision when "
+            "consensus fails -- 'Council manager who facilitates and makes "
+            "final decisions'. That is adjudication by construction. "
+            "Deliberation is welcome here and the deciding is not: a council "
+            "that reached a verdict on whether to ratify would be a machine "
+            "performing an act `ci/attested-registry.yaml` reserves for a "
+            "person, and the verdict would be indistinguishable from one "
+            "somebody made. `arbiter_can_override` false is the advisory "
+            "council, declared in `OPTIONS`",
         needs=(Need(PERSON,
                     "its arbiter takes the final decision when consensus "
                     "fails, and that is an act the constitution reserves",
                     "nothing supplies this: a person decides, and the shape is "
                     "refused here rather than made safe"),)),
 )
+
+
+@dataclass(frozen=True)
+class Option:
+    """One configuration under which a shape would do something else.
+
+    **THE SHAPE'S ROW STILL STANDS.** An option is a second declaration for
+    one setting, not an amendment to the first: a design that does not set
+    it, or sets it otherwise, is read against `PLANE` exactly as before.
+    """
+
+    setting: str
+    """The configuration key, as the kind's config class names it."""
+
+    value: Any
+    """The value that selects this declaration. Compared by type as well as
+    by value, so `0` does not select an option declared for `False`."""
+
+    capability: Capability
+
+
+ADVISORY_COUNCIL = Capability(
+    TopologyType.COUNCIL, BRAINSTORM, spends=True, writes=False, decides=True,
+    why="the same perspectives with `arbiter_can_override` false: when they "
+        "do not reach consensus the arbiter synthesizes what each said and "
+        "the council reports a split, so no member and no arbiter takes the "
+        "final decision. A consensus is still a conclusion a machine reached, "
+        "so like `debate` it is refused an attested act; pointed at an "
+        "ordinary question it is a proposal waiting for a runtime",
+    needs=(Need(BUILD, "the registered class is a stub whose `run` raises",
+                "somebody writes it"),
+           Need(BUDGET, "each perspective is a paid call",
+                "issue it against an authorised budget"),),
+    voice_runnable=True)
+
+OPTIONS: tuple[Option, ...] = (
+    Option("arbiter_can_override", False, ADVISORY_COUNCIL),
+)
+
+
+def selected(kind: TopologyType,
+             config: dict[str, Any] | None) -> Option | None:
+    """The option this configuration selects for this kind, or None."""
+    for option in OPTIONS:
+        if option.capability.topology != kind or not config:
+            continue
+        value = config.get(option.setting)
+        if type(value) is type(option.value) and value == option.value:
+            return option
+    return None
+
+
+def capability_for(kind: TopologyType,
+                   config: dict[str, Any] | None = None) -> Capability | None:
+    """What this kind would do under this configuration.
+
+    An option's declaration when the configuration selects one, otherwise
+    the kind's row in `PLANE`. A configuration that omits the setting is the
+    kind's default, so it reads the row.
+    """
+    option = selected(kind, config)
+    return option.capability if option else by_type().get(kind)
 
 
 def unmet(capability: Capability, *, built: bool | None = None,
@@ -294,7 +376,8 @@ def unregistered_types() -> list[str]:
     return sorted(t.value for t in TopologyType if t not in registered)
 
 
-def refuses(kind: TopologyType, act: str) -> str | None:
+def refuses(kind: TopologyType, act: str,
+            config: dict[str, Any] | None = None) -> str | None:
     """Why this pairing is refused, or None.
 
     THE REFUSAL IS A PROPERTY OF THE PAIRING. A deciding topology is fine
@@ -302,33 +385,51 @@ def refuses(kind: TopologyType, act: str) -> str | None:
     topology is fine pointed at an attested act because reporting is not
     performing. It is the combination that is refused, so both are named in
     the answer.
+
+    `config` is the design's configuration. It changes the answer only where
+    it selects one of `OPTIONS`, and the answer then names that setting.
     """
-    found = by_type().get(kind)
+    option = selected(kind, config)
+    found = capability_for(kind, config)
+    name = (f"{kind.value} with {option.setting}={option.value!r}"
+            if option else kind.value)
     if found is None:
-        return f"{kind.value} has no declared capability, so nothing knows what it would do"
+        return f"{name} has no declared capability, so nothing knows what it would do"
     if found.status == REFUSED:
-        return f"{kind.value} is refused here: {found.why}"
+        return f"{name} is refused here: {found.why}"
     if act in ATTESTED and found.decides:
-        return (f"{kind.value} decides, and {act!r} is a person's by "
+        return (f"{name} decides, and {act!r} is a person's by "
                 f"constitution -- a machine performing it changes what it "
                 f"asserts")
     return None
+
+
+def _rendered(entry: Capability, label: str) -> list[str]:
+    marks = []
+    if entry.spends:
+        marks.append("spends")
+    if entry.writes:
+        marks.append("writes")
+    if entry.decides:
+        marks.append("decides")
+    if entry.voice_runnable:
+        marks.append("saved-design voice runner")
+    return [f"{entry.status.upper():<10} {label:<12}"
+            f"{'  [' + ', '.join(marks) + ']' if marks else ''}",
+            f"           {entry.why}"]
 
 
 def render() -> str:
     """The plane, for somebody deciding what to point at what."""
     lines = ["what each topology would do, before anything runs one", ""]
     for entry in PLANE:
-        marks = []
-        if entry.spends:
-            marks.append("spends")
-        if entry.writes:
-            marks.append("writes")
-        if entry.decides:
-            marks.append("decides")
-        lines.append(f"{entry.status.upper():<10} {entry.topology.value:<12}"
-                     f"{'  [' + ', '.join(marks) + ']' if marks else ''}")
-        lines.append(f"           {entry.why}")
+        lines += _rendered(entry, entry.topology.value)
+    if OPTIONS:
+        lines += ["", "and under one setting, something else:"]
+        for option in OPTIONS:
+            lines += _rendered(option.capability,
+                               f"{option.capability.topology.value} with "
+                               f"{option.setting}={option.value!r}")
     inert = stubs()
     claiming = [c.topology.value for c in PLANE
                 if c.can_run and c.topology.value in inert]

@@ -105,6 +105,45 @@ phrases = ["which projects", "which projects do you know", "what projects do you
 says = "Say what can be said"
 phrases = ["help", "what can i say", "what can you do", "what are my options"]
 
+# --- adding phrases: matched as the start of the whole utterance -----------------------
+# After "add vocabulary phrase" come the words, then "to" and the command: stop, repeat,
+# done, more, try again, same in, never mind, or a diagnostic by its name (what heard,
+# how did it go, whats waiting, test voice, which projects, help). Nothing changes until
+# the edit is approved, and the phrases live in one file per user.
+
+[vocabulary.add]
+says = "Add a phrase to a command: add vocabulary phrase, the words, to, the command"
+phrases = ["add vocabulary phrase"]
+
+[vocabulary.remove]
+says = "Remove an added phrase: remove vocabulary phrase, the words, from, the command"
+phrases = ["remove vocabulary phrase"]
+
+[vocabulary.undo]
+says = "Undo the last vocabulary change, after approval"
+phrases = ["undo vocabulary change", "undo vocabulary"]
+
+# --- topologies: a cross-check by name, and the saved designs ---------------------------
+# `executable` entries are matched at the start of an instruction and the rest is the
+# prompt. The design phrases name the forms `match_topology_command` parses; every
+# change and every run is read back and approved.
+
+[topology.crosscheck]
+says = "Run a read-only cross-check with three independent local-model checkers after exact prompt and budget approval"
+phrases = ["cross check", "crosscheck"]
+executable = true
+
+[topology.design]
+says = "Create and edit saved topology designs and shared components, compose designs, then approve each named run"
+phrases = ["create topology name as type in project",
+           "create component name with instruction text in project",
+           "edit component name instruction text in project",
+           "add component component to topology name in project",
+           "remove component component from topology name in project",
+           "set component component routes terms in topology name in project",
+           "compose topology name with topology child in project",
+           "run topology name in project about task"]
+
 # --- the core projects: the words their instructions carry ---------------------------
 # `terms` are shown with what can be said. They reach the transcriber with an
 # instruction's take only when `QMCP_VOICE_HINT_TERMS` is set: on synthesized
@@ -135,6 +174,18 @@ name = "offline"
 says = "The spoken loop's offline check, every take scripted"
 phrases = ["run the offline check", "run the cookbook", "check the loop"]
 argv = ["uv", "run", "--frozen", "qmcp", "cookbook", "converse"]
+
+[[projects.qmcp.checks]]
+name = "topology-gallery"
+says = "The gallery lists framework shapes and saved-design support; it does not execute topologies"
+phrases = ["show the topology gallery", "list the topologies", "show topology shapes"]
+argv = ["uv", "run", "--frozen", "qmcp", "topology", "gallery"]
+
+[[projects.qmcp.checks]]
+name = "topology-governed"
+says = "The governed topology view; it describes the route and does not execute it"
+phrases = ["show the governed topology", "show the governed topology route"]
+argv = ["uv", "run", "--frozen", "qmcp", "topology", "show", "governed", "--level", "2"]
 minutes = 5
 
 [projects.joe]

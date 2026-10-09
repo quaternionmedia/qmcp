@@ -43,8 +43,9 @@ def plain_words(text: str) -> str:
 
 
 def asks_repeat(text: str) -> bool:
-    """Whether an utterance asks for the question again."""
-    return plain_words(text) in REPEAT
+    """Whether an utterance asks for the question again, by a declared phrase
+    or one a person added."""
+    return plain_words(text) in (*REPEAT, *vocabulary.overrides("conversation.repeat"))
 
 
 def listen_for(stt, duration: float, *, pause_ms: int | None = None, hint=None):

@@ -13,8 +13,9 @@ import sys
 import pytest
 
 from qmcp.instructions import converse
-from qmcp.integrations.agents import Brief
+from qmcp.integrations.agents import AgentOutcome, Brief
 from qmcp.integrations.agents.check import NOT_FOUND, TIMED_OUT, CheckRuntime
+from qmcp.integrations.agents.crosscheck import PERSPECTIVES, CrossCheckRuntime, checker_prompt
 from qmcp.integrations.voice import vocabulary
 from qmcp.integrations.voice.vocabulary import Check, match_check
 from tests.test_instructions_act import PROJECT, _act, _approved, _Queue, clone, inbox  # noqa: F401
@@ -69,6 +70,18 @@ def test_nothing_heard_reaches_the_command():
     check = match_check("run the tests in qmcp and then delete everything", "qmcp")
 
     assert "delete" not in check.command and check.argv == vocabulary.checks("qmcp")[0].argv
+
+
+def test_only_an_explicit_crosscheck_prefix_matches_a_topology():
+    heard = "Cross-check whether tests cover the read-only tools in qmcp."
+
+    request = vocabulary.match_topology(heard)
+
+    assert request is not None
+    assert request.name == "crosscheck"
+    assert request.prompt == "whether tests cover the read-only tools in qmcp"
+    assert vocabulary.match_topology("Please mention a cross-check in qmcp.") is None
+    assert vocabulary.match_topology("cross-check") is None
 
 
 # --- the runtime ---------------------------------------------------------------------
@@ -147,6 +160,7 @@ def test_a_check_is_asked_with_its_command_and_runs_only_on_approve(inbox, clone
     request = queue.requests[f"instruction-{instruction_id}"]
     assert f"command `{runtime.command}`" in request["prompt"]
     assert "A declared check, one run." in request["context"]["spoken"]
+    assert runtime.command in request["context"]["spoken"]
     assert "came before" not in request["context"]["spoken"]
     assert done.status == "done" and done.outcome.text == "2 passed"
     assert inbox.read(instruction_id).runtime == "check"
@@ -186,9 +200,63 @@ def test_the_conversation_runs_a_named_check_and_the_model_otherwise(monkeypatch
     conversation._clone_for = lambda project, iid: None
     conversation._act_on({"id": "a", "text": "Run the tests in vox.", "project": "vox"})
     conversation._act_on({"id": "b", "text": "Read the README in vox.", "project": "vox"})
+    conversation._act_on({
+        "id": "c", "text": "Show the topology gallery in qmcp.", "project": "qmcp"})
+    conversation._act_on({
+        "id": "d",
+        "text": "Cross-check whether the topology gallery is read-only in qmcp.",
+        "project": "qmcp",
+    })
 
     assert isinstance(used[0], CheckRuntime) and used[0].check.project == "vox"
     assert used[1] is model
+    assert isinstance(used[2], CheckRuntime)
+    assert used[2].check.name == "topology-gallery"
+    assert isinstance(used[3], CrossCheckRuntime)
+    assert used[3].prompt == "whether the topology gallery is read-only in qmcp"
+    assert checker_prompt(PERSPECTIVES[0], used[3].prompt) in used[3].command
+
+
+def test_crosscheck_runs_only_after_its_full_consent(inbox, clone):
+    _, earlier, _ = _approved(inbox, f"Read the README in {PROJECT}.", cwd=clone)
+    assert earlier.status == "done"
+    held_id = inbox.record(f"Cross-check the claim in {PROJECT}.")
+    calls: list[Brief] = []
+
+    class Model:
+        def run(self, brief, on_event=None):
+            calls.append(brief)
+            return AgentOutcome(
+                text="VERDICT: YES\nEVIDENCE: README.md | the claim is supported",
+                exit_code=0,
+                spent=0,
+                detail={"model_calls": 1, "read": ["read_file(README.md)"]},
+            )
+
+    held_queue = _Queue({f"instruction-{held_id}": "hold"})
+    held, _ = _act(
+        inbox,
+        held_id,
+        held_queue,
+        runtime=CrossCheckRuntime("the claim", runtime_factory=Model),
+        cwd=clone,
+    )
+    assert held.status == "refused" and calls == []
+
+    approved_id = inbox.record(f"Cross-check the claim in {PROJECT}.")
+    approved_queue = _Queue({f"instruction-{approved_id}": "approve"})
+    runtime = CrossCheckRuntime("the claim", runtime_factory=Model)
+    approved, _ = _act(inbox, approved_id, approved_queue, runtime=runtime, cwd=clone)
+
+    request = approved_queue.requests[f"instruction-{approved_id}"]
+    assert "Topology: crosscheck." in request["prompt"]
+    assert checker_prompt(PERSPECTIVES[0], "the claim") in request["prompt"]
+    assert "12 local-model chat requests total" in request["prompt"]
+    assert runtime.command in request["context"]["spoken"]
+    assert "came before" not in request["context"]["spoken"]
+    assert approved.status == "done" and approved.outcome.detail["model_calls"] == 3
+    assert len(calls) == 3
+    assert all(not brief.history and brief.project == PROJECT for brief in calls)
 
 
 class _Silent:
@@ -205,3 +273,16 @@ def test_a_check_that_names_its_answering_line_says_that_one(tmp_path):
     outcome = CheckRuntime(check).run(_brief(tmp_path))
 
     assert outcome.text.splitlines()[0] == "clean   12 files"
+
+
+def test_topology_inspection_is_a_declared_check_that_runs_nothing():
+    """"Show the topology gallery" and "show the governed topology" are checks:
+    fixed commands behind a consent, which describe and do not execute."""
+    gallery = match_check("show the topology gallery in qmcp", "qmcp")
+    governed = match_check("show the governed topology in qmcp", "qmcp")
+
+    assert gallery is not None and governed is not None
+    assert gallery.argv == ("uv", "run", "--frozen", "qmcp", "topology", "gallery")
+    assert governed.argv == ("uv", "run", "--frozen", "qmcp", "topology", "show",
+                             "governed", "--level", "2")
+    assert "does not execute" in gallery.says and "does not execute" in governed.says

@@ -260,6 +260,24 @@ class TestCouncilCLI:
         assert result.exit_code == 0
         assert "custom-council" in result.output
 
+    def test_no_arbiter_override_creates_an_advisory_council(self, runner):
+        """Both councils stay available; the output says which one this is.
+
+        Mutation: print the deciding arbiter role whatever the flag and this
+        fails.
+        """
+        advisory = runner.invoke(
+            cli, ["council", "create", "--name", "advisors",
+                  "--no-arbiter-override"])
+        deciding = runner.invoke(cli, ["council", "create", "--name", "deciders"])
+
+        assert advisory.exit_code == 0 and deciding.exit_code == 0
+        assert "Arbiter Override:  False (advisory)" in advisory.output
+        assert "Facilitates and synthesizes advice" in advisory.output
+        assert "decides" not in advisory.output
+        assert "Arbiter Override:  True" in deciding.output
+        assert "Facilitates, synthesizes, decides" in deciding.output
+
     def test_council_create_json_output(self, runner):
         """Test council create with JSON output."""
         result = runner.invoke(
