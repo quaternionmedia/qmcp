@@ -108,6 +108,32 @@ one that would read as a shape taking no configuration:
     >>> answer.status_code, "seam" in answer.json()["detail"]
     (404, True)
 
+## Reusable components
+
+A design refers to named components. They are saved, read and edited on their
+own, apart from the designs that use them:
+
+    >>> for name, description, instruction in (
+    ...     ("evidence-checker", "Checks cited evidence", "Read the cited files."),
+    ...     ("consistency-checker", "Checks internal consistency", "Check the reasoning."),
+    ...     ("security-checker", "Checks security concerns", "Look for security risks."),
+    ... ):
+    ...     answer = client.post("/v1/topology-components", json={
+    ...         "name": name, "description": description, "instruction": instruction})
+    ...     assert answer.status_code == 201, answer.json()
+    >>> client.get("/v1/topology-components").json()["count"]
+    3
+    >>> component = client.get("/v1/topology-components/evidence-checker").json()
+    >>> component["project"], component["version"]
+    ('qmcp', '1.0.0')
+
+A component is shared by reference, so an edit reaches every design that names
+it:
+
+    >>> client.put("/v1/topology-components/evidence-checker", json={
+    ...     "instruction": "Read each cited file and check the claim."}).json()["instruction"]
+    'Read each cited file and check the claim.'
+
 ## Saving a design
 
 The config goes through the kind's class, and what is stored is what the class
@@ -116,17 +142,32 @@ shape as the harness reads it:
 
     >>> saved = client.post("/v1/topologies", json={
     ...     "name": "two-checkers", "description": "a pair of independent checkers",
-    ...     "topology_type": "crosscheck", "config": {"num_checkers": 2}}).json()
+    ...     "topology_type": "crosscheck", "config": {
+    ...         "num_checkers": 2,
+    ...         "components": [{"name": "evidence-checker"},
+    ...                        {"name": "consistency-checker"}]}}).json()
     >>> saved["address"]
     'quaternionmedia/qmcp/topology/two-checkers'
     >>> saved["config"]["consensus_method"]
     'majority'
+    >>> [ref["name"] for ref in saved["config"]["components"]]
+    ['evidence-checker', 'consistency-checker']
 
 The plane's verdict comes back beside it. This one runs, and wants more than
 one checker:
 
     >>> saved["capability"]["status"], [n["key"] for n in saved["capability"]["needs"]]
     ('runs', ['workers'])
+
+A design naming a component nobody saved is refused, rather than kept with a
+reference to nothing:
+
+    >>> unknown = client.post("/v1/topologies", json={
+    ...     "name": "ghost-checkers", "description": "names a missing component",
+    ...     "topology_type": "crosscheck",
+    ...     "config": {"components": [{"name": "no-such-checker"}]}})
+    >>> unknown.status_code, unknown.json()["detail"]
+    (422, 'unknown reusable component(s): no-such-checker')
 
 A config the class refuses is refused here, with the field named so a window
 can put the message beside the input:
@@ -187,12 +228,27 @@ it is -- and only the pairing knows which, so a window asks with `act`:
 Description, config and version. The new config goes through the same class,
 and `updated_at` moves:
 
-    >>> changed = client.put("/v1/topologies/two-checkers",
-    ...                      json={"config": {"num_checkers": 3}}).json()
+    >>> changed = client.put("/v1/topologies/two-checkers", json={"config": {
+    ...     "num_checkers": 3,
+    ...     "components": [{"name": "evidence-checker"},
+    ...                    {"name": "consistency-checker"},
+    ...                    {"name": "security-checker"}]}}).json()
     >>> changed["changed"], changed["config"]["num_checkers"]
     (['config'], 3)
     >>> changed["updated_at"] > changed["created_at"]
     True
+
+A design can compose saved designs by name, and one that would compose itself
+is refused:
+
+    >>> composed = client.post("/v1/topologies", json={
+    ...     "name": "composed-review", "description": "a reusable review flow",
+    ...     "topology_type": "compound", "config": {"compose": ["two-checkers"]}})
+    >>> composed.status_code, composed.json()["config"]["compose"]
+    (201, ['two-checkers'])
+    >>> client.put("/v1/topologies/composed-review", json={
+    ...     "config": {"compose": ["composed-review"]}}).json()["detail"]
+    'a topology cannot compose itself'
 
 The name and the kind are fixed -- one is the address and the other is what the
 config was validated against -- and a body that changes neither of the mutable

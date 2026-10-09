@@ -397,15 +397,33 @@ cannot be answered arrives as a reason rather than an empty list.
 | `GET /v1/topology/schema/{kind}` | the JSON schema of the kind's configuration class -- what a form is built from; `governed` is a 404 saying it is a seam, not a configurable shape |
 | `GET /v1/orchestration/plane` | `qmcp.orchestration.PLANE` as a document: per shape its status, whether it spends, writes or decides, why, and its needs with what supplies each; the needs and attested-act vocabularies; the drift reports |
 | `GET /v1/orchestration/runnable?workers=&budget=&model=&built=` | what that hand could run now, and per shape what it is still short of. There is no `person` parameter and there will not be one |
-| `POST /v1/topologies` | save a design. `config` is validated through the kind's configuration class and stored with its defaults filled; the response carries an `address` and a `capability` block |
-| `GET /v1/topologies` | every saved design |
+| `POST /v1/topology-components` | save a reusable component by name, with its description and instruction |
+| `GET /v1/topology-components` | every saved component of one project |
+| `GET /v1/topology-components/{name}` | one component |
+| `PUT /v1/topology-components/{name}` | change a component's description, instruction or version; its name is fixed |
+| `POST /v1/topologies` | save a design. `config` is validated through the kind's configuration class and stored with its defaults filled; `config.components` names reusable components, each with optional `route_terms`, and `config.compose` names saved designs; the response carries an `address` and a `capability` block |
+| `GET /v1/topologies` | every saved design of one project |
 | `GET /v1/topologies/{ref}?act=` | one design, by id or by name; `act` asks the plane about a pairing |
-| `PUT /v1/topologies/{ref}` | change `description`, `config` or `version`; name and kind are fixed |
+| `PUT /v1/topologies/{ref}` | change `description`, `config` or `version`; name and kind are fixed; the references in a new `config` are checked as on save |
 
 **A refused shape can be saved.** `council` is refused by the plane because its
 arbiter decides, and the refusal is of the run. The saved row comes back with
 the plane's `refusal` and a `saved_anyway` sentence, so a designer sees the
-rule at the moment of choosing rather than after. There is no `DELETE`.
+rule at the moment of choosing rather than after. Neither designs nor
+components have a `DELETE`.
+
+**References are checked, and components are shared.** An unknown component
+or design, a design composing itself, a cycle, and composition deeper than
+eight levels are each a 422. A component is shared by reference, so changing
+one changes what every design that names it reads.
+
+**Scope and exposure.** These routes write and carry no authorization of their
+own, so the server registers them only on a loopback bind. Every design and
+component belongs to a `project` (the body's `project` or `?project=`,
+defaulting to the repository's short name); a name is unique within its
+project and references resolve within it. `config.compose` may name another
+project's design as `project/name`, and the cycle and depth checks follow
+references across projects. A listing returns one project at a time.
 
 `walkthrough/07-saving-a-shape-is-not-running-it.md` exercises every route
 above through the test client, and `qmcp/topology_designs.py` and
