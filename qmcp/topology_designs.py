@@ -103,18 +103,26 @@ def kinds() -> list[str]:
     return [t.value for t in TopologyType if config_class_for(t) is not None]
 
 
-def capability_block(kind: TopologyType, act: str = "") -> dict[str, Any]:
-    """The plane's verdict on one kind, and on one pairing when `act` is given.
+def capability_block(kind: TopologyType, act: str = "",
+                     config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The plane's verdict on one design, and on one pairing when `act` is given.
 
     `refusal` is `qmcp.orchestration.refuses` verbatim: a sentence, or None.
     When a kind has no declared capability the block says so through the
     refusal rather than through empty fields -- `needs` is None, not `[]`,
     because nobody has declared what the shape wants.
+
+    `config` is the design's own, so a council saved with
+    `arbiter_can_override` false reads the advisory declaration and `option`
+    names the setting that selected it.
     """
-    capability = plane.by_type().get(kind)
-    refusal = plane.refuses(kind, act)
+    capability = plane.capability_for(kind, config)
+    refusal = plane.refuses(kind, act, config)
+    option = plane.selected(kind, config)
     block: dict[str, Any] = {
         "declared": capability is not None,
+        "option": ({"setting": option.setting, "value": option.value}
+                   if option else None),
         "status": capability.status if capability else None,
         "spends": capability.spends if capability else None,
         "writes": capability.writes if capability else None,
@@ -157,7 +165,8 @@ def row_payload(row: Topology, *, project: str | None = None,
         "config": row.config,
         "created_at": _stamp(row.created_at),
         "updated_at": _stamp(row.updated_at),
-        "capability": capability_block(TopologyType(row.topology_type), act),
+        "capability": capability_block(TopologyType(row.topology_type), act,
+                                       row.config),
     }
     if identity.is_known(project):
         payload["address"] = topology_address(row.name, project)
