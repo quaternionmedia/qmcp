@@ -68,6 +68,18 @@ The need says so rather than leaving it to be inferred:
     >>> "a person decides" in council.needs[0].supplied_by
     True
 
+What lifts it is a different council, not an argument. With
+`arbiter_can_override` false the arbiter does not decide, and the plane
+declares that shape separately; it wants what any unbuilt, spending shape
+wants:
+
+    >>> from qmcp.orchestration import capability_for
+    >>> advisory = capability_for(TopologyType.COUNCIL, {"arbiter_can_override": False})
+    >>> [n.key for n in unmet(advisory)]
+    ['build', 'budget']
+    >>> unmet(advisory, built=True, budget=99)
+    ()
+
 ## Every need names what supplies it
 
 A shape that cannot run and does not say what would make it run leaves a reader
