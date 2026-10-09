@@ -80,6 +80,7 @@ from .entities import (
     Result,
     AgentToolInvocation,
     Topology,
+    TopologyComponent,
     TopologyMembership,
     WorkflowTemplate,
 )
@@ -199,6 +200,7 @@ __all__ = [
     "Result",
     "AgentToolInvocation",
     "Topology",
+    "TopologyComponent",
     "TopologyMembership",
     "WorkflowTemplate",
     # Schemas

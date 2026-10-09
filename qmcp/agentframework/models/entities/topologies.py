@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sqlalchemy import UniqueConstraint
+
 from .base import (
     Any,
     Column,
@@ -15,14 +17,18 @@ from .base import (
 )
 from ..enums import TopologyType
 
+DEFAULT_PROJECT = "default"
+
 
 class Topology(SQLModel, table=True):
-    """Persistent topology definition."""
+    """Persistent topology definition, named uniquely within one project."""
 
     __tablename__ = "topologies"
+    __table_args__ = (UniqueConstraint("project", "name", name="uq_topologies_project_name"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(index=True, unique=True, min_length=1, max_length=64)
+    project: str = Field(default=DEFAULT_PROJECT, index=True, min_length=1, max_length=64)
+    name: str = Field(index=True, min_length=1, max_length=64)
     description: str = Field(min_length=1, max_length=1024)
     topology_type: TopologyType
     version: str = Field(default="1.0.0")
@@ -30,7 +36,7 @@ class Topology(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
-    @field_validator("name")
+    @field_validator("name", "project")
     @classmethod
     def validate_name(cls, value: str) -> str:
         return validate_identifier(value)
@@ -53,6 +59,29 @@ class Topology(SQLModel, table=True):
                 f"No config class registered for topology type {self.topology_type!r}"
             )
         return config_cls.model_validate(self.config)
+
+
+class TopologyComponent(SQLModel, table=True):
+    """Reusable, named instruction block referenced by topology designs."""
+
+    __tablename__ = "topology_components"
+    __table_args__ = (
+        UniqueConstraint("project", "name", name="uq_topology_components_project_name"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    project: str = Field(default=DEFAULT_PROJECT, index=True, min_length=1, max_length=64)
+    name: str = Field(index=True, min_length=1, max_length=64)
+    description: str = Field(min_length=1, max_length=512)
+    instruction: str = Field(min_length=1, max_length=2048)
+    version: str = Field(default="1.0.0")
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("name", "project")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return validate_identifier(value)
 
 
 def config_class_for(kind: TopologyType) -> type | None:
@@ -107,6 +136,7 @@ class TopologyMembership(SQLModel, table=True):
 
 __all__ = [
     "Topology",
+    "TopologyComponent",
     "TopologyMembership",
     "config_class_for",
 ]
