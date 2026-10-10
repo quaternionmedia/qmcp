@@ -1,15 +1,11 @@
 """A workflow step and a delta are the same thing, and the round trip proves it.
 
-WHAT IS ACTUALLY UNDER TEST. Not that the mapping runs -- that a step which goes
-out as a delta comes back as the same step. A mapping tested one direction at a
-time passes while quietly losing a field, and the field it loses is the one
-nobody thought to assert.
+Under test is that a step which goes out as a delta comes back as the same
+step: a mapping tested one direction at a time can lose a field nobody
+asserted.
 
-THE OTHER HALF IS THE COUPLING GUARD. `test_the_seam_does_not_import_dossier` is
-the reason this file exists as much as the round trip is: dossier's
-`ProjectDelta` is on an unmerged branch, dossier is not a qmcp dependency, and
-an import would mean neither project ships without the other. The seam is a
-schema.
+`test_the_seam_does_not_import_dossier` guards the coupling: dossier is not a
+qmcp dependency, and the seam is a schema.
 """
 
 from __future__ import annotations

@@ -5,42 +5,31 @@
     delta = to_delta(step, result, project=identity.this_project())
     step  = from_delta(delta, output_type=ChangeSummary)
 
-WHAT THIS IS FOR. dossier plans work as `ProjectDelta` rows -- discrete units
-moving through brainstorm, planning, implementation, review, documentation,
-complete. qmcp runs work as `AgentStep`s in a pipeline. They are the same thing
-seen from two ends: a unit of work with a lifecycle and an audit trail. This is
-the correspondence, written once, in both directions, with a test that a step
-survives the round trip.
+dossier plans work as `ProjectDelta` rows moving through brainstorm, planning,
+implementation, review, documentation and complete; qmcp runs work as
+`AgentStep`s in a pipeline. Both are a unit of work with a lifecycle and an
+audit trail. This is the correspondence in both directions, with a test that a
+step survives the round trip.
 
-THE SEAM IS A SCHEMA, NOT AN IMPORT. Nothing here imports dossier, and nothing
-here should. dossier's `ProjectDelta` lives on an unmerged branch, dossier is
-not a qmcp dependency, and coupling the two would mean neither ships without the
-other -- which is the opposite of interchangeable. What crosses is a plain dict
-whose keys are dossier's column names, so the consumer writes
+The seam is a schema, not an import: nothing here imports dossier, which is not
+a qmcp dependency, so neither has to ship with the other. What crosses is a
+plain dict whose keys are dossier's column names, so the consumer writes
 
     ProjectDelta(**delta["delta"], project_id=resolved)
 
-and nothing translates in between. `project_id` is the one required column not
-in the row, deliberately: it is an integer primary key in dossier's database,
-and qmcp cannot know it. The `project` key beside the row carries `owner/repo`,
-which is what the consumer resolves. `SCHEMA` is the promise's version, and a
-change to any key is a change to it.
+and nothing translates in between. `project_id`, an integer primary key in
+dossier's database, is the one required column not in the row; the `project`
+key beside the row carries `owner/repo`, which the consumer resolves. `SCHEMA`
+is the version of this promise, and a change to any key changes it.
 
-WHAT DOES NOT SURVIVE THE ROUND TRIP, and why it cannot. `output_type` is a
-Python class; a delta is data. A row in a database cannot carry a Pydantic model
-any more than a plan can carry the code that fulfils it -- so `from_delta`
-requires the caller to supply it. That is the modularity rather than a
-limitation of it: the delta pins *what the step is and where it stands*, and any
-step satisfying that identity can be swapped in behind it. `retries` is dropped
-for the same reason in miniature: it is a runtime knob, not a fact about the
-work.
+What does not survive the round trip: `output_type`, a Python class, which a
+row of data cannot carry, so `from_delta` takes it from the caller -- any step
+satisfying the delta's identity can stand behind it; and `retries`, a runtime
+knob rather than a fact about the work.
 
-WHAT THIS CANNOT SEE. Whether the delta is true. It reads a step's declaration
-and, if given one, its result -- not whether the work was any good, whether the
-review that ran was a real review, or whether a step that produced output
-produced correct output. `phase` here is derived from execution facts and never
-from qmcp import identity
-from judgement.
+What this cannot see: whether the delta is true. It reads a step's declaration
+and, if given one, its result -- not whether the work was any good or the
+output correct. `phase` is derived from execution facts, never from judgement.
 """
 
 from __future__ import annotations
@@ -54,9 +43,8 @@ from qmcp.cookbook.steps import AgentStep, StepResult
 
 SCHEMA = 1
 
-# dossier's `DeltaPhase` values, spelled out rather than imported. If dossier
-# renames one, this list stops matching and the test that pins these names is
-# where it is noticed -- which is the point of writing them down.
+# dossier's `DeltaPhase` values, spelled out rather than imported. A test pins
+# these names, so a rename in dossier is noticed there.
 PLANNING = "planning"
 IMPLEMENTATION = "implementation"
 REVIEW = "review"

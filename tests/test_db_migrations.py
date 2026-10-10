@@ -1,17 +1,13 @@
 """The migration chain, and the claim a stamped baseline has to earn.
 
-STAMPING IS AN ASSERTION. `alembic stamp` writes a revision into a database
-without running anything -- it says "this database already has that shape". The
-existing database was stamped that way, and the only thing that makes it true is
-this: a database built from nothing by `alembic upgrade head` has the same shape
-as the one the models describe. If those two ever differ, the stamp was a lie
-and every later migration is being applied to a shape nobody verified.
+`alembic stamp` writes a revision into a database without running anything:
+it asserts the database already has that shape. A stamped baseline is true
+only if a database built from nothing by `alembic upgrade head` has the shape
+the models describe, which `test_a_fresh_upgrade_reproduces_the_models_schema`
+checks.
 
-That is what `test_a_fresh_upgrade_reproduces_the_models_schema` checks, and it
-is the reason this file exists rather than a note in a handoff.
-
-NOTHING HERE TOUCHES THE CONFIGURED DATABASE. Every test migrates a fresh file
-in a temporary directory.
+Nothing here touches the configured database: every test migrates a fresh
+file in a temporary directory.
 """
 
 from __future__ import annotations

@@ -3,14 +3,12 @@
 Every test builds its own database in a temporary directory. Nothing here
 touches the configured one.
 
-THE TESTS THAT MATTER ARE THE ONES ABOUT FAILURE. A backup tool is easy to write
-so that it always reports success -- the happy path is a file copy. What has to
-hold is that it refuses: a truncated copy is deleted rather than left to be
-found and trusted, an overwrite is refused rather than silently taken, and a
-restore backs up what it is about to destroy with no flag to skip it.
+Most tests are about refusal: a truncated copy is deleted rather than left to
+be trusted, an overwrite is refused rather than silently taken, and a restore
+backs up what it is about to destroy, with no flag to skip it.
 
-The live-writer test is the reason the online backup API is used at all, and it
-is written to fail against `shutil.copy`.
+The live-writer test covers why the online backup API is used, and fails
+against `shutil.copy`.
 """
 
 from __future__ import annotations

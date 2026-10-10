@@ -1,20 +1,13 @@
 """The change-impact pipeline: its output models and its steps, and nothing else.
 
-WHY THIS IS NOT IN THE FLOW FILE. It was, and that made four pure step
-definitions unreachable on any machine without Metaflow. `examples/flows/change_impact.py`
-imports `metaflow` at module level, and `import metaflow` fails on Windows in
-`metaflow/sidecar/sidecar_subprocess.py` on `import fcntl`, which is POSIX-only
--- so importing the pipeline to read, test, plan against or map to a dossier
-delta required a runtime that has nothing to do with any of those things.
+The steps are `AgentStep`s -- name, prompt, output type -- and describe work;
+the flow in `examples/flows/change_impact.py` is one way to execute it. They
+live apart from the flow because the flow imports `metaflow` at module level,
+and `import metaflow` fails on Windows (`metaflow/sidecar/sidecar_subprocess.py`
+imports the POSIX-only `fcntl`).
 
-The steps are `AgentStep`s: name, prompt, output type. They describe work. The
-flow is one way to *execute* that work, and coupling the description to the
-executor is what made the description platform-specific.
-
-WHAT DEPENDS ON WHAT, NOW. This module imports pydantic and `qmcp.cookbook.steps`.
-The flow imports this. Nothing here imports Metaflow, and a test asserts that,
-because the coupling is the kind that returns quietly the next time somebody
-adds a decorator.
+This module imports pydantic and `qmcp.cookbook.steps`; the flow imports this.
+Nothing here imports Metaflow, and a test asserts it.
 """
 
 from __future__ import annotations

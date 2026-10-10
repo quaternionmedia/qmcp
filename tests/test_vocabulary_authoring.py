@@ -1,9 +1,8 @@
 """Phrases a person adds to the spoken commands, kept in a file of their own.
 
-THE TEST WORTH READING IS THE CONFLICT ONE. A phrase that already means
-something -- another command, an answer, a check, a project's name -- is refused
-rather than given a second meaning, because the loop matches the first meaning
-it finds and the person would hear the wrong thing happen.
+A phrase that already means something -- another command, an answer, a check,
+a project's name -- is refused rather than given a second meaning, because the
+loop matches the first meaning it finds.
 
 Every test reads the empty phrase file `tests/conftest.py` gives it.
 """
@@ -88,10 +87,7 @@ def test_what_answers_a_consent_and_what_is_not_a_command_are_not_editable(key):
     ("add vocabulary phrase", "vocabulary.add"),
 ])
 def test_a_phrase_that_already_means_something_is_refused(phrase, means):
-    """THE ONE THAT MATTERS.
-
-    Mutation: return an empty map from `_meanings` and every case fails.
-    """
+    """Mutation: return an empty map from `_meanings` and every case fails."""
     with pytest.raises(ValueError, match=means):
         vocabulary.prepare_add("repeat", phrase)
 

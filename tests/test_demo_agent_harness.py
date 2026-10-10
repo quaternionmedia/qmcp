@@ -1,16 +1,11 @@
 """The local demo runs, and it demonstrates the thing it claims to.
 
-WHY A DEMO NEEDS A TEST. This demo was previously a sequence typed into a
-session and pasted into a handoff page. Nobody else could reproduce it, and a
-result nobody can reproduce is the same defect as a hand-run check reported as
-CI. These tests run the real module, so `278 passed` covers the demo too and a
-change that breaks it is caught by the suite rather than by someone trying it.
+These tests run the real module, so the suite covers the demo and a change
+that breaks it goes red.
 
-WHY THE ASSERTIONS ARE ABOUT THE AUDIT LOG. Recording an invocation is the code
-path that was broken on `main` -- `ToolInvocation.execution_id` was `UUID NOT
-NULL` against an insert supplying no id, and every call raised
-`sqlite3.IntegrityError`. A test asserting only that the demo exits zero would
-pass against a harness that recorded nothing.
+The assertions are about the audit log, not the exit status: a test asserting
+only that the demo exits zero would pass against a harness that recorded
+nothing.
 """
 
 from __future__ import annotations

@@ -1,23 +1,10 @@
 """The client's default and the server's default are one number.
 
-**IT COULD NOT REACH ITS OWN SERVER.** `MCPClient()` defaulted to
-`http://localhost:3333` while `qmcp.config` served `3141`, so the client this
-package ships could not talk to the server this package starts without being
-told where it was. Established by running both -- `MCPClient().health()` raised
-`ConnectError`, and the same client given `http://127.0.0.1:3141` returned
-`{'status': 'healthy'}`.
+These tests do not check the number. They check that the client's default and
+the server's settings are the same thing, so `QMCP_PORT` moves both ends and
+neither can be changed alone.
 
-`qmcp/config.py`'s own comment records the earlier half of that: 3333 is what
-the harness served while a control panel looked on 8000. The server moved to
-3141 and four call sites did not.
-
-**WHY A TEST AND NOT A CONSTANT.** A shared constant is what this already had --
-the literal `3333`, in five places. What it lacked was anything that fails when
-one of them moves. These tests do not check the number; they check that the
-client's default and the server's settings are the same thing, so `QMCP_PORT`
-moves both ends and neither can be changed alone.
-
-THE MUTATION, quoted as it printed. `default_base_url` given the old literal:
+The mutation, quoted as it printed. `default_base_url` given the old literal:
 
     AssertionError: the client's default is not where the server serves
     assert 'http://localhost:3333' == 'http://127.0.0.1:3141'
