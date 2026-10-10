@@ -2,34 +2,16 @@
 
     uv run qmcp instructions act <id> --runtime <name>
 
-A runtime remembers nothing between runs. What it knows of the project's
-history arrives in the `Brief`: the instruction, the project, the clone, and
-the project's earlier instructions and outcomes, read from qmcp's record
-(`qmcp.instructions.continuity`). `Brief.prompt()` renders it the same way for
-every runtime, so one runtime can replace another between runs. No runtime is
-asked to resume a session of its own.
-
-Which runtime runs is chosen at the command line, so this package holds the
-contract and a registry and names no product. A product appears only in
-`qmcp.integrations.agents.adapters.<product>`, one module per runtime,
-discovered by name. `local`, the model `qmcp.localmodel` stands up on this
-machine, is one; a coding assistant's command line is another, given the same
-brief.
-
 The contract is one call: `AgentRuntime.run(brief, on_event)` returns an
-`AgentOutcome` -- the text that came back, the exit code, how long it took,
-what it spent (a count where the runtime reports one, `unknown` with a reason
-where it does not), and anything else the runtime reports, as `detail`.
+`AgentOutcome` -- the text, the exit code, how long it took, what it spent (a
+count, or `unknown` with a reason), and the runtime's `detail`. A runtime
+remembers nothing between runs; `Brief.prompt()` renders the same brief for
+every runtime. A product is named only in its adapter,
+`qmcp.integrations.agents.adapters.<product>`. `scripted` is for tests and is
+never a default.
 
-`scripted` is for tests and the offline check and is never the default at the
-command line. It answers with a configured text and exit code, records the
-brief it was given, and spends nothing. The command requires `--runtime` or
-`QMCP_AGENT_RUNTIME`.
-
-What this cannot do: stop a runtime that spends more than it says, or one that
-does not say -- the outcome carries the runtime's own report, and the budget
-counts runs, not calls -- or make a runtime read-only; what a runtime may
-touch is the adapter's to state.
+What this cannot do: stop a runtime that spends more than it reports, or make
+one read-only; what a runtime may touch is its adapter's to state.
 """
 
 from __future__ import annotations

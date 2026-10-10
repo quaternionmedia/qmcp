@@ -8,23 +8,9 @@
     GET  /v1/voice/vocabulary          what can be said to the spoken loop, by group
     POST /v1/instructions/{id}/act     act on one, behind consent; 202, 404, 409 or 422
 
-Loopback only, like the voice routes: an instruction is a person's own words,
-and the voice route makes this machine speak and listen. `qmcp.server`
-registers these only on a loopback bind, and they do not exist otherwise.
-
-`POST /v1/instructions/voice` runs `qmcp instruct --voice` in a process of its
-own, through the tracker the approval route uses, for the reasons
-`qmcp.integrations.voice.service` gives. The shared tracker makes "one
-conversation at a time" hold across both kinds. `POST /v1/instructions/{id}/act`
-runs `qmcp instructions act` the same way, with the runtime, budget and clone
-the body names and nothing defaulted; an act is one at a time, as a
-conversation is. With `voice` in the body the command asks the consent aloud
-itself.
-
-The server resolves each typed or posted instruction against the roster, so
-every row's `detail` comes from one function on one list. The spoken dialog
-reads the same roster first, to ask an ambiguous name back; it states a
-project only when the person chose or spoke one.
+The routes exist only on a loopback bind. The spoken and act routes run their
+commands in processes of their own through the voice routes' tracker, so one
+conversation or act runs at a time. `docs/integrations/voice.md` describes each route.
 """
 
 from __future__ import annotations

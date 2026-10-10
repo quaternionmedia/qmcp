@@ -1,33 +1,14 @@
 """The spoken instruction: ask, listen long, read back, resolve, record.
 
-"What should be done?" is an open question: the transcript is the answer and
-the speaker is the only check on it. It is read back as a closed choice
-between `agree` and `again` -- or, heard confidently, agreed to tacitly unless
-interrupted -- parsed with the approval dialog's helpers (`parse_yes_no`,
-`match_option`, `say_options`). The re-asks say which of `noinput` or
-`nomatch` went wrong, and the turns this dialog adds are announced as
-`confirm` (the read-back) and `again` (another take).
+The transcript is read back as a closed choice between `agree` and `again`, or
+agreed to tacitly when the engine heard it confidently, using the approval
+dialog's helpers (`parse_yes_no`, `match_option`, `say_options`). The first
+listen asks for a longer pause and cap than the confirmation. A text naming
+one project resolves, several are asked back by name, and none is asked for
+once; an answer matching nothing is recorded `unresolved`.
 
-An open question on the human queue, answered by voice, is asked and confirmed
-in the same shape, on the same helpers, grammar and announcement reasons; the
-two differ in where the confirmed text goes and how long the microphone stays
-open.
-
-The take is long and the answer short. An instruction is a sentence with
-pauses mid-thought, so the first listen asks the engine for a longer pause
-and a longer cap -- `pause_ms` and `listen_duration`, both options on
-`qmcp instruct --voice` -- and the confirmation asks for neither.
-
-The project is confirmed, not trusted, because how reliably a project name
-transcribes is unmeasured. A text naming one project resolves; several are
-asked back as a closed choice by name; none is asked for once, open. An answer
-that still matches nothing is recorded `unresolved`, not dropped.
-
-The row says how the project was settled. A text that named one project is
-sent without a project, so the server matches it and the row carries the name
-and the rule, as a typed one does. A project the person chose or spoke is
-stated to the server, and the row says `stated` with `source: voice` and the
-answer among the transcripts in `heard`.
+`docs/integrations/voice.md`, *An instruction is recorded, not run*, describes the dialog and how a
+row says its project was settled.
 """
 
 from __future__ import annotations

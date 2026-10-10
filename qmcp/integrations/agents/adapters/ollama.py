@@ -2,42 +2,17 @@
 
     uv run qmcp instructions act <id> --runtime local --budget 1
 
-`qmcp.localmodel` stands the model up and pins it; this adapter is how an
-instruction reaches it. It talks to the service `qmcp.localmodel.ENDPOINT`
-names, with the model `qmcp.localmodel.MODEL` pins, over the service's chat
-route -- no command line, no account, nothing paid -- so `spent` is zero, and
-that zero is a count. The product is named here and in `qmcp.localmodel`, and
-nowhere else.
+It talks to the service at `qmcp.localmodel.ENDPOINT` with the model
+`qmcp.localmodel.MODEL` pins, spends nothing, and reads the clone through three
+tools that cannot write and cannot leave the brief's directory. Each run makes
+at most `MAX_STEPS` calls, each capped at `MAX_TOKENS` tokens and `TIMEOUT`
+seconds, and a timed-out call is retried once against a fresh load. The
+product is named here and in `qmcp.localmodel`, and nowhere else.
 
-It reads the clone and changes nothing. The model is offered three tools --
-list a directory, read a file, search for text -- each confined to the brief's
-directory: a path resolving outside it is refused, and so is anything under
-`.git` or an environment directory. No tool writes. What it read is kept in
-the outcome's `detail`.
+`docs/integrations/voice.md`, *The local runtime*, explains the tool protocol, the bounds and the
+stall recovery.
 
-The tools are a protocol in the prompt, not the service's tool field: `SYSTEM`
-states the three tools and the one shape a call takes, a single JSON object,
-and `tool_call_in` reads that shape from the text, or from the structured
-field where a service fills it, so it works with any model the service serves.
-A model that answers before reading anything is sent back once to read, and
-one that asks for a read it already made is told so and asked to answer.
-Sampling is at temperature zero, so a run can be repeated.
-
-Each run starts with nothing but `Brief.prompt()`, the prompt every runtime is
-given.
-
-Every call is bounded: at most `MAX_STEPS` model calls a run, each capped at
-`MAX_TOKENS` tokens and `TIMEOUT` seconds. A service that does not answer is a
-failed run with the endpoint named, never a hang; the service finishes a
-request it has started even after its caller gives up, so an uncapped request
-can occupy it long after anyone is waiting.
-
-A stalled call is recovered once: a call that times out unloads the model
-through the service's keep-alive -- what its `stop` command does -- and is
-made once more against a fresh load. A second timeout is a failed run.
-
-What this cannot do: know that the answer is right. A small local model
-reading a few files is a quick reader, not a reviewer; the person who said
+What this cannot do: know that the answer is right; the person who said
 approve hears what it found and judges it.
 """
 

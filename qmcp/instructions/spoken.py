@@ -2,27 +2,15 @@
 
     uv run qmcp instructions say <id> [--speak]
 
-The record is the result; the sentence points at it. `summarise` says whether
-the instruction ran, in which project, and the outcome's opening sentence, cut
-at a word boundary, in plain words. The whole text stays on the record
-(`qmcp instructions show <id>`), so the spoken loop stays faster than reading
-the terminal.
+`summarise` says whether the instruction ran, in which project, and the
+outcome's opening sentence, cut at a word boundary; the whole outcome stays on
+the row. Every sentence is a function of the row, so every caller says one row
+the same way. Markdown markers are dropped before speech.
 
-Every sentence is a function of the row's status, project and outcome, so one
-row is said the same way by `instructions act --voice`, `instructions say` and
-the offline check. A refusal before anything was asked leaves the row as it
-was, so the caller passes `why` to have the summary say nothing ran; the
-reason itself, written for a terminal, is not said.
+`docs/integrations/voice.md`, *The result, spoken*, describes what is said and how it is announced.
 
-The speech engine accepts a fixed set of posted states. The summary is
-announced as `speaking` while it is said, and the turn ends `idle` carrying
-it, so the panel shows it as the last thing said. It is never announced as
-`recorded`, which the panel shows as a person's answer accepted. An engine
-without the route, or a failed announcement, costs the sentence nothing.
-
-What this cannot do: tell whether the outcome is true. The runtime reported
-it; this repeats its first sentence. Markdown markers are dropped, because a
-synthesizer reads them aloud, and nothing else about the text changes.
+What this cannot do: tell whether the outcome is true; it repeats the
+runtime's first sentence.
 """
 
 from __future__ import annotations

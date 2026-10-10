@@ -424,6 +424,32 @@ two polls past the expiry, covers a server whose listing never drops the
 request: the act records `unanswered` and runs nothing, while the request may
 still sit pending there, answerable by anyone.
 
+
+### The local runtime
+
+`--runtime local` is the model `qmcp localmodel` stands up, reached over the
+service's chat route at `qmcp.localmodel.ENDPOINT`: no command line, no
+account, nothing paid, so `spent` is a real zero.
+
+It reads the clone and changes nothing. The model is offered three tools --
+list a directory, read a file, search for text -- each confined to the brief's
+directory: a path resolving outside it is refused, and so is anything under
+`.git` or an environment directory. The tools are a protocol stated in the
+prompt rather than the service's tool field: a call is one JSON object, read
+from the reply's text or from the structured field where a service fills it,
+so it works with any model the service serves. A model that answers before
+reading anything is sent back once to read, and one that asks for a read it
+already made is told so and asked to answer. Sampling is at temperature zero,
+so a run can be repeated, and what was read is kept in the outcome's `detail`.
+
+Every call is bounded: at most `MAX_STEPS` model calls a run, each capped at
+`MAX_TOKENS` tokens and `TIMEOUT` seconds. A service that does not answer is a
+failed run naming the endpoint, never a hang; the service finishes a request it
+has started even after its caller gives up, so an uncapped request could
+occupy it long after anyone is waiting. A call that times out unloads the model
+through the service's keep-alive and is made once more against a fresh load; a
+second timeout is a failed run.
+
 | Route | What it does |
 |---|---|
 | `POST /v1/instructions/{id}/act` | `{runtime, budget?, cwd?, voice?}`; runs the command in a process of its own, as the spoken route does; `202` once started, `404` for no such instruction, `409` while a conversation or an act runs, `422` for a runtime no adapter declares |

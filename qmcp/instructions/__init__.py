@@ -5,25 +5,13 @@
     uv run qmcp instructions list        what has been recorded
     uv run qmcp cookbook instruct        the spoken path, offline
 
-Recording executes nothing. An instruction is kept in the person's words with
-the project it is for, at status `recorded` or `unresolved`; neither says
-anything is running. Acting on one is a separate command
-(`qmcp.instructions.act`), behind consent on the human queue.
+Recording executes nothing: a row is `recorded` or `unresolved`, and acting on
+it is `qmcp.instructions.act`. `resolve` matches project names as whole words
+against the roster in the governance submodule beside this package; exactly
+one match resolves.
 
-`resolve` reads which project an instruction is for, by the whole-word match
-`qmcp.threads.consolidate` uses, against the roster in `governance/qm`: case
-is ignored, a substring inside another word is not a match, and a hyphenated
-name also matches with its hyphens as whitespace, as a transcript carries it.
-Exactly one match resolves. None or several leaves the instruction
-`unresolved`, with the candidates and the rule in `detail`. A caller may state
-the project, recorded as `stated`; a blank states nothing.
-
-The roster is read from the governance submodule beside this package, so the
-server and the process it starts for a spoken instruction read one list
-whatever their working directories.
-
-`docs/integrations/voice.md` ("An instruction is recorded, not run") describes
-the commands, the routes and the spoken dialog.
+`docs/integrations/voice.md`, *An instruction is recorded, not run*, describes the commands, the
+routes and the matching rule.
 """
 
 from __future__ import annotations

@@ -1,24 +1,13 @@
 """The spoken-instruction check: asked, recorded, consented, run, and said back.
 
-`qmcp cookbook instruct` runs it, offline and only offline. A qmcp server is
-started on an ephemeral port over a database made for the run, vox's
-deterministic engine stands in for the speech engine, and each scripted dialog
-travels the real path: the prompt synthesized to a file, every take returned
-over the engine contract, the row recorded over HTTP and read back.
+`qmcp cookbook instruct` runs it offline: a server on an ephemeral port over a
+database made for the run, vox's deterministic engine, and scripted dialogs
+over the real path. The inbox cases check the recording; the loop cases go the
+whole way, with the `scripted` runtime in a directory standing in for the
+clone. `docs/integrations/voice.md` describes what each case covers.
 
-It has two parts. The inbox cases prove the recording -- the long take carries the pause the stack exists for, the
-confirmation does not, the project is read and asked back, and the row holds
-what the script says. The loop cases then go the whole way in one
-conversation: the instruction spoken and recorded, consent asked aloud on the
-human queue and answered, the scripted runtime run in a directory standing in
-for the clone, and the row's summary said back. Each loop case prints as the
-conversation it was, so a person can follow what was said and heard. A held
-consent runs nothing and says so.
-
-It makes no claim about transcription, which only a person at a microphone
-tests, nor about any real agent: the runtime is `scripted` and spends nothing.
-Nothing here writes into the configured inbox. The server, the engine and the
-database are all made for the run and gone after it.
+What this cannot do: say anything about transcription, which only a person at
+a microphone tests, or about a real agent.
 """
 
 from __future__ import annotations

@@ -2,46 +2,18 @@
 
     uv run qmcp instructions act <id> --runtime <name> [--budget N] [--cwd PATH] [--voice]
 
-Nothing runs before a person says approve, and nothing runs on any other
-answer. The stages follow `qmcp.governed`: the runtime, the one stage with no
-halting guarantee, is budgeted before and recorded after, with the human gate
-in front of it. Under `governance/qm/records/DRAFT-no-unattended-spending.md`
-the command is issued by a person (clause 1), states the number of runs it may
-make (clause 2), defaults to zero, a real count (clause 3), and asks a consent
-that is for this run only (clause 5). Every runtime is asked, the local model
-included.
+Nothing runs before a person says approve. The runtime is budgeted before it
+runs and recorded after, with the consent in front of it, and every runtime is
+asked. The budget counts runs and defaults to zero, which declares and stops;
+`qmcp.spend.declare`'s declaration is written on every path. The consent
+expires after `CONSENT_SECONDS`, and the row then reads `unanswered`.
 
-The runtime is handed a `Brief`: the instruction, the project, the clone, and
-the project's earlier instructions and outcomes, read from this server's record
-by `qmcp.instructions.continuity`. The ids of the turns handed over are
-written into the row's `detail`.
+`docs/integrations/voice.md`, *Acting on an instruction*, explains the brief, the clone, the consent
+and how the act waits.
 
-The clone is `--cwd`; without it, the clone the project's last act ran in.
-With neither, the act refuses, leaves the row as it was, and says what to pass.
-
-The consent is an ordinary approval with the options `approve` and `hold`,
-answered wherever approvals are, or by voice in this process with `--voice`.
-Its prompt names the instruction, the project, the clone, the runtime, the
-budget and how much history is carried. It expires after `CONSENT_SECONDS`,
-and the row then reads `unanswered`.
-
-The wait reads only the pending listing, because reading one request expires
-it once its time has passed. It reads the request itself once, after the
-request leaves the listing. A deadline two polls past the expiry covers a
-server whose listing never drops the request: the act records `unanswered`
-and runs nothing.
-
-The declaration from `qmcp.spend.declare` is written on every path: a refusal
-before the ask, a hold, an expiry and a run. The budget counts runs; what a
-run cost in calls is the runtime's own report, kept beside it.
-
-What this cannot do: stop a runtime once it is running; know what it will
-spend before it reports (a count it does not report stays unknown); or tell
-that the clone is the one the person meant -- the prompt names it, and the
-person at the gate is the check.
-
-`docs/integrations/voice.md` ("Acting on an instruction") describes the
-command and its route.
+What this cannot do: stop a runtime once it is running, know what it will
+spend before it reports, or tell that the clone is the one the person meant --
+the prompt names it, and the person at the gate is the check.
 """
 
 from __future__ import annotations

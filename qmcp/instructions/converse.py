@@ -3,33 +3,14 @@
     uv run qmcp serve --converse --runtime local    # the server, and the conversation beside it
     uv run qmcp converse --runtime local            # the conversation, against a running server
 
-Once the servers are up, nothing is typed. With the speech engine running and
-`qmcp serve --converse`, this says it is ready and asks what should be done.
-An instruction is spoken, read back and recorded -- tacitly when the engine
-heard it confidently, otherwise on `agree` (`qmcp.instructions.dialog`);
-consent is asked aloud and given with `approve` (`qmcp.instructions.act`); the
-runtime carries it out in the project's clone; the outcome is said back
-(`qmcp.instructions.spoken`); and it asks whether there is anything else.
+It asks what should be done, reads each instruction back and records it, asks
+consent aloud, runs the instruction in the project's clone, says the outcome,
+and asks whether there is anything else. Questions agents have put on the human
+queue are asked before each instruction. Nothing runs without a spoken
+`approve`.
 
-Before each instruction, questions an agent has put on the human queue are
-asked aloud, oldest first, through the loop `qmcp human voice` runs. A
-question nobody answers stays pending for anyone and is not asked again in
-this conversation.
-
-Nothing runs without a spoken `approve`, given after it says what will run
-where; every runtime is asked, the local model included. Each run is handed
-the project's earlier instructions and what they found, from this server's
-record.
-
-The clone needs no path: a project acted on before runs in the clone its last
-act ran in; a project acted on for the first time runs in a clone named for
-it beside this checkout, or in `--clones`. With neither, the act refuses
-before it asks, and the refusal is said.
-
-Silence is waited through, take after take. "No" or "that's all" after
-"Anything else?" goes back to waiting; "yes" asks for the instruction; "stop
-listening" or "goodbye" ends the conversation. A turn that fails is said to
-have failed and the conversation goes on.
+`docs/integrations/voice.md`, *Talking to qmcp*, gives what can be said and what the conversation
+keeps.
 
 What this cannot do: tell speech meant for it from speech in the room -- every
 utterance is read back before it is recorded, and `wake` requires a word to
