@@ -88,9 +88,8 @@ where the silence did. So each one carries its remedy:
     True
 
 Every shape declares at least one, and none is left without a remedy. The
-number of needs is not asserted here: it is whatever the plane declares today,
-and pinning it would fail the moment somebody adds a shape while nothing was
-wrong.
+number of needs is not asserted here: it is whatever the plane declares, and
+pinning it would fail whenever a shape is added while nothing is wrong.
 
     >>> all(c.needs for c in PLANE)
     True

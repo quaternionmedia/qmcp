@@ -4,9 +4,9 @@ Everything on this page runs. It is executed by the ordinary test command, so
 an example that stops being true fails the build rather than sitting here
 misleading somebody.
 
-**The problem.** `08` left an instruction in the inbox and showed that
-recording it ran nothing. Acting on it is the step after, and it is where the
-money is: an agent in a clone makes as many calls as it needs. So the act is
+`08` left an instruction in the inbox and showed that recording it ran
+nothing. Acting on it is the step after, and the one that can spend: an agent
+in a clone makes as many calls as it needs. So the act is
 shaped by `qmcp.governed` with the human gate in front of the runtime rather
 than behind it -- the command states how many runs it may make, a consent
 request goes on the human queue saying everything a stranger would need, and

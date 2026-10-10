@@ -1,7 +1,7 @@
 """Which project an instruction is for, and the line between a match and a guess.
 
-Every test here was seen red first. The mutation for each is in its docstring,
-applied to `qmcp.instructions.resolve` and restored.
+The mutation that turns each test red is in its docstring, applied to
+`qmcp.instructions.resolve` and restored.
 """
 
 from __future__ import annotations

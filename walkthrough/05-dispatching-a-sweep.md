@@ -25,9 +25,9 @@ out of the shares that arrive.
     >>> len(done.ready), len(done.waiting)
     (9, 6)
 
-Nine parsers and six questions today. A different mix tomorrow, without a line
-changing here. A dispatcher that chose the topology in advance would be deciding
-the answer before reading the question.
+A different mix of shares makes a different topology, without a line changing
+here. A dispatcher that chose the topology in advance would be deciding the
+answer before reading the question.
 
 ## A model is the wrong tool for a known edit
 

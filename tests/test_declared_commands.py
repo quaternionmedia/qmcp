@@ -50,8 +50,7 @@ PACKAGE = ROOT / "qmcp"
 
 # Where a claim can be made. The package, and the pages a reader reaches before
 # the package -- a command named in a README is read by more people than one
-# named in a docstring, and until this list had a second entry it was the
-# unchecked half.
+# named in a docstring.
 SCANNED: tuple[Path, ...] = (PACKAGE, ROOT / "docs", ROOT / "README.md",
                              ROOT / "quickstart.md")
 
