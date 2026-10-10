@@ -39,6 +39,10 @@ Quickstart: see `../quickstart.md` for a copy-paste walkthrough.
     hand could run now (`GET /v1/orchestration/runnable`)
   - Keep designs (`/v1/topologies`), each answered with the plane's verdict --
     a refused shape saves, because designing is not an act and running is
+- Archives conversations with assistants as units of work, on loopback
+  (`/v1/threads`; `docs/threads.md`)
+- Reports on itself: a dashboard, deterministic audits, a self-check of its
+  own gates and a feedback loop (`docs/self-checks.md`)
 - Provides durability via:
   - SQLite persistence for all interactions
   - Audit trails for every tool invocation

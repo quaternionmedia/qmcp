@@ -189,17 +189,14 @@ uv run pytest -q
 ```
 
 **Install through the lock.** `uv sync`, never `uv pip install <package>`. An
-unpinned install resolves a different stack: this repository has a recorded
-instance where it dragged `starlette` forward and broke 52 tests, which was a
-property of installing outside the lock rather than of the dependencies.
+unpinned install resolves a different stack -- it can drag `starlette` forward
+and break tests -- which is a property of installing outside the lock rather
+than of the dependencies.
 
-**The suite runs on a runner now**, in `.github/workflows/tests.yml`. Until it
-did, five checks reported on every pull request and not one of them executed a
-test -- so a green pull request meant the governance checks passed, and a
-reader reasonably took it to mean the code worked. **The runner sees things
-this platform cannot**: `import metaflow` fails on Windows at `import fcntl`,
-so every flow test skips here and runs there. The first CI run found a broken
-import in `examples/flows/approved_deploy.py` that no local run could reach.
+**The suite runs on a runner**, in `.github/workflows/tests.yml`; it is the
+only check on a pull request that executes a test. **The runner sees things
+Windows cannot**: `import metaflow` fails there at `import fcntl`, so every
+flow test skips on Windows and runs on the runner.
 
 **Every command is `uv run qmcp <command>`**, the server included
 (`uv run qmcp serve`); `uv run qmcp --help` lists them. `python -m qmcp` and

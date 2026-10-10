@@ -536,9 +536,9 @@ and the runner image are not reproduced.
   `converse` is not a command. This checkout predates the loop: see step 1 of
   "Set up, once". `uv run qmcp serve --help` lists what this checkout has.
 - **The local model does not answer, or answers late.** `uv run qmcp localmodel
-  check` says whether it is installed and served. The model service on the
-  machine this was built on was seen to stall partway through a reply, with
-  the GPU busy and later calls queued behind it. Every call qmcp makes is
+  check` says whether it is installed and served. The model service can stall
+  partway through a reply, with the GPU busy and later calls queued behind
+  it. Every call qmcp makes is
   capped, and a call that stalls unloads the model through the service's own
   keep-alive and is made once more against a fresh load; a second stall is a
   failed run naming the endpoint, and the conversation goes on. When every

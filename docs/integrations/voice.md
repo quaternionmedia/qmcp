@@ -45,8 +45,7 @@ uv sync --all-extras
 ```
 
 vox and `pyttsx3` are **default dependencies**, not an extra: any `uv sync`
-installs them, and none removes them. (They were an extra once, and a plain
-`uv sync` then stripped them as extraneous mid-session.) `--all-extras`
+installs them, and none removes them. `--all-extras`
 rather than `--extra dev` for the rest: the latter omits `pydantic-ai` and
 other extras, and the resulting ImportError in unrelated tests reads as a
 code regression rather than as a missing dependency. The submodule line
@@ -348,8 +347,8 @@ taken as `agree`. Consent to act is never tacit.
 
 An instruction's take is hinted with the project names it is likely to carry
 -- those of the most recent instructions first, then the roster's -- which a
-transcriber spells as given: on a real take, "camcp" without them and "qmcp"
-with them.
+transcriber spells as given -- "qmcp" with the hint where it hears "camcp"
+without one.
 
 | Route | What it does |
 |---|---|
