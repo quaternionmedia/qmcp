@@ -39,10 +39,8 @@ def make_db(path: Path, rows: list[tuple] | None = None,
             with_tables: bool = True) -> Path:
     """A database built the way the server builds one.
 
-    `SQLModel.metadata.create_all` rather than `CREATE TABLE`: a model that
-    renames a column now breaks the dashboard's query here, which is the whole
-    point. The previous version wrote the DDL by hand and would have kept
-    passing against a schema the server no longer produces.
+    `SQLModel.metadata.create_all` rather than `CREATE TABLE`, so a model that
+    renames a column breaks the dashboard's query here.
     """
     if with_tables:
         engine = create_engine(f"sqlite:///{path.as_posix()}")

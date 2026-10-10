@@ -69,7 +69,6 @@ TACIT_ABOVE = 0.7
 TACIT_SECONDS = 2.5
 # Names an instruction's take is hinted with, at most: the engine bounds a
 # hint, and a prompt of names biases a transcriber toward spelling them.
-# Measured on a real take: "camcp" without the project names, "qmcp" with them.
 VOCABULARY = 10
 
 # Seconds an instruction may take, and how long a pause ends it. A sentence

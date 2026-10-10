@@ -231,10 +231,8 @@ def test_serve_starts_when_nothing_answers(monkeypatch):
 
 
 def test_serve_started_the_declared_way_names_no_other_way(monkeypatch):
-    """`uv run qmcp serve` is the declared form. It used to print a note sending
-    the person to a second one, and the second one was then typed wrongly --
-    `python qmcp serve` -- which is how the standard-library shadowing that
-    `test_entry_points.py` guards was found."""
+    """`uv run qmcp serve` is the declared form, and starting it prints no
+    note naming a second form."""
     monkeypatch.setattr(cli, "_qmcp_already_serving", lambda host, port: None)
     monkeypatch.setattr(cli.uvicorn, "run", MagicMock())
     monkeypatch.setattr(cli.sys, "argv", [r"C:\x\.venv\Scripts\qmcp.exe", "serve"])

@@ -53,8 +53,7 @@ def test_the_toolset_default_is_derived_at_construction() -> None:
 def test_no_source_file_still_names_the_port_the_server_left() -> None:
     """The literal is gone from the package, not just from the entry points.
 
-    A scan, because the four call sites were found by grep and not by reading:
-    whatever else this proves, it proves nobody has to remember all four.
+    A scan of every source file, so no call site has to be remembered.
     """
     from pathlib import Path
 

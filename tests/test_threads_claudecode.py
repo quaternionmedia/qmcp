@@ -240,7 +240,7 @@ def test_a_subagent_file_is_its_own_thread(tmp_path):
 
 
 def test_two_subagents_of_one_session_do_not_collide(tmp_path):
-    """Forty-six files shared one sessionId on the machine this was found on."""
+    """Many sidechain files may share one sessionId; each is its own thread."""
     session(tmp_path, [turn(uuid="u-1", session_id="s-1")], name="main.jsonl")
     for agent in ("a-1", "a-2", "a-3"):
         session(tmp_path, [dict(turn(uuid=f"u-{agent}", session_id="s-1"),

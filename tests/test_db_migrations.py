@@ -179,7 +179,7 @@ def test_scoping_names_to_a_project_keeps_the_rows_already_saved(tmp_path):
             db.execute(design, ("default", stamp, stamp))
 
 
-# --- the failure that actually happened --------------------------------------
+# --- named constraints ----------------------------------------------------------
 
 
 def test_every_foreign_key_in_a_revision_is_named():
@@ -187,14 +187,12 @@ def test_every_foreign_key_in_a_revision_is_named():
     the change, and to rebuild a constraint it must be able to name it.
 
     `create_foreign_key(None, ...)` raises `ValueError: Constraint must have a
-    name` *after* earlier statements in the same migration have committed --
-    leaving a half-migrated database with its revision unchanged. That happened
-    here, and the recovery was a restore from backup.
+    name` after earlier statements in the same migration have committed,
+    leaving a half-migrated database with its revision unchanged.
     """
     for path in sorted(VERSIONS.glob("*.py")):
-        # Code lines only. The first version of this scanned the whole file and
-        # matched the comment in the migration that explains the rule -- the
-        # documented trap of a check finding the text that forbids the thing.
+        # Code lines only, so the comment in a migration that explains the
+        # rule is not matched as a violation of it.
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if stripped.startswith("#"):

@@ -276,8 +276,8 @@ def test_the_flow_draws_one_box_for_every_stage_the_run_walks() -> None:
     """The picture cannot describe a pipeline the code does not run.
 
     Both sides read `STAGES`, so this asserts they are the same tuple rather
-    than that two lists happen to agree -- and it is the assertion that fails
-    if somebody starts writing the boxes out by hand again.
+    than that two lists happen to agree; it fails if the boxes are written out
+    by hand.
     """
     drawn = {box.id for box in g.view(2).boxes}
     walked = {stage.id for stage in g.STAGES}

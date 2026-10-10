@@ -241,12 +241,10 @@ def run(request: Request, budget: Budget, call: Callable[[str], str], *,
                    elapsed=elapsed, over_bound=over)
 
 
-# What a person is being asked, per state. **The state leads the prompt.**
-#
-# Both the terminal listing and the harness payload carry `prompt` and not
-# `context`, so a refusal whose state lived only in the context arrived beside
-# a draft as two rows with identical text, separable by reading the id. That
-# was found by queueing one of each and looking at `qmcp human list`.
+# What a person is being asked, per state. **The state leads the prompt**,
+# because the terminal listing and the harness payload carry `prompt` and not
+# `context`; a state only in the context would leave a refusal and a draft as
+# two rows with identical text.
 #
 # And the options differ because the questions differ: there is nothing to
 # accept in a run that produced no draft.

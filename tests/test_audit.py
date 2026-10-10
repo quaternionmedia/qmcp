@@ -184,8 +184,8 @@ def test_a_phase_is_matched_whatever_its_case():
 
 
 def test_a_delta_with_no_harness_recorded_is_unattributed_not_dropped():
-    """Measured on the real database: 51 of 59 in flight had no harness. A
-    report showing only the 8 would describe a tenth of the work.
+    """A delta in flight with no harness recorded is reported as
+    unattributed, not dropped.
 
     Mutation: filter to rows with a harness and this fails.
     """
