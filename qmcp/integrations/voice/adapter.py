@@ -53,7 +53,7 @@ _UNCLEAR_PHRASES = ("not sure", "not certain", "dont know")
 # a yes or `agree` records the answer, a no or `again` asks the question
 # again. Neither word is in the yes/no vocabulary.
 _CONFIRM = ["agree", "again"]
-# Said by someone used to the read-back's earlier word; taken as `agree`, never said.
+# Accepted as `agree` and never offered.
 _AGREE_ALIASES = ["record"]
 
 

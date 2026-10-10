@@ -347,10 +347,10 @@ def test_three_or_more_options_are_spoken_as_a_list():
 
 # --- an open question: the transcript is the answer ---------------------------
 #
-# A request carrying no options used to be given approve and reject, so an
-# `input` request answered "yes" recorded `approve` and a question with a
-# free-text answer could not be answered at all. Now it is asked open: the
-# transcript is read back once, and recorded when the speaker says record.
+# A request carrying no options is asked open rather than as approve or
+# reject, so a question with a free-text answer can be answered and a spoken
+# "yes" is recorded as the transcript, not as `approve`. The transcript is read
+# back once, and recorded when the speaker agrees.
 #
 # Each test here was seen red against a mutation of the adapter: `run_once`
 # given back its `request.options or ["approve", "reject"]` fallback fails
@@ -406,7 +406,7 @@ def test_a_transcripts_closing_stop_is_not_doubled_when_read_back():
 
 
 def test_an_open_question_is_not_read_as_a_closed_choice():
-    """The defect: "yes" to an open question was recorded as `approve`."""
+    """A "yes" to an open question is recorded as the transcript, not as `approve`."""
     client = FakeClient()
     client.add_pending("name-2", OPEN_PROMPT)
     loop = VoiceApprovalLoop(stt=ScriptedSTT(["yes", "agree"]), tts=RecordingTTS(), client=client)
