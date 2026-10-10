@@ -21,7 +21,7 @@ uv run qmcp serve --reload
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `QMCP_HOST` | `127.0.0.1` | Server bind address |
-| `QMCP_PORT` | `3333` | Server port |
+| `QMCP_PORT` | `3141` | Server port |
 | `QMCP_DEBUG` | `false` | Enable debug mode |
 | `QMCP_DATABASE_URL` | `sqlite+aiosqlite:///./qmcp.db` | Database connection |
 
