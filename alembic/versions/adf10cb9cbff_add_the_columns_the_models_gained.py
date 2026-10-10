@@ -21,21 +21,16 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     # Adjusted from autogenerate, which is what its own comment asks for.
     #
-    # SERVER DEFAULTS ADDED. Autogenerate emitted these three enum columns as
-    # NOT NULL with no default. That succeeds only against empty tables, which
-    # is the state this repository's database happens to be in -- and fails
-    # with "Cannot add a NOT NULL column with default value NULL" for anyone
-    # whose tables have rows. The values match the models' own defaults:
-    # HealthStatus.UNKNOWN, Priority.NORMAL.
+    # Server defaults are added to the NOT NULL enum columns, so the
+    # migration succeeds against tables that have rows ("Cannot add a NOT NULL
+    # column with default value NULL" otherwise). The values match the models'
+    # defaults: HealthStatus.UNKNOWN, Priority.NORMAL.
     #
-    # FOREIGN KEYS ARE NAMED. Autogenerate emitted `create_foreign_key(None,
-    # ...)`, and batch mode -- which SQLite needs, because it cannot ALTER a
-    # constraint -- rebuilds the table and so must be able to name what it
-    # rebuilds. Unnamed, it raises `ValueError: Constraint must have a name`
-    # *after* the preceding add_column has already been committed, leaving the
-    # database half-migrated with the revision still at the previous head.
-    # `alembic/env.py` sets a naming convention so future autogenerate output
-    # carries names of its own.
+    # Foreign keys are named, because batch mode -- which SQLite needs, as it
+    # cannot ALTER a constraint -- rebuilds the table and must name what it
+    # rebuilds. An unnamed one raises `ValueError: Constraint must have a name`
+    # after the preceding add_column has committed. `alembic/env.py` sets a
+    # naming convention so autogenerate output carries names of its own.
     with op.batch_alter_table('agent_instances', schema=None) as batch_op:
         batch_op.add_column(sa.Column('health', sa.Enum('HEALTHY', 'DEGRADED', 'UNHEALTHY', 'UNKNOWN', name='healthstatus'), nullable=False, server_default='UNKNOWN'))
 

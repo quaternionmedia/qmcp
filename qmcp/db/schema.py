@@ -1,29 +1,21 @@
 """What shape a database actually has, and whether the code agrees with it.
 
-Two questions this answers that nothing else did, and the second is the one
-that cost a day:
-
     what is in the database   `describe(path)`
     does it match the models  `drift(path)`
 
-WHY `drift` EXISTS. A server started against a database whose schema had moved
-on returned HTTP 500 on every read of one endpoint, with the reason --
-`no such column: tool_invocations.execution_id` -- visible only in a traceback
-in the log. Nothing asked the question before the first request did. An intact
-database and a current one are different facts: `PRAGMA integrity_check` passes
-happily on a schema the code cannot use.
+An intact database and a current one are different facts: `PRAGMA
+integrity_check` passes on a schema the code cannot use, and a server started
+against it fails at the first request that reads a missing column. `drift`
+asks before that request does.
 
-WHAT IT COMPARES. Table names, column names per table, and nothing else. Not
-types, not constraints, not indexes. That is deliberate: SQLite stores a
-declared type it does not enforce, SQLModel and SQLAlchemy spell the same type
-several ways, and a comparison that flagged `VARCHAR` against `TEXT` on every
-run would be one nobody reads. Missing tables and missing columns are the
-failures that actually take an endpoint down.
+It compares table names and column names per table, and nothing else -- not
+types, constraints or indexes. SQLite stores a declared type it does not
+enforce, and SQLModel and SQLAlchemy spell one type several ways. Missing
+tables and missing columns are what take an endpoint down.
 
-WHAT IT CANNOT SEE. A column that exists with the right name and the wrong
-type, or a constraint that was dropped. It also cannot see whether the *data* is
-right -- a migration that ran and mangled every row leaves a schema this reports
-as perfect.
+What this cannot see: a column with the right name and the wrong type, a
+dropped constraint, or whether the data is right -- a migration that mangled
+every row leaves a schema this reports as matching.
 """
 
 from __future__ import annotations

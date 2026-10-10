@@ -38,11 +38,8 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("qmcp-repo")
 
 REPO_ROOT = Path(__file__).parent.resolve()
-# **NOT A FOURTH COPY OF THE PORT.** `qmcp/config.py` owns the allocation --
-# 3141 the harness, 1618 the panel, 2718 the maps -- and this file carried
-# `3333` from before it existed, so the MCP server's default addressed a port
-# nothing serves. Read rather than restated: a number repeated in a second
-# place is one nothing updates.
+# The port is read from `qmcp/config.py`, which owns the allocation, rather
+# than restated: a number repeated in a second place is one nothing updates.
 try:
     from qmcp.config import Settings as _Settings
     _DEFAULT_PORT = _Settings().port
