@@ -16,8 +16,8 @@ dependencies = [
     "structlog>=25.1.0",
     "uvicorn>=0.30.0",
     # The voice seam is a default, not an extra: answering the HITL queue by
-    # speech is this server's flagship human path, and an extra meant any
-    # plain `uv sync` removed it as extraneous and the CLI died mid-use.
+    # speech is this server's main human path, and a plain `uv sync` removes
+    # an extra it was not asked for.
     "vox",
     "pyttsx3>=2.90",
 ]
