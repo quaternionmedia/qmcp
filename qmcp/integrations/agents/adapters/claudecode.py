@@ -2,29 +2,23 @@
 
     claude -p "<the brief qmcp rendered>" --output-format json
 
-**THIS IS THE ONE PLACE THE PRODUCT IS NAMED**: an adapter, chosen at the
+This adapter is the one place the product is named. It is chosen at the
 command line with `--runtime claude-code`, and nothing in the contract or the
 service imports it.
 
-**IT IS GIVEN WHAT EVERY RUNTIME IS GIVEN.** The prompt is `Brief.prompt()`,
-the rendering the local model reads too, carrying the project's earlier
-instructions and outcomes from qmcp's record. No session of the tool's own is
-resumed: continuity comes from qmcp, not the model, so this runtime and the
-local one are interchangeable from one instruction to the next and the record
-reads the same whichever ran.
+The prompt is `Brief.prompt()`, the rendering every runtime reads. No session
+of the tool's own is resumed, so this runtime and the local one are
+interchangeable from one instruction to the next.
 
-**THE ARGUMENTS ARE BUILT BY A PURE FUNCTION AND THE PROCESS IS INJECTED.**
-`argv_for` is what the tests assert; `Runtime.run` hands that list to whatever
-`popen` it was built with, so no test launches the tool, and a reader of the
-record sees the exact command that ran. No permission flag is passed, so the
-tool's own permission rules decide what it may do, and nothing here grants more.
+`argv_for` builds the arguments as a pure function, and `Runtime.run` hands
+them to the `popen` it was built with, so no test launches the tool and the
+record shows the exact command that ran. No permission flag is passed: the
+tool's own permission rules decide what it may do.
 
-WHAT IS NOT READ FROM THE OUTPUT. `num_turns` is reported as `spent` where the
-tool prints it, because that is the count it offers; what one turn cost is the
-tool's own accounting and is not restated here. The session id it prints is
-not kept: nothing would resume it. Output that is not the JSON this expects is
-kept as text, with `spent` unknown -- a run that happened and cannot be read
-is not reported as one that spent nothing.
+`num_turns` is reported as `spent` where the tool prints it; what a turn cost
+is the tool's own accounting. The session id it prints is not kept. Output
+that is not the expected JSON is kept as text with `spent` unknown, never
+zero.
 """
 
 from __future__ import annotations

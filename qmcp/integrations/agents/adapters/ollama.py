@@ -2,57 +2,43 @@
 
     uv run qmcp instructions act <id> --runtime local --budget 1
 
-**QMCP IS THE LOCAL MODEL BACKEND.** `qmcp.localmodel` stands the model up and
-pins it; this adapter is how an instruction reaches it. It talks to the
-service `qmcp.localmodel.ENDPOINT` names, with the model `qmcp.localmodel.MODEL`
-pins, over the service's own chat route -- no command line, no account, and
-nothing paid, so `spent` is zero and that zero is a count: no call left this
-machine. The product is named here and in `qmcp.localmodel`, and nowhere else.
+`qmcp.localmodel` stands the model up and pins it; this adapter is how an
+instruction reaches it. It talks to the service `qmcp.localmodel.ENDPOINT`
+names, with the model `qmcp.localmodel.MODEL` pins, over the service's chat
+route -- no command line, no account, nothing paid -- so `spent` is zero, and
+that zero is a count. The product is named here and in `qmcp.localmodel`, and
+nowhere else.
 
-**IT READS THE CLONE AND CHANGES NOTHING.** The model is offered three tools --
+It reads the clone and changes nothing. The model is offered three tools --
 list a directory, read a file, search for text -- each confined to the brief's
-directory: a path that resolves outside it is refused, and so is anything under
-`.git` or an environment directory. There is no tool that writes, and so no way
-for the model to change the clone. What it read is kept in the outcome's
-`detail`, so the record says what the answer was based on.
+directory: a path resolving outside it is refused, and so is anything under
+`.git` or an environment directory. No tool writes. What it read is kept in
+the outcome's `detail`.
 
-**THE TOOLS ARE A PROTOCOL IN THE PROMPT, NOT THE SERVICE'S TOOL FIELD.** Asked
-with the service's own tool definitions, the pinned model on the service this
-was built against put its call in the reply's text rather than in the
-structured field, and most often skipped the tools and answered from nothing.
-So `SYSTEM` states the three tools and the one shape a call takes -- a single
-JSON object -- and `tool_call_in` reads that shape from the text, or from the
-structured field where a service fills it. It works with any model the service
-serves. A model that answers before it has read anything is sent back once to
-read: an answer grounded in no file is the failure a small model is likeliest
-to commit, and the cheapest one to refuse. A model that asks for a read it has
-already made is told so and asked to answer, rather than handed the same text
-again: seen live, the pinned model alternated between rereading one file and
-searching for a phrase it had invented until the step bound ended the run.
+The tools are a protocol in the prompt, not the service's tool field: `SYSTEM`
+states the three tools and the one shape a call takes, a single JSON object,
+and `tool_call_in` reads that shape from the text, or from the structured
+field where a service fills it, so it works with any model the service serves.
+A model that answers before reading anything is sent back once to read, and
+one that asks for a read it already made is told so and asked to answer.
 Sampling is at temperature zero, so a run can be repeated.
 
-**THE BRIEF IS THE MEMORY.** Each run starts with nothing but `Brief.prompt()`:
-the place, the project's earlier instructions and outcomes from qmcp's record,
-and the instruction. That is the same prompt any other runtime is given, which
-is the point -- continuity comes from qmcp, not the model.
+Each run starts with nothing but `Brief.prompt()`, the prompt every runtime is
+given.
 
-**EVERY CALL IS BOUNDED.** At most `MAX_STEPS` model calls a run, each capped
-at `MAX_TOKENS` tokens and `TIMEOUT` seconds. A service that does not answer is
-a failed run with the endpoint named, never a hang: the service finishes a
+Every call is bounded: at most `MAX_STEPS` model calls a run, each capped at
+`MAX_TOKENS` tokens and `TIMEOUT` seconds. A service that does not answer is a
+failed run with the endpoint named, never a hang; the service finishes a
 request it has started even after its caller gives up, so an uncapped request
 can occupy it long after anyone is waiting.
 
-**A STALLED CALL IS RECOVERED ONCE.** On the workstation this was built on, the
-service's runner was seen to stop producing tokens partway through a reply,
-with every later call queued behind it, until the model was unloaded. So a
-call that times out unloads the model through the service's own keep-alive --
-what its `stop` command does -- and is made once more against a fresh load. A
-second timeout is a failed run. A standing conversation would otherwise fail
-every instruction after the first stall until somebody intervened by hand.
+A stalled call is recovered once: a call that times out unloads the model
+through the service's keep-alive -- what its `stop` command does -- and is
+made once more against a fresh load. A second timeout is a failed run.
 
-WHAT THIS CANNOT DO. Know that the answer is right. A seven-billion-parameter
-model reading a few files is a quick reader, not a reviewer; the person who
-said approve hears what it found and judges it.
+What this cannot do: know that the answer is right. A small local model
+reading a few files is a quick reader, not a reviewer; the person who said
+approve hears what it found and judges it.
 """
 
 from __future__ import annotations

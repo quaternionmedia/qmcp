@@ -6,8 +6,7 @@ deterministic engine stands in for the speech engine, and each scripted dialog
 travels the real path: the prompt synthesized to a file, every take returned
 over the engine contract, the row recorded over HTTP and read back.
 
-**TWO PARTS, AND THE SECOND IS THE LOOP.** The inbox cases prove the
-recording -- the long take carries the pause the stack exists for, the
+It has two parts. The inbox cases prove the recording -- the long take carries the pause the stack exists for, the
 confirmation does not, the project is read and asked back, and the row holds
 what the script says. The loop cases then go the whole way in one
 conversation: the instruction spoken and recorded, consent asked aloud on the

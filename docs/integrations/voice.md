@@ -301,7 +301,8 @@ direction: a person speaks or types an instruction, it is recorded against a
 project, and **recording executes nothing**. Recording reaches two statuses,
 `recorded` and `unresolved`, and neither describes a run; acting on an
 instruction is a command a person issues, behind consent on the human queue,
-and is the section after this one. `qmcp.instructions` carries the why, and
+and is the section after this one. Keeping the two apart lets a person speak
+freely into the inbox: nothing said there spends, writes or runs.
 `walkthrough/08-an-instruction-is-recorded-not-run.md` runs the routes.
 
 The commands:
@@ -407,8 +408,23 @@ named only in its adapter under `qmcp.integrations.agents.adapters`, and
 `scripted` runs nothing and is for checks. `--budget` is runs, and zero -- the
 default -- declares and stops. The row's status says where the act got to: `asking`,
 then `consented`, `refused` or `unanswered`, then `acting` and `done` or
-`failed`; `declared` is written on every path. `qmcp.instructions.act` carries
-the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
+`failed`; `declared` is written on every path, so a reader can tell a refusal,
+a hold, an expiry and a run apart without inferring it from empty fields.
+`walkthrough/09-nothing-runs-before-consent.md` runs it.
+
+**Why every runtime is asked.** A run that spends nothing still acts in
+somebody's clone, and the consent is for that run only
+(`DRAFT-no-unattended-spending.md` clause 5). Growing a habit of approval into
+an automatic one is a decision for the person, not for the command.
+
+**How the act waits.** Reading one request expires it once its time has passed
+(`AGENTS.md`), and the pending listing applies no expiry. So the act watches
+the listing until the request leaves it -- answered, or past its expiry -- and
+reads the request itself once, afterwards, to learn which; polling the single
+request would expire the gate it waits on. A deadline on the act's own clock,
+two polls past the expiry, covers a server whose listing never drops the
+request: the act records `unanswered` and runs nothing, while the request may
+still sit pending there, answerable by anyone.
 
 | Route | What it does |
 |---|---|
@@ -435,7 +451,9 @@ uv run qmcp instructions say <id> [--speak]   # what an instruction came to, aga
 The summary is announced to the engine's conversation route as `speaking` and
 the turn then ends `idle` carrying it, so joe's panel shows it as the last
 thing said; it is never `recorded`, which the panel shows as an answer
-accepted. `qmcp.instructions.spoken` carries the why.
+accepted. The summary is a sentence rather than the whole outcome because an
+agent's outcome can run to pages, and a loop that read pages aloud would be
+slower than reading the terminal.
 
 `uv run qmcp cookbook instruct` is the loop, end to end and offline: after the
 inbox's cases it takes one instruction the whole way in one conversation --
@@ -495,7 +513,7 @@ rather than opening the microphone a second time; it ends when the server
 stops. `uv run qmcp converse --runtime local` runs it on its own against a
 running server, and `--synth recording` writes each sentence to a file instead
 of speaking it, for a check on a machine nobody is at. `qmcp.instructions.converse`
-carries the why, `uv run qmcp cookbook converse` is one whole session
+states what the conversation does, `uv run qmcp cookbook converse` is one whole session
 offline, every take scripted, and the cookbook in `docs/voice-loop-demo.md` is
 what to say.
 

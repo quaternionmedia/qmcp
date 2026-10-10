@@ -1,26 +1,21 @@
 """Continuity comes from qmcp, not the model: a project's history, read from the record.
 
-**WHAT IS CARRIED FORWARD IS WHAT RAN.** The inbox keeps every instruction a
-person recorded, and each one acted on keeps what came back. Before the next
-instruction in the same project runs, `history` reads the earlier ones that
-ran -- `done` or `failed`, with the runtime that ran them and what it said --
-oldest first, and the brief carries them to whichever runtime is chosen. A
-held or unanswered instruction is not carried: nothing ran, so there is
-nothing it found. The same record that says what happened is the memory the
-next run starts from, which is why a runtime can be swapped between two
-instructions and the second still knows what the first found.
+What is carried forward is what ran. `history` reads a project's earlier
+instructions that ran -- `done` or `failed`, with the runtime and what it
+said -- oldest first, and the brief carries them to whichever runtime is
+chosen. A held or unanswered instruction is not carried. Because the memory is
+the record, the runtime can change between two instructions and the second
+still knows what the first found.
 
-**THE CLONE IS REMEMBERED THE SAME WAY.** `last_clone` is the directory the
-project's most recent act ran in, so a `--cwd` given once serves every later
-instruction in that project, and a person never has to say it twice.
+`last_clone` is the directory the project's most recent act ran in, so a
+`--cwd` given once serves every later instruction in that project.
 
-**THE RECORD SAYS WHAT WAS CARRIED.** `qmcp.instructions.act` writes the ids
-of the turns it handed over into the row's `detail`, so a reader of any
-outcome can see exactly which earlier work the runtime was told about.
+`qmcp.instructions.act` writes the ids of the turns it handed over into the
+row's `detail`.
 
-WHAT THIS CANNOT DO. Know which earlier instructions are relevant. It carries
-the most recent `LIMIT` that ran, in order, and nothing else; a project's
-history longer than that is in the record, not in the brief.
+What this cannot do: know which earlier instructions are relevant. It carries
+the most recent `LIMIT` that ran, in order; older history is in the record,
+not in the brief.
 """
 
 from __future__ import annotations

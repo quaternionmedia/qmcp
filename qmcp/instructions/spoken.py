@@ -2,32 +2,27 @@
 
     uv run qmcp instructions say <id> [--speak]
 
-**THE RECORD IS THE RESULT; THE SENTENCE POINTS AT IT.** An agent's outcome
-can run to pages, and nobody listens to pages. `summarise` says whether the
-instruction ran, in which project, and the outcome's opening sentence, cut at
-a word boundary, in plain words; the whole text stays on the record
-(`qmcp instructions show <id>`). A summary that
-read the whole outcome aloud would make the spoken loop slower than reading
-the terminal, which is the one thing it exists not to be.
+The record is the result; the sentence points at it. `summarise` says whether
+the instruction ran, in which project, and the outcome's opening sentence, cut
+at a word boundary, in plain words. The whole text stays on the record
+(`qmcp instructions show <id>`), so the spoken loop stays faster than reading
+the terminal.
 
-**IT SAYS WHAT THE ROW SAYS, AND NOTHING THE ROW DOES NOT.** Every sentence is
-a function of the row's status, project and outcome, so the
-same row is said the same way by `instructions act --voice`, by
-`instructions say`, and by the offline check. A refusal before anything was
-asked leaves the row as it was, so the caller passes `why` to have the summary
-say nothing ran -- not the reason itself, which names flags and paths and is
-written for a terminal.
+Every sentence is a function of the row's status, project and outcome, so one
+row is said the same way by `instructions act --voice`, `instructions say` and
+the offline check. A refusal before anything was asked leaves the row as it
+was, so the caller passes `why` to have the summary say nothing ran; the
+reason itself, written for a terminal, is not said.
 
-**THE PANEL IS TOLD IN STATES IT ALREADY HAS.** The speech engine accepts a
-fixed set of posted states and refuses any other. The summary is announced as
-`speaking` while it is said, and the turn then ends `idle` carrying it, so the
-panel shows it as the last thing said. It is never announced as `recorded`,
-which the panel shows as a person's answer accepted. An engine without the
-route, or an announcement that fails, costs the sentence nothing.
+The speech engine accepts a fixed set of posted states. The summary is
+announced as `speaking` while it is said, and the turn ends `idle` carrying
+it, so the panel shows it as the last thing said. It is never announced as
+`recorded`, which the panel shows as a person's answer accepted. An engine
+without the route, or a failed announcement, costs the sentence nothing.
 
-WHAT THIS CANNOT DO. Tell whether the outcome is true. The runtime reported
-it; this repeats its first sentence. Markdown markers are dropped because a
-synthesizer reads them aloud, and nothing else about the text is changed.
+What this cannot do: tell whether the outcome is true. The runtime reported
+it; this repeats its first sentence. Markdown markers are dropped, because a
+synthesizer reads them aloud, and nothing else about the text changes.
 """
 
 from __future__ import annotations

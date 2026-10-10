@@ -1,43 +1,33 @@
 """The spoken instruction: ask, listen long, read back, resolve, record.
 
-**AN OPEN QUESTION, THEN A CLOSED ONE.** "What should be done?" has no grammar
-for its answer, so the transcript is the answer and the speaker is the only
-check on it: it is read back as a closed choice between `agree` and `again` --
-or, heard confidently, agreed to tacitly unless interrupted --
-parsed with the helpers the approval dialog uses (`parse_yes_no`,
-`match_option`, `say_options`), so a yes records and a no asks again. The
-re-asks say which of two things went wrong, `noinput` or `nomatch`, and the two
-turns this dialog adds are announced as `confirm` (the read-back) and `again`
-(the speaker asked for another take).
+"What should be done?" is an open question: the transcript is the answer and
+the speaker is the only check on it. It is read back as a closed choice
+between `agree` and `again` -- or, heard confidently, agreed to tacitly unless
+interrupted -- parsed with the approval dialog's helpers (`parse_yes_no`,
+`match_option`, `say_options`). The re-asks say which of `noinput` or
+`nomatch` went wrong, and the turns this dialog adds are announced as
+`confirm` (the read-back) and `again` (another take).
 
-**AN OPEN QUESTION ON THE HUMAN QUEUE AND AN INSTRUCTION ARE ONE DIALOG.** A
-request without options, answered by voice, is asked and confirmed in exactly
-this shape; the two differ in where the confirmed text goes and in how long the
-microphone stays open. Written here beside the inbox, on the shared helpers and
-with the same grammar and announcement reasons, so that when both are on one
-branch they converge on one implementation rather than two that drift.
+An open question on the human queue, answered by voice, is asked and confirmed
+in the same shape, on the same helpers, grammar and announcement reasons; the
+two differ in where the confirmed text goes and how long the microphone stays
+open.
 
-**THE TAKE IS LONG, AND THE ANSWER IS SHORT.** A closed-choice answer is a word,
-and the engine's own endpointing serves it. An instruction is a sentence with
+The take is long and the answer short. An instruction is a sentence with
 pauses mid-thought, so the first listen asks the engine for a longer pause
-before it ends the take and a longer cap -- `pause_ms` and `listen_duration`,
-both options on `qmcp instruct --voice` -- and the confirmation that follows
-asks for neither. The protocol's `pause_ms` keyword exists for this one call.
+and a longer cap -- `pause_ms` and `listen_duration`, both options on
+`qmcp instruct --voice` -- and the confirmation asks for neither.
 
-**THE PROJECT IS CONFIRMED, NOT TRUSTED.** Whether a project name transcribes
-reliably is unmeasured. A text naming one project resolves; one naming several
-is asked back as a closed choice over the candidates by name; one naming none
-is asked for the project once, open. An answer that still matches nothing is
-recorded `unresolved` rather than dropped -- the person spoke it and confirmed
-it, and the inbox is where it is kept until somebody says which project.
+The project is confirmed, not trusted, because how reliably a project name
+transcribes is unmeasured. A text naming one project resolves; several are
+asked back as a closed choice by name; none is asked for once, open. An answer
+that still matches nothing is recorded `unresolved`, not dropped.
 
-**THE ROW SAYS HOW THE PROJECT WAS SETTLED.** A text that named one project is
-sent without a project, so the server reads the same text against the same
-roster and the row carries the name it matched and the rule, as a typed one
-does. A project the person chose from the candidates or spoke when asked is
+The row says how the project was settled. A text that named one project is
+sent without a project, so the server matches it and the row carries the name
+and the rule, as a typed one does. A project the person chose or spoke is
 stated to the server, and the row says `stated` with `source: voice` and the
-answer among the transcripts in `heard`: the dialog is the caller that stated
-it, and the evidence for its choice is kept beside it.
+answer among the transcripts in `heard`.
 """
 
 from __future__ import annotations
