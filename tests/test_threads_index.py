@@ -1,9 +1,8 @@
 """The thread index, and an archive that never overwrites.
 
-The tests worth reading are the classifications. Telling a conversation that
-grew from one whose export disagrees with an earlier record of itself is the
-whole point, and the failure that matters is one direction only: a divergence
-reported as growth is a finding nobody sees.
+Most tests are classifications: a conversation that grew, against one whose
+export disagrees with an earlier record of itself. A divergence reported as
+growth is the failure they guard against.
 """
 
 from __future__ import annotations

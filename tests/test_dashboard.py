@@ -145,10 +145,9 @@ def test_a_database_with_no_invocations_table_still_renders(tmp_path):
 def test_an_empty_dashboard_is_distinguishable_from_a_broken_one(tmp_path):
     """Not by the table count -- by whether the counts were taken at all.
 
-    This test asserted the table count, and the count does not carry the
-    distinction: a database of unrelated tables reports one like any other. The
-    honest signal is that an idle harness has every table and a real zero, and
-    an unreadable one has an `unknown` with a reason.
+    A database of unrelated tables reports a table count like any other. An
+    idle harness has every table and a real zero; an unreadable one has an
+    `unknown` with a reason.
     """
     idle = build(make_db(tmp_path / "idle.db", []))
     broken = build(make_db(tmp_path / "broken.db", with_tables=False))

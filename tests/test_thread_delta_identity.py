@@ -60,7 +60,7 @@ def test_the_phase_is_the_one_the_delta_builder_sets():
     along, and nothing automatic can establish that.
 
     Mutation: hard-code "brainstorm" in `as_delta_row` and this fails when the
-    builder moves, which is the whole point of reading it from the builder.
+    builder's phase changes.
     """
     thread = Thread(id="abc123")
     claude = source_classes()["claude"]

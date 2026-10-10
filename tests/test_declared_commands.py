@@ -136,8 +136,7 @@ def resolves(claim: str) -> str | None:
 def test_the_scan_finds_something() -> None:
     """A scan that matched nothing would pass every test below.
 
-    The empty assertion this organisation keeps catching: a guard whose input
-    is empty reports green and has checked nothing.
+    A guard whose input is empty reports green and has checked nothing.
     """
     claims = declared()
     assert len(claims) > 5, f"only {len(claims)} claims found; the scan is broken"

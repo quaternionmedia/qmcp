@@ -1,8 +1,7 @@
 """Dispatching a sweep: a worker per shape, and nothing chosen in advance.
 
-The test worth reading is the last one in the first section: a share whose shape
-has no worker is reported and queued, never dropped. A sweep that quietly
-omitted fifteen of twenty-four repositories would look finished.
+A share whose shape has no worker is reported and queued, never dropped, so an
+unworked sweep never looks finished.
 """
 
 from __future__ import annotations

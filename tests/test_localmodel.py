@@ -140,8 +140,7 @@ def test_the_model_is_pinned_rather_than_left_as_a_moving_tag():
 
 
 def test_the_install_step_is_skipped_when_it_is_already_installed():
-    """Re-running this is the point. A plan that reinstalled every time would
-    be one nobody runs twice.
+    """A plan can be re-run: an existing install skips the install step.
 
     Mutation: always emit the install step and this fails.
     """
@@ -153,12 +152,10 @@ def test_the_install_step_is_skipped_when_it_is_already_installed():
 def test_the_plan_ends_by_proving_it_answers_over_the_api():
     """Installed is not the same as working, and the difference is one command.
 
-    THE API, NOT `ollama run`. That command reads stdin and hangs with no
-    terminal -- it did, for ten minutes, in the run that put this here. The
-    service is what a worker talks to, so proving the service is proving the
-    thing that matters.
+    The API, not `ollama run`, which reads stdin and hangs with no terminal.
+    The service is what a worker talks to, so the plan proves the service.
 
-    Mutation: go back to `ollama run` and this fails.
+    Mutation: use `ollama run` instead and this fails.
     """
     from qmcp.localmodel import ENDPOINT
 
