@@ -3,20 +3,10 @@
     uv run qmcp topology gallery
     uv run qmcp topology show pipeline --level 2
 
-A `View` is boxes and arrows with kinds and notes. It holds no coordinates,
-glyphs, colours or widths, so every window draws from the same description:
-`dossier` draws it as text in a panel and `codecarto` as a graph in a page.
-
-A view is one topology at one level. Level 0 is the black box: what goes in
-and what comes out. Level 1 is the parts. Level 2 is the flow between them.
-
-Boxes carry a `kind` and a `note`; arrows carry a kind that tells flow from
-feedback from refusal. A window may show less than the description carries --
-a terminal collapses some of it to a border style -- and never more: it draws
-no dimension the description does not hold.
-
-The plane's declarations are part of the view. A topology that spends, writes
-or decides shows it, and a refused one is drawn refused rather than omitted.
+A `View` is boxes and arrows with kinds and notes, at one of three levels,
+carrying the plane's marks and no drawing detail. `as_payload` is the form a
+window reads. `docs/agentframework/topologies.md`, *Views of a topology*,
+explains levels, kinds, channels and readings.
 """
 
 from __future__ import annotations

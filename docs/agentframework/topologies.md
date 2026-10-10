@@ -507,7 +507,7 @@ cannot be answered arrives as a reason rather than an empty list.
 | `GET /v1/topology-components` | every saved component of one project |
 | `GET /v1/topology-components/{name}` | one component |
 | `PUT /v1/topology-components/{name}` | change a component's description, instruction or version; its name is fixed |
-| `POST /v1/topologies` | save a design. `config` is validated through the kind's configuration class and stored with its defaults filled; `config.components` names reusable components, each with optional `route_terms`, and `config.compose` names saved designs; the response carries an `address` and a `capability` block |
+| `POST /v1/topologies` | save a design. `config` is validated through the kind's configuration class and stored with its defaults filled; `config.components` names reusable components, each with optional `route_terms`, and `config.compose` names saved designs; the response carries an `address` -- None, with the reason in `address_unknown`, when the repository's identity is not known -- and a `capability` block |
 | `GET /v1/topologies` | every saved design of one project |
 | `GET /v1/topologies/{ref}?act=` | one design, by id or by name; `act` asks the plane about a pairing |
 | `PUT /v1/topologies/{ref}` | change `description`, `config` or `version`; name and kind are fixed; the references in a new `config` are checked as on save |

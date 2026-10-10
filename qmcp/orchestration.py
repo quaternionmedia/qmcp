@@ -2,28 +2,14 @@
 
     uv run qmcp orchestration plane
 
-Each registered topology has one `Capability` in `PLANE`: its status,
-whether running it spends money, writes to a repository or decides, why, and
-what a caller must supply before it can run. A capability is declared, never
-discovered by running the shape.
+`PLANE` holds one `Capability` per registered topology: its status, whether
+running it spends, writes or decides, why, and what it needs. `OPTIONS` holds
+the shapes that differ under one setting, and `refuses` judges a pairing of a
+shape and an act. `docs/agentframework/topologies.md`, *The capability plane*,
+explains statuses, pairings, options and needs.
 
-A status is one of three. `RUNS`: implemented, and safe to point at ordinary
-work. `BRAINSTORM`: a designed shape whose `run` still raises -- a proposal,
-not a runtime. `REFUSED`: a shape whose design performs an act this
-organisation reserves for a person.
-
-`governance/qm/ci/attested-registry.yaml` lists those acts: ratifying a
-record, cutting a tag, closing a delta as complete, answering a question in the
-human queue and authorising a paid call among them. A topology that decides is
-refused when pointed at one, and a topology that only reports is not, so the
-refusal belongs to the pairing of shape and act. `refuses` answers for a
-pairing.
-
-`OPTIONS` declares a shape that does something else under one setting, such
-as the advisory council.
-
-What this cannot do: stop a topology whose declaration is wrong. A declaration
-is checked against the registry by `undeclared()` and `stubs()`, and against
+What this cannot do: stop a topology whose declaration is wrong. Declarations
+are checked against the registry by `undeclared()` and `stubs()`, and against
 nothing else.
 """
 

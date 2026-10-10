@@ -1,24 +1,13 @@
-"""The orchestration plane, over HTTP, for a window that must not decide.
+"""The orchestration plane, over HTTP.
 
     GET /v1/orchestration/plane      what every shape would do, declared
     GET /v1/orchestration/runnable   what each shape is short of, given a hand
 
-Every field is read from `qmcp.orchestration` -- `PLANE`, `OPTIONS`, `NEEDS`,
-`ATTESTED` and its drift reports -- and nothing is derived here, so the served
-plane and `uv run qmcp orchestration plane` give one answer. A window asks
-these routes rather than keeping its own copy of which shapes spend, decide or
-are refused.
-
-The routes name nobody -- a capability is a claim about a shape -- so they are
-served off loopback as well as on it.
-
-`runnable` takes workers, a budget, a model and a build. There is no parameter
-for `person`: a shape whose need is a person's judgement is never made
-runnable by a request, as in `qmcp.orchestration.unmet`.
+Every field is read from `qmcp.orchestration`; nothing is derived here. The
+routes name nobody and are served wherever the server is bound. `runnable`
+takes workers, a budget, a model and a build, and has no `person` parameter.
 
 What this cannot do: say whether a shape whose needs are all met will work.
-`unmet` reads declarations and runs nothing; a run reports in the invocation
-record.
 """
 
 from __future__ import annotations

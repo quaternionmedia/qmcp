@@ -1,24 +1,11 @@
-"""The topology, over HTTP, for whatever wants to draw it.
+"""Topologies over HTTP, for any window that draws them.
 
-Two classes of route, divided by personal data:
-
-- The *shapes* -- `/v1/topology`, `/v1/topology/encoding`,
-  `/v1/topology/shape/{kind}`, `/v1/topology/schema/{kind}` -- are this
-  harness's own vocabulary: the collaboration shapes, `governed` (the seam a
-  model is called through), and the schema of each shape's configuration
-  class. They name nobody and are served wherever the server is bound.
-- The *readings* -- `/v1/topology/relations/{subject}` -- are derived from the
-  thread archive, which holds a person's conversations, and carry project
-  addresses, turn counts and topics. They are registered only on loopback, as
-  `qmcp.threads.service` is. Off loopback the route does not exist, so a
-  response reveals nothing about whether an archive is there.
-
-`register` and `register_readings` take the app rather than creating one, so
-what may leave the machine is decided once, in `create_app`.
-
-Every route returns the flat payload `qmcp.topology_view.as_payload` produces,
-with the encoding that says which visual channel carries which data axis. How
-a window draws it is the window's.
+The shapes, the encoding and the configuration schemas name nobody and are
+served wherever the server is bound. The readings under
+`/v1/topology/relations/` derive from a person's thread archive and exist only
+on a loopback bind. `register` and `register_readings` take the app, so
+`create_app` decides exposure once. `docs/agentframework/topologies.md`,
+*Views of a topology*, describes what is served where.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Saved topology designs, over HTTP, with the plane's verdict on each one.
+"""Saved topology designs and reusable components, over HTTP.
 
     POST /v1/topologies          save a design, validated through its kind's class
     GET  /v1/topologies          every saved design
@@ -10,41 +10,14 @@
     GET  /v1/topology-components/{name}  one, by name
     PUT  /v1/topology-components/{name}  change its description, instruction or version
 
-A design is a topology kind with a configuration. Saving one validates the
-configuration through the class the kind declares -- the class
-`Topology.get_typed_config` reads a row through -- and stores what the class
-accepted with its defaults filled, so a design that saves also loads.
+A design's configuration is validated through its kind's class and stored
+with its defaults filled; every row is returned with the capability plane's
+verdict on it. The routes write, so `create_app` registers them only on a
+loopback bind. `docs/agentframework/topologies.md`, *Over HTTP, for a
+designer*, describes references, projects, addresses and refusals.
 
-Every row is returned with a `capability` block read from
-`qmcp.orchestration`: the shape's status, whether it spends, writes or
-decides, what it needs, and whether the plane refuses it, for the shape alone
-or, with `?act=`, for one pairing. This module adds no verdict of its own. A
-refused shape can still be saved: the refusal applies to running a design,
-and the block carries it beside a `saved_anyway` sentence that says so.
-
-`config.components` names reusable components and `config.compose` names
-saved designs. Both are checked on save and on change: an unknown name, a
-design composing itself, a cycle, or nesting deeper than eight levels is a
-422. A component is shared by reference, so changing it changes every design
-that names it.
-
-Every design and component belongs to a project: a short name such as `qmcp`,
-taken from the body or `?project=`, defaulting to the short name of the
-identity the routes were registered with. A name is unique within its project
-and references resolve within it; a composed design may name another
-project's design as `project/name`.
-
-Every row carries an address, `<owner>/<repo>/topology/<name>`, built by
-`qmcp.addresses` from the repository's identity. When the identity is not
-known, `address` is None and `address_unknown` gives the reason.
-
-The routes write and carry no authorization of their own, so `create_app`
-registers them only on a loopback bind.
-
-What this cannot do: delete -- there is no `DELETE` route for a design or a
-component -- or run a design. `qmcp.integrations.agents.topology_design` runs
-a saved design by voice, behind a consent, and reads the block's `voice_*`
-fields.
+What this cannot do: delete a design or a component, or run a design;
+`qmcp.integrations.agents.topology_design` runs one by voice, behind a consent.
 """
 
 from __future__ import annotations
