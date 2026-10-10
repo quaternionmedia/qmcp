@@ -2,33 +2,21 @@
 
     uv run qmcp threads consolidate
 
-**THE OVERLAP IS THE POINT.** Two hundred threads and sixteen repositories, and
-almost every thread is about at least one of them -- but nothing said so, so a
-project's board showed its branches and its pull requests and none of the
-conversations that produced them. This works out the overlap and states it as
-relations, which is the vocabulary
-`governance/qm/records/DRAFT-deltas-compose.md` already settled.
+Each thread is read against the corpus's roster of repositories, and what it
+is about is stated as relations in the vocabulary of
+`governance/qm/records/DRAFT-deltas-compose.md`.
 
-**EVIDENCE AND CLAIM ARE SEPARATE, AND NEITHER IS DERIVED FROM THE OTHER.**
-`mentions` counts where a repository's name appears and in which turns: that is
-measured, and it is what a person checks. `about` decides which projects a
-thread is *about*: that is a claim, produced by a rule, and the rule is named in
-the output beside its answer. Changing the rule changes the claim and leaves
-every piece of evidence exactly as it was, which is the property that makes the
-claim arguable rather than authoritative.
+- `mentions` is evidence: where each repository's name appears, in which
+  turns. `about` is a claim produced by a rule, and the rule is returned
+  beside the answer. Changing the rule changes the claim and leaves the
+  evidence as it is.
+- A thread that meets the rule for no project is unknown, never assigned a
+  default.
+- A thread about one project is `part-of` that project's work; a thread about
+  several is `crosses` each of them. A thread naming most of a substantial
+  roster is a survey of the workspace and gets no relation.
 
-**A THREAD ABOUT NOTHING IS `unknown`, NOT UNASSIGNED TO A DEFAULT.** Most
-conversations in a personal archive are not about this organisation at all. A
-consolidator that guessed a home for them would fill sixteen boards with
-somebody's holiday planning, and the guess would be indistinguishable from a
-finding. Unknown is a value here as it is everywhere else in this corpus.
-
-**PART-OF FOR ONE, CROSSES FOR SEVERAL.** A thread about one project is
-`part-of` that project's work: closing the work requires closing what the thread
-settled. A thread about two is `crosses` -- both must happen, they interact, and
-neither contains the other. Reaching for `part-of` twice would claim a
-conversation belongs wholly to each of two repositories, which is the shape that
-made a hierarchy the wrong model in the first place.
+`docs/threads.md` describes the rule and its thresholds.
 """
 
 from __future__ import annotations
@@ -47,35 +35,17 @@ PART_OF = "part-of"
 CROSSES = "crosses"
 
 # How many turns must name a repository before a thread counts as being about
-# it. One passing mention is a citation; this is the difference between a
-# conversation that referenced a repository and a conversation about it.
-#
-# A THRESHOLD IS A CLAIM AND IT IS STATED, NOT HIDDEN. Two is a starting point
-# somebody chose, not a discovery -- which is why `about` reports the rule it
-# used beside the answer, and why the number is a parameter rather than a
-# literal buried in a comparison.
+# it. A chosen starting point, not a measured one: `about` takes it as a
+# parameter and reports it in the rule.
 DEFAULT_MIN_TURNS = 2
 
-# Above this share of the roster, a thread is describing the workspace rather
-# than crossing part of it.
-#
-# **AN INVENTORY IS NOT A CROSSING, AND THEY MEASURE THE SAME.** `crosses` means
-# both must happen, they interact at one point, and neither contains the other.
-# A session that lists every repository -- a status sweep, a roster review, a
-# handoff -- names most of them in most of its turns, and comes out of the rule
-# above looking like a conversation that crossed eleven projects at once. It did
-# not; it enumerated them.
-#
-# Measured on the real archive: 33 threads crossed more than one project and the
-# largest named 11 of 13, which is what prompted this. Reported as its own kind
-# rather than dropped, because a workspace sweep is a real thing a person did
-# and the boards should be able to find it -- just not as eleven crossings.
+# A thread whose chosen projects reach this share of the roster is a survey of
+# the workspace -- a status sweep, a roster review, a handoff -- rather than
+# work crossing part of it. Surveys are reported as their own kind.
 ROSTER_SHARE = 0.5
 
-# And never fewer than this many, whatever the share works out to. A share
-# alone reads "two of four" as a survey, which it plainly is not -- a survey is
-# most of a *substantial* roster, and two projects is the smallest possible
-# genuine crossing. Both conditions have to hold.
+# A survey also names at least this many projects, so "two of four" is a
+# crossing. Both conditions must hold.
 MIN_SURVEY_PROJECTS = 4
 
 
@@ -104,16 +74,10 @@ class Mention:
     def share(self) -> float | None:
         """The fraction of the conversation that names this project.
 
-        **THE MEASURE THE ABSOLUTE THRESHOLD WAS MISSING, FOUND BY ASKING A
-        REAL QUESTION.** Pointed at `codecartographer`, the rule "named in at
-        least 2 turns" admitted a 5,153-turn session that named it in 18 (0.3%)
-        and a 1,885-turn session that named it twice (0.1%) -- alongside a
-        63-turn session that named it in 8 (12.7%), which is plainly about it.
-        Two turns is a lot of evidence in a short thread and none at all in a
-        long one.
+        A fixed turn count is strong evidence in a short thread and weak in a
+        long one; the share accounts for length.
 
-        `None` when the thread's length is unknown: a share computed against a
-        zero would be a number this made up.
+        `None` when the thread's length is unknown.
         """
         if not self.of_turns:
             return None
@@ -123,26 +87,16 @@ class Mention:
     def strength(self) -> float | None:
         """How strongly this thread is about this project, 0 to 1.
 
-        **A CLAIM, DERIVED FROM MEASURED PARTS, AND THE PARTS TRAVEL WITH IT.**
-        `share`, `total` and `in_title` are counted; this is a reading of them,
-        and a renderer drawing a thick line is drawing this reading rather than
-        a fact. Every component stays on the `Mention` so somebody can disagree
-        with the combination without losing the evidence.
+        A claim derived from the measured `share`, `total` and `in_title`,
+        which stay on the `Mention` beside it. The rule:
 
-        The rule, stated rather than tuned:
+          * `share` is the base;
+          * a project in the title is at least 0.5, because a title is a
+            person's own summary of the conversation;
+          * the result is capped at 1.0.
 
-          * `share` is the base -- the fraction of the conversation that names
-            the project, which is the measure the absolute turn threshold was
-            missing.
-          * a project in the **title** is at least 0.5, because a title is a
-            person's own summary of what the conversation was about and
-            outranks any proportion.
-          * `share` is capped at 1.0 rather than allowed to exceed it.
-
-        `None` when nothing can be measured -- and **`None` is not zero**. A
-        thread whose length is unknown is not a weak correlation; it is an
-        unmeasured one, and a window that drew it as a hairline would be
-        asserting weakness nobody established.
+        `None` when nothing can be measured, which is not zero: an unmeasured
+        thread is not a weak correlation.
         """
         share = self.share
         if share is None:
@@ -167,8 +121,8 @@ class Mention:
 class Reading:
     """What a thread is about, the evidence for it, and the rule used.
 
-    The three are carried together on purpose. A reading passed around without
-    its rule is a verdict, and a verdict is what a person cannot argue with.
+    The three travel together, so a reading always carries the rule that
+    produced it.
     """
 
     thread: str
@@ -187,9 +141,8 @@ class Reading:
     def relation(self) -> str | None:
         """How this thread joins what it is about, or None when nothing does.
 
-        A roster survey gets none. Every relation this vocabulary has says
-        something specific about two pieces of work, and "was mentioned in a
-        list of everything" is not one of them.
+        A roster survey gets none: being named in a list of everything is not
+        a relation between two pieces of work.
         """
         if not self.projects or self.surveys_the_roster:
             return None
@@ -199,21 +152,15 @@ class Reading:
 def roster(corpus: Path, owner: str | None = None) -> dict[str, str]:
     """Repository short name -> `<owner>/<name>`, from the corpus's own roster.
 
-    Read from `governance/qm`, which this repository already embeds. Asking the
-    control panel would make the harness depend on the panel for a list the
-    corpus publishes, and the two would then disagree the moment one was
-    fetched and the other was not.
+    Read from `governance/qm/ci/workspace.yaml`, which this repository embeds,
+    so the harness does not depend on the control panel for the list.
     """
     import yaml
 
     document = yaml.safe_load(
         (corpus / "ci" / "workspace.yaml").read_text(encoding="utf-8"))
-    # **THE OWNER IS DERIVED, NOT TYPED IN.** `workspace.yaml` declares bare
-    # repository names -- it is the corpus's roster and says nothing about
-    # whose account they are on -- so this had `quaternionmedia` written into
-    # it. Every relation the archive states therefore carried this
-    # organisation's owner whoever was running the survey, and an address's
-    # owner is what says two readings are about one thing.
+    # `workspace.yaml` declares bare repository names, so the owner is derived
+    # from this checkout's identity unless one is given.
     account = owner or identity.owner()
     found: dict[str, str] = {}
     for entry in document.get("repositories") or []:
@@ -227,9 +174,7 @@ def roster(corpus: Path, owner: str | None = None) -> dict[str, str]:
 def _pattern(name: str) -> re.Pattern[str]:
     """A repository name as a whole word.
 
-    Word-bounded because `rad` is three letters that live inside `gradient`,
-    `radius` and `radical`, and a substring match would report a conversation
-    about colour as a conversation about the menu library.
+    Word-bounded, so `rad` does not match inside `gradient` or `radius`.
     """
     return re.compile(rf"(?<![\w-]){re.escape(name)}(?![\w-])", re.IGNORECASE)
 
@@ -260,10 +205,10 @@ def about(thread: Thread, names: Iterable[str],
           min_share: float | None = None) -> Reading:
     """Which projects this thread is about, and why.
 
-    THE TITLE COUNTS FOR MORE THAN A MENTION. A repository named in the title is
-    what the conversation was called, which is a person's own summary of what it
-    was about -- stronger evidence than any number of passing references, and
-    the one case where a single occurrence is enough.
+    A repository named in the title counts on that alone, because the title
+    is a person's own summary of the conversation. Otherwise it must be named
+    in at least `min_turns` turns and, when `min_share` is given, in at least
+    that share of them.
     """
     known = list(names)
     evidence = mentions(thread, known)
@@ -273,10 +218,7 @@ def about(thread: Thread, names: Iterable[str],
             return True
         if m.turn_count < min_turns:
             return False
-        # `min_share` is off by default, so existing readings keep their
-        # meaning. Turning it on is a decision somebody makes, and the reason
-        # is in `Mention.share`: two turns is strong evidence in an eighteen
-        # turn thread and negligible in an eighteen hundred turn one.
+        # `min_share` is off by default; `Mention.share` says what it adds.
         if min_share is not None and (m.share or 0) < min_share:
             return False
         return True
@@ -299,17 +241,13 @@ def relations_for(thread: Thread, reading: Reading, *,
                   project_of: dict[str, str]) -> list[dict[str, Any]]:
     """The relation payloads this reading implies.
 
-    Addresses on both sides, because a relation joins addresses rather than
-    rows -- so one of these may name a delta that does not exist yet, and that
-    is allowed. The thread's own address is the harness's; the project's is the
-    repository's own work.
+    A relation joins addresses rather than rows, so its target may name a
+    delta that does not exist yet. The source is the harness's delta for the
+    thread; the target is the repository's own work.
 
-    `stated_by` carries the rule. A relation somebody finds later and disagrees
-    with should say what produced it without anybody having to guess.
+    `stated_by` carries the rule that produced the relation.
     """
-    # `relation`, not `is_unknown`: a survey has projects and no relation, so
-    # a check on emptiness alone would emit eleven relations for a thread that
-    # crossed nothing. One condition, and it is the one that decides.
+    # `relation`, not `is_unknown`: a survey has projects and no relation.
     relation = reading.relation
     if relation is None:
         return []
@@ -328,9 +266,8 @@ def relations_for(thread: Thread, reading: Reading, *,
             "relation": relation,
             "target": f"{owner_repo}/delta/the-work",
             "stated_by": f"qmcp threads consolidate: {reading.rule}",
-            # THE WEIGHT AND ITS PARTS TRAVEL TOGETHER. A consumer drawing a
-            # thick line is drawing a reading; sending the number without what
-            # it was read from would make that reading unarguable.
+            # The weight is a reading; the evidence it was read from travels
+            # with it.
             "weight": next((m.strength for m in reading.evidence
                             if m.project == project), None),
             "evidence": [
@@ -376,9 +313,7 @@ class Consolidation:
     def summary(self) -> str:
         """One paragraph, counting what is known and what is not.
 
-        The unknown count is reported first and never omitted: a consolidator
-        that printed only its hits would read as though it had placed
-        everything.
+        The count of threads about no project is always reported.
         """
         placed = len(self.readings) - len(self.unknown)
         lines = [

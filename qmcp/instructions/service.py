@@ -8,33 +8,9 @@
     GET  /v1/voice/vocabulary          what can be said to the spoken loop, by group
     POST /v1/instructions/{id}/act     act on one, behind consent; 202, 404, 409 or 422
 
-**LOOPBACK ONLY, LIKE THE VOICE ROUTES.** An instruction is a person's own
-words about what should be done, and the voice route makes this machine speak
-and listen. Neither belongs on a socket somebody elsewhere can reach, so
-`qmcp.server` registers these only when it is bound to loopback and they do not
-exist otherwise -- nothing to reach, rather than something that refuses.
-
-**THE SPOKEN ROUTE STARTS A COMMAND, AND SO DOES THE ACT ROUTE.** `POST
-/v1/instructions/voice` runs `qmcp instruct --voice` in a process of its own,
-through the tracker the approval route uses, for the reasons
-`qmcp.integrations.voice.service` gives: the synthesizer wants a main thread,
-the command already carries the preflight and every message a person needs,
-and there is one microphone. Sharing the tracker is what makes "one
-conversation at a time" true across both kinds. `POST /v1/instructions/{id}/act`
-runs `qmcp instructions act` the same way, with the runtime, the budget and the
-clone the body names and nothing defaulted: the command asks consent on the
-human queue and runs an agent only on approve (`qmcp.instructions.act`), and
-an agent run is one at a time here as a conversation is. With `voice` in the
-body the command asks the consent aloud itself, which is the only way a page
-can have it asked by voice while the act holds the one conversation.
-
-**THE SERVER RESOLVES; THE RECORD IS THE SERVER'S.** A typed instruction and a
-page's arrive as text and are read against the roster here, so every row's
-`detail` was produced by one function on one list. The spoken dialog reads the
-same roster before it records, because an ambiguous name has to be asked back
-before anything is written; it states a project only when the person chose or
-spoke one, and sends a text that named one project without it, so that row too
-carries the match the server made and the rule that made it.
+The routes exist only on a loopback bind. The spoken and act routes run their
+commands in processes of their own through the voice routes' tracker, so one
+conversation or act runs at a time. `docs/integrations/voice.md` describes each route.
 """
 
 from __future__ import annotations

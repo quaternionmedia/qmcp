@@ -4,12 +4,9 @@ Everything on this page runs. It is executed by the ordinary test command, so
 an example that stops being true fails the build rather than sitting here
 misleading somebody.
 
-**The problem.** The voice loop answers questions an agent asks: a closed
-choice, spoken and recorded on the human queue (`06`, `07` and
-`docs/integrations/voice.md`). Nothing ran the other direction. A person who
-wanted something done in a project said so in whichever conversation happened
-to be open, and when that conversation closed the instruction closed with it.
-The inbox is where an instruction is kept instead: in the person's words,
+The voice loop answers questions an agent asks: a closed choice, spoken and
+recorded on the human queue (`06`, `07` and `docs/integrations/voice.md`). The
+inbox runs the other direction: a person's instruction is kept in their words,
 against a project, with the evidence for the project beside it. **Recording one
 executes nothing**, and this page shows that by looking.
 
@@ -18,7 +15,7 @@ executes nothing**, and this page shows that by looking.
 The module takes the app rather than creating one, as `qmcp.topology_designs`
 does. The rows go in a database this page owns, because the configured one is
 somebody's inbox, and the roster is handed in so the page does not depend on
-what the governance submodule lists this week:
+what the governance submodule lists:
 
     >>> import tempfile
     >>> from pathlib import Path

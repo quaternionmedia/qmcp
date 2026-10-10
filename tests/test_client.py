@@ -413,11 +413,9 @@ class TestClientPackageExports:
 
     A caller handling a failure has to be able to import the error it is
     handling. `examples/flows/approved_deploy.py` imports
-    `HumanRequestExpiredError` from this package, and for a while the package
-    exported only `MCPClient` -- so that import was broken, on every platform,
-    and invisible on this one because the flow cannot be imported at all where
-    `import metaflow` fails on `import fcntl`. The first CI run on Linux found
-    it in sixteen seconds.
+    `HumanRequestExpiredError` from this package, and that flow cannot be
+    imported on Windows, where `import metaflow` fails on `import fcntl`, so
+    this test checks the exports directly.
     """
 
     def test_every_error_the_client_raises_is_importable_from_the_package(self):

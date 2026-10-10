@@ -3,48 +3,31 @@
     qmcp dashboard              # the view, rendered for a terminal
     qmcp dashboard --json       # the same data, for something else to render
 
-WHY qmcp NEEDS ONE AT ALL. dossier has a dashboard; qmcp had an API and a log.
-Two views of one dataset cannot be put beside each other when only one of them
-is a view, and "read the JSON from `/v1/invocations`" is not a view -- it is the
-thing a view is made from.
+Every row carries an address, `<owner>/<repo>/invocation/<id>`, so dossier can
+point at it, a delta can link to it and `qm divergence` can compare it.
 
-EVERY ROW CARRIES AN ADDRESS. An invocation is a bare UUID, which nothing
-outside this database can name. As
-`quaternionmedia/qmcp/invocation/<id>` it is a row dossier can point at, a delta
-can link to, and `qm divergence` can compare. That is the whole reason this is
-more than a pretty print of a table.
+It reads the database directly and read-only, not the HTTP API, so it answers
+when the server is down.
 
-WHAT IT READS. The database, directly and read-only -- not the HTTP API. A
-dashboard that required the server to be up could not tell you why the server is
-down, which is when somebody wants it most.
+The human queue crosses as rows: each question is addressed
+`<owner>/<repo>/ask/<id>` and carries its prompt, its options and its answer if
+it has one.
 
-WHAT IT CANNOT SEE.
+A count that could not be taken, because its table is absent, is
+`{"unknown": "<reason>"}` in the payload, never `0`.
 
-  * Anything the database does not record. A tool that failed before its
-    invocation row was written leaves nothing here, and the count of what ran
-    is therefore a floor.
-  * Whether a result was any good. `status` is what the server recorded, and a
-    successful call returning nonsense is a success here.
-  * dossier's half of any row. This addresses its own data so the two *can* be
-    joined; it does not do the joining, and it holds no opinion about which
-    view is right -- that is `records/DRAFT-a-disagreement-is-a-delta.md`.
+What this cannot see:
 
-THE HUMAN QUEUE CROSSES AS ROWS, NOT AS A COUNT. Schema 2 carried
-`human_requests: 1` and nothing else, so a control panel could say that one
-thing was waiting on a person and never which thing -- and a count is not
-something anybody can answer. Each question now crosses addressed, as
-`<owner>/<repo>/ask/<id>`, with its prompt, its options, and its answer if it
-has one.
+  * anything the database does not record: a tool that failed before its
+    invocation row was written leaves nothing, so the count of what ran is a
+    floor;
+  * whether a result was any good: `status` is what the server recorded;
+  * dossier's half of any row. This addresses its own data so the two can be
+    joined, and does not join them or judge between them
+    (`records/DRAFT-a-disagreement-is-a-delta.md`).
 
-A COUNT NOBODY COULD TAKE IS `unknown`, NEVER ZERO. When a table this reads is
-absent, the payload carries `{"unknown": "<reason>"}` in place of the number.
-Schema 1 emitted `0`, which made a database missing its tables indistinguishable
-from a harness that had run nothing -- and the consumer stored the zero as fact.
-The docstring on the terminal renderer said the table counts told them apart;
-they do not, because a database holding two unrelated tables reports a count
-like any other. The convention is the corpus's own, stated in
-`harness-status.json`'s reading block: unknown is a value, it says why, and it
-is not zero, not empty and not compliant.
+`docs/self-checks.md` describes the dashboard beside the harness's other views
+of itself.
 """
 
 from __future__ import annotations
@@ -58,9 +41,8 @@ from pathlib import Path
 from qmcp import identity
 from qmcp.addresses import ask_address, invocation_address
 
-# **DERIVED, NOT TYPED IN.** This named the repository directly, so a fork's
-# dashboard reported somebody else's project as its own. `qmcp.identity` reads
-# the git remote; see the reasoning there.
+# Derived from the git remote by `qmcp.identity`, so a fork's dashboard reports
+# the fork's project.
 DEFAULT_PROJECT = identity.this_project()
 RECENT = 10
 """How many invocations the payload carries. A window onto a log."""
@@ -68,20 +50,16 @@ RECENT = 10
 QUEUE = 50
 """How many queue rows the payload carries.
 
-**SEPARATE FROM `RECENT` BECAUSE A WORK LIST IS NOT A LOG WINDOW.** One
-constant served both, and ten is a reasonable window onto invocations and a
-poor one onto work waiting on a person: a queue of fifteen arrived as ten, the
-five dropped were the five most recently asked, and nothing in the payload
-said so. Truncating a log loses history; truncating a work list loses work.
+Separate from `RECENT`: truncating a log window loses history, truncating a
+work list loses work. The payload states `queue_total` beside the rows.
 """
 
 SCHEMA = 2
 """The payload version a reader checks.
 
-`queue_total` and `queue_shown` were added without moving it. They are
-additive -- a reader at this version that has never heard of them is correct
-without them, and `dossier.harness.check_schema` requires an exact match, so a
-bump would refuse every payload in the field to announce a key nobody needed.
+Additive keys such as `queue_total` and `queue_shown` do not move it:
+`dossier.harness.check_schema` requires an exact match, and a reader at this
+version is correct without them.
 """
 
 # The tables this reads. Named so the payload can say which one was missing
@@ -113,10 +91,8 @@ class Invocation:
 class Waiting:
     """One question put to a person, and the answer if it has arrived.
 
-    `answered_with` is None while it is outstanding. A row that carries an
-    answer is kept rather than dropped: what was asked and what was said are
-    the audit trail, and a queue that forgets answered questions cannot show
-    anybody why a thing was decided.
+    `answered_with` is None while it is outstanding. Answered rows are kept:
+    what was asked and what was said are the audit trail.
     """
 
     id: str
@@ -139,8 +115,8 @@ class Waiting:
 class View:
     """Everything the dashboard shows, separated from how it is shown.
 
-    A renderer that queried would be a second place the query lives, and the
-    two would drift the first time one was fixed.
+    Renderers read a `View` and query nothing, so the query lives in one
+    place.
     """
 
     project: str
@@ -153,9 +129,8 @@ class View:
     human_responses: int | None = None
     waiting: list[Waiting] = field(default_factory=list)
     queue_total: int = 0
-    """How many rows the queue holds, before any cap. **Never derived from
-    `len(waiting)`** -- that is the number that survived the cap, and reporting
-    it as the total is exactly how a truncation goes silent."""
+    """How many rows the queue holds, before any cap. Never derived from
+    `len(waiting)`, which is the number that survived the cap."""
 
     tables: int = 0
 
@@ -166,9 +141,7 @@ class View:
     def failures(self) -> int | None:
         """How many invocations were not successful, or None if none were counted.
 
-        None rather than 0: with no invocations table there is nothing to
-        classify, and reporting no failures would be a clean bill of health
-        issued without an examination.
+        None rather than 0: with no invocations table nothing was classified.
         """
         if self.total is None:
             return None
@@ -185,12 +158,8 @@ def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
 def _count(connection: sqlite3.Connection, table: str) -> int | None:
     """Row count, or None when the table is not there.
 
-    Not raising is right and was never the question: this database has been in
-    states where a table the code expects does not exist, and a dashboard that
-    raised then would be unavailable exactly when it was needed to explain why.
-
-    Returning zero was the error. Zero is an answer, and the honest report is
-    that nobody could take the count -- which the caller turns into
+    Does not raise, so the dashboard stays available when a table the code
+    expects is missing. None is not zero: the caller turns it into
     `{"unknown": ...}` on the way out.
     """
     if not _table_exists(connection, table):
@@ -202,20 +171,16 @@ def _waiting(connection: sqlite3.Connection, project: str,
              limit: int) -> tuple[list[Waiting], int]:
     """The human queue, outstanding first, each row addressed, and its size.
 
-    **THE SIZE IS RETURNED BESIDE THE ROWS AND NOT INFERRED FROM THEM.** A
-    caller holding only the capped list cannot tell a queue of ten from a queue
-    of fifty, and the difference is work nobody can see.
+    The size is returned beside the capped rows, not inferred from them.
+    Outstanding rows come first, the order a person acts in; answered rows
+    are kept as the audit trail.
 
-    Outstanding first because that is the order a person acts in. Answered rows
-    are kept because what was asked and what was said is the audit trail.
-
-    A left join rather than two queries: a request whose response arrived
-    between them would otherwise read as outstanding, which is the wrong
-    answer in the direction that matters.
+    One left join rather than two queries, so a response arriving between
+    queries cannot leave its request reading as outstanding.
     """
     if not _table_exists(connection, HUMAN_REQUESTS):
-        # No queue and no rows, which is a different answer from a queue of
-        # fifty showing ten -- and the caller can now tell them apart.
+        # No queue table: no rows and a total of zero, distinct from a capped
+        # queue.
         return [], 0
     responses = _table_exists(connection, HUMAN_RESPONSES)
     rows = connection.execute(
@@ -317,8 +282,8 @@ def build(database: Path, project: str = DEFAULT_PROJECT,
 def to_dict(view: View) -> dict:
     """The view as data, for a renderer that is not this one.
 
-    A count of None becomes `{"unknown": "<reason>"}`. A consumer that treats
-    that as zero is making a claim this side declined to make.
+    A count of None becomes `{"unknown": "<reason>"}`, which a consumer must
+    not read as zero.
     """
     def count(value: int | None, table: str):
         return unknown(table) if value is None else value
@@ -350,9 +315,8 @@ def to_dict(view: View) -> dict:
             }
             for item in view.waiting
         ],
-        # **STATED, NOT LEFT TO BE COUNTED.** A reader comparing `queue_shown`
-        # with `queue_total` learns that rows were dropped; one counting the
-        # list it was given learns only how many it was given.
+        # Both stated, so a reader comparing them learns that rows were
+        # dropped.
         "queue_shown": len(view.waiting),
         "queue_total": view.queue_total,
         "by_tool": view.by_tool,
@@ -374,14 +338,11 @@ def to_dict(view: View) -> dict:
 def _topologies() -> list[str]:
     """The topologies this harness can serve.
 
-    **READ FROM THE MODULE, NOT OVER HTTP.** This dashboard reads the database
-    directly and never asks the server, so that it can still answer when the
-    server is down -- and the same rule applies here. Asking `/v1/topology`
-    would make the one view that explains a dead harness depend on a live one.
+    Read from `qmcp.topology_view`, not over HTTP, so the dashboard answers
+    when the server is down.
 
-    It reports what this build *can* serve, which is not the same as what is
-    reachable right now. `uv run qm dashboard` is the view that knows whether
-    anything is listening; this one knows what would be there if it were.
+    It reports what this build can serve, not what is reachable now;
+    `uv run qm dashboard` knows whether anything is listening.
     """
     try:
         from qmcp import topology_view

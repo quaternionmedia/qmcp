@@ -2,44 +2,16 @@
 
     uv run qmcp instructions act <id> --runtime <name>
 
-**CONTINUITY COMES FROM QMCP, NOT THE MODEL.** A runtime remembers nothing
-between runs. Everything it knows about the project's history arrives in the
-`Brief` qmcp hands it: the instruction, the project, the clone, and the
-project's earlier instructions and outcomes, read from qmcp's own record
-(`qmcp.instructions.continuity`). `Brief.prompt()` renders that once, the same
-way for every runtime, so swapping one runtime for another loses nothing --
-the history is in the record, not in a conversation some tool keeps. No
-runtime is asked to resume a session of its own, and none is trusted to.
+The contract is one call: `AgentRuntime.run(brief, on_event)` returns an
+`AgentOutcome` -- the text, the exit code, how long it took, what it spent (a
+count, or `unknown` with a reason), and the runtime's `detail`. A runtime
+remembers nothing between runs; `Brief.prompt()` renders the same brief for
+every runtime. A product is named only in its adapter,
+`qmcp.integrations.agents.adapters.<product>`. `scripted` is for tests and is
+never a default.
 
-**AN AGENT RUNTIME IS A DEPLOYMENT DECISION, SO THE CONTRACT NAMES NONE.**
-`qmcp.instructions.act` takes an instruction a person recorded and has a
-runtime carry it out in the project's clone. Which runtime is a choice
-somebody makes at the command line, the way `vox.adapters` leaves the speech
-engine to the person running the loop and `qmcp.localmodel` is the one module
-allowed to name a model. So this package holds the contract and a registry,
-and a product appears only in `qmcp.integrations.agents.adapters.<product>`,
-one module per runtime, discovered by name rather than imported here. `local`,
-the model `qmcp.localmodel` stands up on this machine, is one; a coding
-assistant's command line is another, behind the same contract and given the
-same brief.
-
-**THE CONTRACT IS ONE CALL.** `AgentRuntime.run(brief, on_event)` returns an
-`AgentOutcome`: the text that came back, the exit code, how long it took, what
-it spent -- as a count where the runtime reports one and `unknown` with a
-reason where it does not, never zero for "nobody counted" (`qmcp.spend`) --
-and whatever else the runtime can say about the run, kept as `detail`.
-
-**`scripted` IS FOR TESTS AND THE OFFLINE CHECK, AND IS NEVER THE DEFAULT AT
-THE COMMAND LINE.** It answers with a configured text and exit code, records
-the brief it was given, and spends nothing. The command requires `--runtime`
-or `QMCP_AGENT_RUNTIME` and says so, because a default that ran a real agent
-would be a run nobody chose and a default that ran the scripted one would
-report a run that did nothing.
-
-WHAT THIS CANNOT DO. Stop a runtime that spends more than it says, or one that
-does not say: the outcome carries the runtime's own report, and
-`qmcp.spend`'s budget counts runs, not the calls a run makes. Nor can it make
-a runtime read-only: what a runtime may touch is the adapter's to state.
+What this cannot do: stop a runtime that spends more than it reports, or make
+one read-only; what a runtime may touch is its adapter's to state.
 """
 
 from __future__ import annotations

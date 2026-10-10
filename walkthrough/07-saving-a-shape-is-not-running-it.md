@@ -4,14 +4,11 @@ Everything on this page runs. It is executed by the ordinary test command, so
 an example that stops being true fails the build rather than sitting here
 misleading somebody.
 
-**The problem.** A front end growing a topology designer had the shapes to
-draw and nothing else. No schema to build a form from, so a form would offer
-whatever fields its author remembered. No way to ask the plane what a shape
-would do, so the window would have to carry its own copy of which shapes spend,
-which decide and which are refused. Nowhere to keep a design the harness could
-see, so nothing could tell the designer what the harness thought of it. Each of
-those is a route now, and **the window adds no governance of its own**: every
-verdict on this page is the harness's, asked for over HTTP.
+A topology designer needs more than the shapes to draw: a schema to build a
+form from, the plane's answer to what a shape would do, and somewhere to keep
+a design the harness can see. Each is a route, and **the window adds no
+governance of its own**: every verdict on this page is the harness's, asked
+for over HTTP.
 
 ## One process, the routes registered beside the shapes
 

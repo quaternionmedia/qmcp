@@ -1,18 +1,13 @@
 """The seam a model is called through, and what it refuses to do.
 
-**WHAT THESE TESTS ARE FOR.** `qmcp.governed` makes three claims that are worth
-nothing unless something holds them: that the black box is called at most once,
-that it is never reached without the budget having been checked first, and that
-a bound which fires is reported rather than absorbed. Each has a test whose
-whole job is that claim.
+`qmcp.governed` makes three claims, each with a test of its own: the black box
+is called at most once, it is never reached before the budget is checked, and
+a bound that fires is reported rather than absorbed.
 
-**AND ONE CLAIM THAT IS DELIBERATELY NOT TESTED HERE.** Nothing below proves a
-slow call is stopped, because nothing stops one. `Bound.seconds` is measured and
-reported. A test named `test_a_slow_call_is_stopped` would be the worst artifact
-in this file -- a green check standing exactly where a reader believes something
-is enforced.
+Nothing here tests that a slow call is stopped, because nothing stops one:
+`Bound.seconds` is measured and reported.
 
-THE MUTATIONS, per P16. Quoted as they printed:
+The mutations, per P16, quoted as they printed:
 
 `budget.spend(1)` deleted from `run`, so the call happens unbudgeted:
 
@@ -281,8 +276,8 @@ def test_the_flow_draws_one_box_for_every_stage_the_run_walks() -> None:
     """The picture cannot describe a pipeline the code does not run.
 
     Both sides read `STAGES`, so this asserts they are the same tuple rather
-    than that two lists happen to agree -- and it is the assertion that fails
-    if somebody starts writing the boxes out by hand again.
+    than that two lists happen to agree; it fails if the boxes are written out
+    by hand.
     """
     drawn = {box.id for box in g.view(2).boxes}
     walked = {stage.id for stage in g.STAGES}
@@ -412,12 +407,8 @@ def test_the_hitl_guide_does_not_claim_the_seconds_bound_is_enforced() -> None:
 
 
 def test_a_refusal_and_a_draft_do_not_read_the_same(tmp_path=None) -> None:
-    """THE ONE THAT MATTERS HERE.
-
-    Both surfaces that show this queue -- `qmcp human list` and the harness
-    payload -- carry `prompt` and not `context`. A state that lived only in the
-    context arrived as two rows with identical text, separable by reading the
-    id. Found by queueing one of each against a live harness and looking.
+    """Both surfaces that show this queue -- `qmcp human list` and the harness
+    payload -- carry `prompt` and not `context`, so the state is in the prompt.
 
     Mutation, quoted as it printed: `_ASKS[REFUSED]` given an empty lead.
 

@@ -5,12 +5,8 @@ This client provides a clean interface for:
 - Human-in-the-loop request management
 - Invocation history queries
 
-**THE DEFAULT IS THE PORT THE SERVER SERVES, READ FROM ITS SETTINGS.** It was a
-hard-coded `3333` while `qmcp.config` served `3141`, so this client could not
-reach this server without being told where it was -- established by running both
-rather than by reading either. `config.py`'s own comment records the earlier
-half of that mismatch: 3333 is what the harness served while a panel looked on
-8000. The server moved and this did not.
+The default base URL is the port the server serves, read from its settings,
+so `QMCP_PORT` moves the client and the server together.
 
 Usage:
     from qmcp.client import MCPClient

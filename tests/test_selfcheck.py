@@ -106,10 +106,8 @@ def test_nothing_here_reaches_implementation_or_complete():
 def test_a_passing_check_produces_no_delta():
     """A green gate is not a thing anybody has to do.
 
-    Asserted on the delta names rather than on the prose. The first version of
-    this test asserted the phrase "unit of work" was absent, and the all-green
-    message contains it -- so it was testing the sentence, and would have gone
-    red on a rewording that changed no behaviour.
+    Asserted on the delta names rather than on the prose, so a rewording that
+    changes no behaviour does not turn it red.
     """
     green = [finding(check="suite", ok=True, detail="413 passed"),
              finding(check="walkthrough", ok=True, detail="1 passed")]
@@ -137,7 +135,7 @@ def test_a_failure_raises_one_question_with_the_options_named():
 
 
 def test_the_question_has_the_same_id_every_run():
-    """Asking again each run would bury the one nobody had answered yet."""
+    """One question per failing check, however many runs raise it."""
     assert ask(finding(), PROJECT).id == ask(finding(), PROJECT).id
 
 

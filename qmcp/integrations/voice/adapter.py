@@ -485,10 +485,8 @@ class VoiceApprovalLoop:
 
         **A request is asked once per run.** One that gets no usable answer
         stays pending -- nothing is guessed -- and this loop moves on rather
-        than asking it again. Re-asking at once repeated the same question to
-        an empty room every few seconds for as long as the loop ran, and a
-        person who was not listening came back to a queue the loop had been
-        talking at. The request remains answerable by `qmcp human respond`,
+        than asking it again, so an empty room is not asked the same question
+        every few seconds. The request remains answerable by `qmcp human respond`,
         by `qmcp human voice <id>`, or by the next run; `self.unanswered`
         names them.
 

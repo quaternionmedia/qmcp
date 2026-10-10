@@ -3,26 +3,22 @@
 
     uv run python examples/demo_step_as_delta.py
 
-WHAT IT SHOWS. The `summarizer` step of `CHANGE_IMPACT_PIPELINE` -- a real step
-from a real flow -- expressed as a delta row dossier can insert, moved through
-its phases by execution facts, rebuilt from the delta, and then *swapped* for a
-different implementation carrying the same delta identity.
+It shows the `summarizer` step of `CHANGE_IMPACT_PIPELINE` expressed as a delta
+row dossier can insert, moved through its phases by execution facts, rebuilt
+from the delta, and then swapped for a different implementation carrying the
+same delta identity.
 
-THE POINT IS THE SWAP. A mapping that only round-trips proves the two shapes
-match. Interchangeable means more: any step with the same delta identity can
-stand in for the one the delta describes, because what the delta pins is the
-work and not the code. The demo builds a second step with a different
-`output_type` and shows the identity is unchanged.
+The swap shows interchangeability, which a round trip alone does not: any step
+with the same delta identity can stand in for the one the delta describes,
+because the delta pins the work and not the code. The demo builds a second
+step with a different `output_type` and shows the identity is unchanged.
 
-WHAT IT DOES NOT DO. Run an agent. Every step here is *declared* and its phase
-comes from execution facts the demo supplies, because running one needs a local
-LLM this machine does not have. The mapping is what is demonstrated; the agent
-is not, and a phase printed below is derived rather than earned.
+It runs no agent. Every step is declared and its phase comes from execution
+facts the demo supplies, so a phase printed is derived, not earned.
 
-WHAT IT CANNOT REACH. dossier. Nothing here imports it -- see the module
-docstring of `qmcp/cookbook/delta.py`. The demo prints the row and asserts its
-shape; inserting it is dossier's side of the seam, and dossier's `ProjectDelta`
-is still on an unmerged branch.
+It does not reach dossier: nothing here imports it (see
+`qmcp/cookbook/delta.py`). The demo prints the row and asserts its shape;
+inserting it is dossier's side of the seam.
 """
 
 from __future__ import annotations

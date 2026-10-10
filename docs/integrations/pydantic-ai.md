@@ -8,7 +8,7 @@ QMCP integrates with [PydanticAI](https://ai.pydantic.dev/) for LLM agent execut
 |---------------|---------------------|
 | Model registry with pricing/limits | Agent runtime with dependency injection |
 | MCP server with audit trail | Typed tool definitions |
-| HITL REST API with persistence | Streaming and retries |
+| Human request REST API with persistence | Streaming and retries |
 | Multi-agent topologies | Output validation |
 | Prometheus metrics | Message history management |
 

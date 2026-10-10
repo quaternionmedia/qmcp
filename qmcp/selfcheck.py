@@ -4,37 +4,24 @@
     qmcp selfcheck --deltas        # the failures, as units of work
     qmcp selfcheck --json          # the run, as data
 
-WHY THE HARNESS POINTS AT ITSELF. A harness that has only ever been run against
-somebody else's work has one untested claim left: that its own record of what it
-ran is worth reading. Pointing it at this repository closes that, and it costs
-nothing to arrange -- the checks are the gates this project is already held to.
+The checks are the gates this project is held to. Each is a real subprocess
+against this working tree, and its start, duration, exit status and error text
+are written to the database as a `ToolInvocation` -- the row the server writes
+for a tool invoked over HTTP, and the row `qmcp dashboard` reads.
 
-WHAT IT ACTUALLY DOES. Each check is a real subprocess against this working
-tree. Its start, duration, exit status and error text are written to the
-database as a `ToolInvocation`, which is the same row the server writes when a
-tool is invoked over HTTP and the same row `qmcp dashboard` reads back. There is
-no separate record for self-checks, because a separate record is a second thing
-to keep honest.
-
-A FAILING CHECK IS A UNIT OF WORK, AND A PASSING ONE IS NOT. `to_delta` emits a
-delta for a failure only. A green check is not work anybody has to do, and a
-board that carried one row per check would be a board nobody reads.
-
-THE PHASE COMES FROM FACTS, NOT FROM OPTIMISM -- the same rule
-`qmcp/cookbook/delta.py` follows:
+`to_delta` emits a delta for a failing check only. Its phase comes from facts,
+as in `qmcp/cookbook/delta.py`:
 
     brainstorm      a check failed and nobody has been asked about it
     planning        a human was asked and answered
 
-Nothing here reaches `implementation` or beyond. Running a check again cannot
-establish that somebody acted on it, and
-`governance/qm/records/DRAFT-a-disagreement-is-a-delta.md` 4 is the same point
-about convergence: a detector reports and does not close.
+Nothing here reaches `implementation` or beyond: running a check again cannot
+establish that somebody acted on it
+(`governance/qm/records/DRAFT-a-disagreement-is-a-delta.md` 4).
 
-WHAT IT CANNOT SEE. Whether a check is the right check. Whether a passing gate
-is enforcing anything -- every defect this organisation has found in its own
-tooling was a check that reported success while enforcing nothing, and running
-that check here reports success too.
+What this cannot see: whether a check is the right check, or whether a passing
+gate enforces anything. A check that reports success while enforcing nothing
+reports success here too.
 """
 
 from __future__ import annotations
@@ -50,8 +37,8 @@ from qmcp.dashboard import DEFAULT_PROJECT
 from qmcp.db.models import HumanRequest, HumanRequestStatus, InvocationStatus, ToolInvocation
 
 # Where a check's captured output goes, so a later check can read it. The tag
-# gate reads a test run rather than running one, which is the whole reason it
-# can be pointed at a run somebody else captured.
+# gate reads a test run rather than running one, so it can be pointed at a run
+# somebody else captured.
 CAPTURE = "selfcheck-suite.txt"
 
 DELTA_SCHEMA = 1
@@ -88,9 +75,9 @@ class Finding:
 def checks(capture_dir: Path) -> tuple[Check, ...]:
     """The gates, in the order a release would meet them.
 
-    `tag-claims` deliberately comes after `suite` and reads what `suite` wrote.
-    That ordering is the point of the gate: it judges a captured run rather than
-    running one itself, so it cannot be satisfied by a run nobody kept.
+    `tag-claims` comes after `suite` and reads what `suite` wrote: it judges
+    a captured run rather than running one, so it cannot be satisfied by a run
+    nobody kept.
     """
     gate = "governance/qm/project-seed/ci/check_tag_claims.py"
     return (
@@ -139,10 +126,8 @@ def run_check(check: Check, repo: Path, project: str) -> tuple[Finding, ToolInvo
     if check.capture:
         Path(check.capture).write_text(output, encoding="utf-8", newline="\n")
 
-    # The exit status, taken from the process rather than from its text. A
-    # check read by grepping its output is one a wording change silently
-    # disables, and this organisation has registered that as a recurring
-    # pattern rather than a one-off.
+    # The exit status, taken from the process rather than from its text, so a
+    # wording change cannot silently disable the check.
     ok = completed.returncode == 0
 
     invocation.status = InvocationStatus.SUCCESS if ok else InvocationStatus.FAILED
@@ -167,10 +152,9 @@ def run_check(check: Check, repo: Path, project: str) -> tuple[Finding, ToolInvo
 def delta_name(finding: Finding) -> str:
     """The delta's identity, and it is the check rather than the run.
 
-    Re-running a failing check must find the same delta, not open a second one.
-    `DRAFT-a-disagreement-is-a-delta.md` 2 makes that the rule for divergence
-    and the reasoning is identical here: a queue that grows by one row per run
-    is a queue nobody reads.
+    Re-running a failing check finds the same delta rather than opening a
+    second one, as `DRAFT-a-disagreement-is-a-delta.md` 2 rules for
+    divergence.
     """
     return f"{finding.check}-does-not-pass"
 
@@ -178,10 +162,9 @@ def delta_name(finding: Finding) -> str:
 def phase_of(finding: Finding, answered: bool) -> str:
     """Where this finding stands, from facts alone.
 
-    A check that failed and that nobody has been asked about is `brainstorm`:
-    noticing is not deciding. Once a human has been asked and has answered, it
-    is `planning` -- somebody has looked. Nothing here goes further, because no
-    amount of re-running establishes that anybody acted.
+    `brainstorm` until a human has been asked and has answered, then
+    `planning`. Nothing goes further: re-running does not establish that
+    anybody acted.
     """
     return PLANNING if answered else BRAINSTORM
 
@@ -189,10 +172,9 @@ def phase_of(finding: Finding, answered: bool) -> str:
 def to_delta(finding: Finding, project: str, *, answered: bool = False) -> dict:
     """One failure as a delta the control panel ingests without translating.
 
-    The keys inside `delta` are dossier's column names, deliberately, so the
-    consumer writes `ProjectDelta(**payload["delta"])`. The link points back at
-    the invocation that found it, which is what lets the two views be asked the
-    same question about the same row.
+    The keys inside `delta` are dossier's column names, so the consumer
+    writes `ProjectDelta(**payload["delta"])`. A link points back at the
+    invocation that found the failure.
     """
     return {
         "schema": DELTA_SCHEMA,

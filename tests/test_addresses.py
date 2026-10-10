@@ -1,15 +1,9 @@
 """qmcp's implementation of the org address grammar.
 
-TWO IMPLEMENTATIONS, ONE SET OF CASES. The corpus holds a reference
-implementation and a file of conformance vectors. qmcp does not import either --
-that would couple the server to the governance repository and neither could ship
-without the other. What is shared is the cases.
-
-THE SHARED CASES ARE REACHABLE AND THEY RUN. This file used to say they were
-not: the pin predated `project-seed/address-vectors.json`, and the test skipped
-with that reason rather than passing quietly. The pin has moved, so the skip is
-gone and the claim is the stronger one -- this implementation is held to the
-same cases as every other.
+Two implementations, one set of cases. The corpus holds a reference
+implementation and a file of conformance vectors; qmcp imports neither, so the
+server and the governance repository ship separately. What is shared is the
+cases, and this implementation is held to them.
 """
 
 from __future__ import annotations

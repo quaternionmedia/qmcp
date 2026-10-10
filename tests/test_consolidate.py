@@ -1,8 +1,7 @@
 """Which projects a thread is about, and the line between measuring and claiming.
 
-The test worth reading is the first one: evidence and claim move independently.
-Changing the rule must change what is claimed and leave every measurement
-exactly as it was, because that is what makes the claim arguable.
+Evidence and claim move independently: changing the rule changes what is
+claimed and leaves every measurement as it was.
 """
 
 from __future__ import annotations
@@ -38,11 +37,7 @@ def thread(*texts, title=None, id="abc"):
 
 
 def test_the_rule_changes_the_claim_and_not_the_evidence():
-    """THE ONE THAT MATTERS.
-
-    A reading carries both. If the rule could alter what was measured, nobody
-    could check the claim against anything -- the evidence would already agree
-    with whatever was concluded.
+    """A reading carries both, and the rule does not alter what was measured.
 
     Mutation: filter `evidence` down to the chosen projects and this fails.
     """
@@ -254,15 +249,8 @@ def test_a_reading_is_frozen():
 
 
 def test_a_thread_naming_most_of_the_roster_is_a_survey_not_a_crossing():
-    """THE ONE THE REAL ARCHIVE FOUND.
-
-    `crosses` means both must happen, they interact at one point, and neither
-    contains the other. A status sweep names every repository in most of its
-    turns and measures identically -- on the real archive one thread came out
-    as crossing eleven projects of thirteen, which it plainly did not do.
-
-    Reported as its own kind rather than dropped: a workspace sweep is a real
-    thing somebody did.
+    """A status sweep names every repository in most of its turns. It is
+    reported as a survey, with projects and no relation, rather than dropped.
 
     Mutation: remove the survey branch and this fails.
     """
@@ -333,12 +321,8 @@ def test_a_share_is_none_rather_than_zero_when_the_length_is_unknown():
 
 
 def test_a_passing_mention_in_a_long_thread_can_be_excluded_by_share():
-    """THE ONE THE REAL ARCHIVE FOUND.
-
-    Pointed at `codecartographer`, "named in at least 2 turns" admitted a
-    5,153-turn session naming it in 18 (0.3%) beside a 63-turn session naming
-    it in 8 (12.7%). Two turns is a lot of evidence in a short thread and none
-    at all in a long one. Fourteen threads "about" it were four.
+    """Two turns is strong evidence in a short thread and weak in a long one;
+    `min_share` excludes the long thread and keeps the short one.
 
     Mutation: ignore `min_share` and this fails.
     """

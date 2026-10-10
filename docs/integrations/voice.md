@@ -45,8 +45,7 @@ uv sync --all-extras
 ```
 
 vox and `pyttsx3` are **default dependencies**, not an extra: any `uv sync`
-installs them, and none removes them. (They were an extra once, and a plain
-`uv sync` then stripped them as extraneous mid-session.) `--all-extras`
+installs them, and none removes them. `--all-extras`
 rather than `--extra dev` for the rest: the latter omits `pydantic-ai` and
 other extras, and the resulting ImportError in unrelated tests reads as a
 code regression rather than as a missing dependency. The submodule line
@@ -313,7 +312,8 @@ direction: a person speaks or types an instruction, it is recorded against a
 project, and **recording executes nothing**. Recording reaches two statuses,
 `recorded` and `unresolved`, and neither describes a run; acting on an
 instruction is a command a person issues, behind consent on the human queue,
-and is the section after this one. `qmcp.instructions` carries the why, and
+and is the section after this one. Keeping the two apart lets a person speak
+freely into the inbox: nothing said there spends, writes or runs.
 `walkthrough/08-an-instruction-is-recorded-not-run.md` runs the routes.
 
 The commands:
@@ -359,8 +359,8 @@ taken as `agree`. Consent to act is never tacit.
 
 An instruction's take is hinted with the project names it is likely to carry
 -- those of the most recent instructions first, then the roster's -- which a
-transcriber spells as given: on a real take, "camcp" without them and "qmcp"
-with them.
+transcriber spells as given -- "qmcp" with the hint where it hears "camcp"
+without one.
 
 | Route | What it does |
 |---|---|
@@ -392,8 +392,7 @@ uv run qmcp instructions act <id> --runtime NAME [--budget N] [--cwd PATH] [--vo
 
 A worker takes a recorded instruction, declares what it may spend, asks
 consent on the human queue, and runs it in the project's clone only on
-`approve`. Every runtime is asked, the local model included; growing a habit
-of approval into an automatic one is a later phase. The consent is an ordinary
+`approve`. Every runtime is asked, the local model included. The consent is an ordinary
 approval, `instruction-<id>` with the options `approve` and `hold`, so it is
 answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
 page, or in the command itself with `--voice`. Its prompt says the
@@ -419,8 +418,49 @@ named only in its adapter under `qmcp.integrations.agents.adapters`, and
 `scripted` runs nothing and is for checks. `--budget` is runs, and zero -- the
 default -- declares and stops. The row's status says where the act got to: `asking`,
 then `consented`, `refused` or `unanswered`, then `acting` and `done` or
-`failed`; `declared` is written on every path. `qmcp.instructions.act` carries
-the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
+`failed`; `declared` is written on every path, so a reader can tell a refusal,
+a hold, an expiry and a run apart without inferring it from empty fields.
+`walkthrough/09-nothing-runs-before-consent.md` runs it.
+
+**Why every runtime is asked.** A run that spends nothing still acts in
+somebody's clone, and the consent is for that run only
+(`DRAFT-no-unattended-spending.md` clause 5). Growing a habit of approval into
+an automatic one is a decision for the person, not for the command.
+
+**How the act waits.** Reading one request expires it once its time has passed
+(`AGENTS.md`), and the pending listing applies no expiry. So the act watches
+the listing until the request leaves it -- answered, or past its expiry -- and
+reads the request itself once, afterwards, to learn which; polling the single
+request would expire the gate it waits on. A deadline on the act's own clock,
+two polls past the expiry, covers a server whose listing never drops the
+request: the act records `unanswered` and runs nothing, while the request may
+still sit pending there, answerable by anyone.
+
+
+### The local runtime
+
+`--runtime local` is the model `qmcp localmodel` stands up, reached over the
+service's chat route at `qmcp.localmodel.ENDPOINT`: no command line, no
+account, nothing paid, so `spent` is a real zero.
+
+It reads the clone and changes nothing. The model is offered three tools --
+list a directory, read a file, search for text -- each confined to the brief's
+directory: a path resolving outside it is refused, and so is anything under
+`.git` or an environment directory. The tools are a protocol stated in the
+prompt rather than the service's tool field: a call is one JSON object, read
+from the reply's text or from the structured field where a service fills it,
+so it works with any model the service serves. A model that answers before
+reading anything is sent back once to read, and one that asks for a read it
+already made is told so and asked to answer. Sampling is at temperature zero,
+so a run can be repeated, and what was read is kept in the outcome's `detail`.
+
+Every call is bounded: at most `MAX_STEPS` model calls a run, each capped at
+`MAX_TOKENS` tokens and `TIMEOUT` seconds. A service that does not answer is a
+failed run naming the endpoint, never a hang; the service finishes a request it
+has started even after its caller gives up, so an uncapped request could
+occupy it long after anyone is waiting. A call that times out unloads the model
+through the service's keep-alive and is made once more against a fresh load; a
+second timeout is a failed run.
 
 | Route | What it does |
 |---|---|
@@ -447,7 +487,9 @@ uv run qmcp instructions say <id> [--speak]   # what an instruction came to, aga
 The summary is announced to the engine's conversation route as `speaking` and
 the turn then ends `idle` carrying it, so joe's panel shows it as the last
 thing said; it is never `recorded`, which the panel shows as an answer
-accepted. `qmcp.instructions.spoken` carries the why.
+accepted. The summary is a sentence rather than the whole outcome because an
+agent's outcome can run to pages, and a loop that read pages aloud would be
+slower than reading the terminal.
 
 `uv run qmcp cookbook instruct` is the loop, end to end and offline: after the
 inbox's cases it takes one instruction the whole way in one conversation --
@@ -507,7 +549,7 @@ rather than opening the microphone a second time; it ends when the server
 stops. `uv run qmcp converse --runtime local` runs it on its own against a
 running server, and `--synth recording` writes each sentence to a file instead
 of speaking it, for a check on a machine nobody is at. `qmcp.instructions.converse`
-carries the why, `uv run qmcp cookbook converse` is one whole session
+states what the conversation does, `uv run qmcp cookbook converse` is one whole session
 offline, every take scripted, and the cookbook in `docs/voice-loop-demo.md` is
 what to say.
 

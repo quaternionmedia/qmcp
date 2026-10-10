@@ -1,11 +1,8 @@
 """Standing a local model up, and refusing to when it would fail.
 
-THE TEST WORTH READING IS THE SYSTEM-DRIVE ONE. Pointing the install at a roomy
-drive and running out anyway is the failure this module exists to catch: Windows
-extracts an installer into the user's temp directory whatever the target is, and
-on the machine this was written for the system drive had 460 MB free while two
-other drives had hundreds of gigabytes. A check that only looked at the target
-would have said yes.
+Windows extracts an installer into the user's temp directory whatever the
+target is, so a full system drive blocks the install even when the target
+drive has room. The system-drive tests check that.
 """
 
 from __future__ import annotations
@@ -45,11 +42,8 @@ def ready(**kwargs):
 
 
 def test_a_full_system_drive_blocks_even_when_another_drive_is_empty():
-    """THE ONE THAT MATTERS.
-
-    Measured on the real machine: C: had 460 MB and E: had 302 GB. The
-    installer extracts into the user's temp directory on C: whatever the target
-    is, so "there is room on E:" is not an answer.
+    """The installer extracts into the user's temp directory on C: whatever
+    the target is, so room on E: does not clear a full C:.
 
     Mutation: check only `best_volume` and this fails.
     """
@@ -67,11 +61,9 @@ def test_no_drive_with_room_is_a_different_blocker_from_a_tight_system_drive():
 
     Mutation: collapse them into one message and this fails.
     """
-    # NO SYSTEM DRIVE HERE, AND THAT IS FORCED RATHER THAN CHOSEN. The floor
-    # for the system drive is higher than what the install wants, so any C:
-    # roomy enough to clear the floor is also roomy enough to hold the model --
-    # the two blockers cannot co-occur while a C: exists. Two earlier attempts
-    # at this fixture were asserting the opposite of what they set up.
+    # No system drive here, necessarily: the floor for the system drive is
+    # higher than what the install wants, so any C: that clears the floor also
+    # holds the model, and the two blockers cannot co-occur while a C: exists.
     nowhere = ready(volumes=drives(("D", 3), ("E", 2)))
     assert nowhere.best_volume is None
     assert any("no drive has" in b for b in nowhere.blockers)
@@ -96,11 +88,8 @@ def test_a_blocked_plan_says_why_rather_than_printing_commands():
 
 
 def test_the_weights_are_pointed_somewhere_with_room():
-    """THE OTHER ONE THAT MATTERS.
-
-    Ollama's default puts them in the user profile, which is on the drive that
-    was already full. Several gigabytes landing there is how a machine that was
-    just cleared fills up again.
+    """Ollama's default puts the weights in the user profile, on the system
+    drive; the plan points `OLLAMA_MODELS` at the roomiest drive.
 
     Mutation: drop the `OLLAMA_MODELS` step and this fails.
     """
@@ -151,8 +140,7 @@ def test_the_model_is_pinned_rather_than_left_as_a_moving_tag():
 
 
 def test_the_install_step_is_skipped_when_it_is_already_installed():
-    """Re-running this is the point. A plan that reinstalled every time would
-    be one nobody runs twice.
+    """A plan can be re-run: an existing install skips the install step.
 
     Mutation: always emit the install step and this fails.
     """
@@ -164,12 +152,10 @@ def test_the_install_step_is_skipped_when_it_is_already_installed():
 def test_the_plan_ends_by_proving_it_answers_over_the_api():
     """Installed is not the same as working, and the difference is one command.
 
-    THE API, NOT `ollama run`. That command reads stdin and hangs with no
-    terminal -- it did, for ten minutes, in the run that put this here. The
-    service is what a worker talks to, so proving the service is proving the
-    thing that matters.
+    The API, not `ollama run`, which reads stdin and hangs with no terminal.
+    The service is what a worker talks to, so the plan proves the service.
 
-    Mutation: go back to `ollama run` and this fails.
+    Mutation: use `ollama run` instead and this fails.
     """
     from qmcp.localmodel import ENDPOINT
 
@@ -256,14 +242,10 @@ def test_the_system_floor_sits_above_what_the_install_wants():
 
 
 def test_the_service_is_restarted_before_anything_is_pulled():
-    """THE ONE THAT COST 4.4 GB.
-
-    `ollama pull` is a client. The background service decides where weights go
-    and it read its environment when it started -- and the installer starts it,
-    so on a first run it is already running without the variable. Setting
-    `OLLAMA_MODELS` and pulling straight after puts the model exactly where the
-    variable said not to, silently, and the plan that did that had a comment
-    warning about it two lines above.
+    """`ollama pull` is a client. The background service decides where
+    weights go, read its environment when it started, and is started by the
+    installer, so on a first run it is running without `OLLAMA_MODELS`. The
+    plan stops it before the pull.
 
     Mutation: drop the restart steps and this fails.
     """

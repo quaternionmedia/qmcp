@@ -641,9 +641,9 @@ def test_a_database_url_naming_no_file_is_refused(monkeypatch):
 
 
 def test_the_consent_is_said_in_plain_words_and_written_with_its_path():
-    """Said aloud, a path ran to half a minute, and "1 run(s)" was read with
-    its parenthesis. Mutation: name the clone by its path in the spoken form
-    -- red; count the runs in digits -- red."""
+    """The spoken form names the clone without its path and counts runs in
+    words; the written form keeps the path. Mutation: name the clone by its
+    path in the spoken form -- red; count the runs in digits -- red."""
     from pathlib import Path
     from types import SimpleNamespace
 

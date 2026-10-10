@@ -4,12 +4,10 @@ Everything on this page runs. It is executed by the ordinary test command, so
 an example that stops being true fails the build rather than sitting here
 misleading somebody.
 
-**The problem.** `orchestration plane` said what each topology *would do* —
-whether it spends, whether it decides, whether it is refused here — and never
-said what it was short of. A reader asking "can I run this now" got a status
-word and had to work the rest out from prose. `dossier` had the same gap in its
-views the same week, and the fix is the same one: a shape declares what it
-needs, and every need names what supplies it.
+A topology's status says what it would do -- whether it spends, whether it
+decides, whether it is refused here. What it is short of is a separate
+question: a shape declares what it needs, and every need names what supplies
+it, so "can I run this now" has an answer.
 
 ## A status and a need answer different questions
 
@@ -90,9 +88,8 @@ where the silence did. So each one carries its remedy:
     True
 
 Every shape declares at least one, and none is left without a remedy. The
-number of needs is not asserted here: it is whatever the plane declares today,
-and pinning it would fail the moment somebody adds a shape while nothing was
-wrong.
+number of needs is not asserted here: it is whatever the plane declares, and
+pinning it would fail whenever a shape is added while nothing is wrong.
 
     >>> all(c.needs for c in PLANE)
     True

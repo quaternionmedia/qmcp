@@ -1,43 +1,14 @@
 """The spoken instruction: ask, listen long, read back, resolve, record.
 
-**AN OPEN QUESTION, THEN A CLOSED ONE.** "What should be done?" has no grammar
-for its answer, so the transcript is the answer and the speaker is the only
-check on it: it is read back as a closed choice between `agree` and `again` --
-or, heard confidently, agreed to tacitly unless interrupted --
-parsed with the helpers the approval dialog uses (`parse_yes_no`,
-`match_option`, `say_options`), so a yes records and a no asks again. The
-re-asks say which of two things went wrong, `noinput` or `nomatch`, and the two
-turns this dialog adds are announced as `confirm` (the read-back) and `again`
-(the speaker asked for another take).
+The transcript is read back as a closed choice between `agree` and `again`, or
+agreed to tacitly when the engine heard it confidently, using the approval
+dialog's helpers (`parse_yes_no`, `match_option`, `say_options`). The first
+listen asks for a longer pause and cap than the confirmation. A text naming
+one project resolves, several are asked back by name, and none is asked for
+once; an answer matching nothing is recorded `unresolved`.
 
-**AN OPEN QUESTION ON THE HUMAN QUEUE AND AN INSTRUCTION ARE ONE DIALOG.** A
-request without options, answered by voice, is asked and confirmed in exactly
-this shape; the two differ in where the confirmed text goes and in how long the
-microphone stays open. Written here beside the inbox, on the shared helpers and
-with the same grammar and announcement reasons, so that when both are on one
-branch they converge on one implementation rather than two that drift.
-
-**THE TAKE IS LONG, AND THE ANSWER IS SHORT.** A closed-choice answer is a word,
-and the engine's own endpointing serves it. An instruction is a sentence with
-pauses mid-thought, so the first listen asks the engine for a longer pause
-before it ends the take and a longer cap -- `pause_ms` and `listen_duration`,
-both options on `qmcp instruct --voice` -- and the confirmation that follows
-asks for neither. The protocol's `pause_ms` keyword exists for this one call.
-
-**THE PROJECT IS CONFIRMED, NOT TRUSTED.** Whether a project name transcribes
-reliably is unmeasured. A text naming one project resolves; one naming several
-is asked back as a closed choice over the candidates by name; one naming none
-is asked for the project once, open. An answer that still matches nothing is
-recorded `unresolved` rather than dropped -- the person spoke it and confirmed
-it, and the inbox is where it is kept until somebody says which project.
-
-**THE ROW SAYS HOW THE PROJECT WAS SETTLED.** A text that named one project is
-sent without a project, so the server reads the same text against the same
-roster and the row carries the name it matched and the rule, as a typed one
-does. A project the person chose from the candidates or spoke when asked is
-stated to the server, and the row says `stated` with `source: voice` and the
-answer among the transcripts in `heard`: the dialog is the caller that stated
-it, and the evidence for its choice is kept beside it.
+`docs/integrations/voice.md`, *An instruction is recorded, not run*, describes the dialog and how a
+row says its project was settled.
 """
 
 from __future__ import annotations
@@ -71,15 +42,12 @@ _AGREE, *_ALIASES = vocabulary.phrases("answer.agree")
 CONFIRM = [_AGREE, vocabulary.phrases("answer.again")[0]]
 AGREE_ALIASES = tuple(_ALIASES)
 # How sure the engine must be of an instruction for the read-back to ask nothing
-# (`tacit_above`), and how long it then listens for an interruption. Measured
-# on synthesized instructions, whisper's base model scored 0.5 to 0.75; above
-# 0.7, the takes it got wrong were near misses ("box" for "vox"), and each is
-# still read back aloud with a moment to interrupt.
+# (`tacit_above`), and how long it then listens for an interruption. A take
+# above the threshold is still read back aloud, with a moment to interrupt.
 TACIT_ABOVE = 0.7
 TACIT_SECONDS = 2.5
 # Names an instruction's take is hinted with, at most: the engine bounds a
 # hint, and a prompt of names biases a transcriber toward spelling them.
-# Measured on a real take: "camcp" without the project names, "qmcp" with them.
 VOCABULARY = 10
 
 # Seconds an instruction may take, and how long a pause ends it. A sentence

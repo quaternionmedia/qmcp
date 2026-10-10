@@ -1,16 +1,14 @@
 """Where the configured database actually is on disk.
 
-One function, in one place, because the answer is not obvious and was got wrong
-by reading `database_url` as a path. The setting is a SQLAlchemy URL --
-`sqlite+aiosqlite:///./qmcp.db` -- whose scheme names a driver and whose path is
-relative to the working directory. Treating the whole string as a filename
-produces `sqlite+aiosqlite:/qmcp.db`, which `sqlite3.connect` will happily
-create as a new empty database next to the real one.
+The setting is a SQLAlchemy URL -- `sqlite+aiosqlite:///./qmcp.db` -- whose
+scheme names a driver and whose path is relative to the working directory.
+Treated as a filename, the whole string becomes `sqlite+aiosqlite:/qmcp.db`,
+which `sqlite3.connect` creates as a new empty database beside the real one;
+this function is the one place that reads it correctly.
 
-WHAT THIS CANNOT DO. Answer for a database that is not a file. A URL naming
-Postgres, or SQLite's `:memory:`, has no path, and this returns None rather than
-inventing one -- a backup tool handed a made-up path would write an empty file
-and report success.
+What this cannot do: answer for a database that is not a file. A URL naming
+Postgres, or SQLite's `:memory:`, has no path, and this returns None rather
+than inventing one.
 """
 
 from __future__ import annotations

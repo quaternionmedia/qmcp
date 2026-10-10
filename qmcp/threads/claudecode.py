@@ -2,38 +2,24 @@
 
     ~/.claude/projects/<project>/*.jsonl    (leaks: allow the fixed location this module reads, not one machine's path)
 
-**THIS IS THE ANSWER TO "WHAT CAN THE API ADD", AND THE ANSWER IS THAT THE API
-IS NOT WHERE THIS LIVES EITHER.** Neither Anthropic's API nor OpenAI's exposes
-conversation history. What does exist, on this machine, with no credential and
-no network, is Claude Code's own session store -- and for the purpose of
-tracking work it is better than either web export, because of what it already
-knows:
+The session store is local and needs no credential. Besides the conversation,
+each session records the work it was doing:
 
     gitBranch       which branch the session was working on
     cwd             which checkout
     pr-link         which pull requests the session produced, by number and
                     repository
 
-A web export has none of that. It has the conversation and nothing about the
-work. **These sessions already carry the joins**, which is what makes their
-deltas addressable to the right project instead of to a default somebody chose.
+So this source derives each session's project from the session, and falls
+back to its own `project` only when a session names no repository.
 
-WHAT THAT SETTLES. `plans/qmpm-standardisations.md` 1 asks whether a delta may
-span owners, and until now a thread's deltas went to a `project` a person set,
-because a conversation belongs to no repository. A Claude Code session does not
-have that problem: it says which repository it was working in. So this source
-derives the project per session rather than defaulting it, and falls back only
-when a session says nothing.
+The format is one JSON object per line. The records read are `user` and
+`assistant` for turns, `ai-title` for a name and `pr-link` for the join; other
+record types are skipped. It is a private on-disk format that may change
+without notice: a malformed line is skipped, and a session file that yields
+no turns is reported as unreadable.
 
-FORMAT, AND WHAT IS NOT VERIFIED. One JSON object per line. The records this
-reads are `user` and `assistant` for turns, `ai-title` for a name, and
-`pr-link` for the join. Other record types exist -- file snapshots, queue
-operations, attachments -- and are skipped rather than guessed at. **This is a
-private on-disk format that may change without notice**, which is an argument
-for reading it defensively and not for avoiding it: a malformed line is skipped
-and counted, and a session that yields no turns is reported rather than dropped.
-
-NOTHING HERE SPENDS AND NOTHING REACHES THE NETWORK.
+Nothing here spends and nothing reaches the network.
 """
 
 from __future__ import annotations
@@ -48,7 +34,7 @@ from qmcp.threads.base import THREAD_LINK, Thread, Turn
 from qmcp.threads.cache import LocalCacheSource
 
 # Where Claude Code keeps sessions. Not under the thread cache: this reads a
-# store somebody else owns and writes nothing into it.
+# store another tool owns and writes nothing into it.
 SESSION_ROOT = Path.home() / ".claude" / "projects"
 
 # The record types that carry a turn. Everything else in a session file is
@@ -61,40 +47,26 @@ TURN_TYPES = ("user", "assistant")
 BRANCH_LINK = "branch"
 PR_LINK = "pr"
 
-# A SUBAGENT FILE CARRIES ITS PARENT'S `sessionId`, AND THAT IS THE TRAP.
-# Most files under this root are sidechains -- a subagent's own turns, written
-# beside the session that launched it. Keying a thread on `sessionId` alone
-# collapsed them: many files became one id, each overwriting the last, and the
-# index read every overwrite as the thread diverging. Seven "divergences" on a
-# first index, none of them real.
-#
-# A false divergence is worse than a missed one. The archive keeps divergences
-# precisely so somebody looks at them, and a reader who finds the first seven
-# are noise stops looking at the eighth.
-#
-# So a sidechain is its own thread, addressed by both ids, and related `part-of`
-# the session that launched it. Which is also the honest reading: from the
-# session's perspective a subagent run is a step; from the subagent's own
-# perspective it is a conversation. `DRAFT-granularity-is-a-perspective.md`
-# says that question was always missing its subject.
+# A subagent file (a sidechain) carries its parent's `sessionId`. Keyed on that
+# alone, every sidechain of a session would share one id, and the index would
+# read each as the thread diverging. So a sidechain is its own thread,
+# addressed by both ids (`<session>/agent-<id>`) and `part-of` the session that
+# launched it.
 AGENT_PREFIX = "agent"
 
 
 class ClaudeCodeThreads(LocalCacheSource):
     """Sessions from Claude Code, read from their own store.
 
-    A `LocalCacheSource` because the shape is the same -- a directory of files,
-    free to read, one thread each. What differs is the format and, more
-    usefully, that each session knows what work it was doing.
+    A `LocalCacheSource`: a directory of files, free to read, one thread
+    each. It overrides the format and derives each session's project.
     """
 
     name = "claude-code"
     perspective = "claude-code/session"
 
-    # A fallback only. Most sessions name their own repository, and `project_of`
-    # prefers what the session says.
-    # Derived from the checkout; see `qmcp.identity`. Seven modules held this
-    # literal between them.
+    # A fallback only: `project_of` prefers the repository a session names.
+    # Derived from the checkout; see `qmcp.identity`.
     project = identity.this_project()
 
     # Not an export. These are written as the work happens, so the snapshot
@@ -119,9 +91,8 @@ class ClaudeCodeThreads(LocalCacheSource):
     def parse(self, document: Any, path: Path) -> Thread:
         """Never called: a session is lines, not one object.
 
-        `LocalCacheSource.fetch` reads whole JSON files. This overrides `fetch`
-        instead, and `parse` stays refusing so that a subclass which forgot to
-        cannot fall through to a shape that does not apply.
+        `LocalCacheSource.fetch` reads whole JSON files; this source overrides
+        `fetch`, and `parse` raises so nothing falls through to that shape.
         """
         raise NotImplementedError(
             "a Claude Code session is line-delimited; this source overrides "
@@ -146,11 +117,9 @@ class ClaudeCodeThreads(LocalCacheSource):
 
             thread, context = _session(records, path)
             if thread is None:
-                # A `.jsonl` under this root is not necessarily a session --
-                # workflow journals live here too. A file carrying no session
-                # marker at all is a different kind of file, not a session that
-                # failed to read, and calling it unreadable puts a scary count
-                # on the page for something entirely fine.
+                # A `.jsonl` under this root is not necessarily a session;
+                # workflow journals live here too. A file with no session
+                # marker is skipped, not counted as unreadable.
                 if any(record.get("sessionId") or record.get("type") in TURN_TYPES
                        for record in records):
                     self.unreadable.append(Unreadable(
@@ -169,9 +138,8 @@ class ClaudeCodeThreads(LocalCacheSource):
     def project_of(self, thread: Thread) -> str:
         """Which repository this session's deltas belong to.
 
-        Read from the session rather than defaulted. A `pr-link` names a
-        repository outright and is preferred; without one the fallback is this
-        source's own project, and that is a guess rather than a finding.
+        The first repository a `pr-link` names; without one, this source's own
+        `project`, which is a fallback rather than a finding.
         """
         context = getattr(self, "context", {}).get(thread.id, {})
         repositories = context.get("repositories") or []
@@ -180,9 +148,9 @@ class ClaudeCodeThreads(LocalCacheSource):
     def deltas(self, thread: Thread, budget: Budget) -> list[dict[str, Any]]:
         """The session and what it settled, addressed to the repository it was in.
 
-        Overridden so the project comes from the session. Everything else is
-        the inherited shape -- a source that reshaped its own payload is one
-        whose rows a consumer special-cases.
+        Overridden so the project comes from the session and the thread's
+        payload carries the branch and pull request links. The payload shape is
+        the inherited one.
         """
         from qmcp.threads.base import to_delta, to_thread_delta
 
@@ -204,9 +172,8 @@ class ClaudeCodeThreads(LocalCacheSource):
         found = relations_for(thread, self.decisions(thread, budget),
                               project=project)
 
-        # A subagent's conversation is `part-of` the session that launched it.
-        # Stated rather than derived from the shared id prefix -- a consumer
-        # must not infer containment from two rows looking alike.
+        # A subagent's conversation is `part-of` the session that launched it,
+        # stated because a consumer must not infer it from the shared prefix.
         context = getattr(self, "context", {}).get(thread.id, {})
         parent = context.get("parent")
         if parent:
@@ -221,9 +188,8 @@ class ClaudeCodeThreads(LocalCacheSource):
     def _joins(self, thread: Thread, project: str) -> list[dict[str, Any]]:
         """Branches and pull requests this session touched, as addresses.
 
-        THE PART A WEB EXPORT CANNOT DO. A conversation that produced a pull
-        request is linked to it by address, so the same row is reachable from
-        the control panel's own view of that pull request.
+        A pull request link is `<owner>/<repo>/pr/<number>`, so the thread is
+        reachable from the control panel's view of that pull request.
         """
         context = getattr(self, "context", {}).get(thread.id, {})
         links: list[dict[str, Any]] = []
@@ -239,10 +205,8 @@ class ClaudeCodeThreads(LocalCacheSource):
 def _records(path: Path) -> list[dict]:
     """Every readable line. A malformed one is skipped, not fatal.
 
-    A session file is appended to while a session runs, so the last line may be
-    half-written at the moment this reads it. Refusing the whole file for that
-    would make an in-progress session unreadable, which is the one it is most
-    interesting to read.
+    A session file is appended to while a session runs, so its last line may
+    be half-written; skipping it keeps a running session readable.
     """
     found = []
     with path.open(encoding="utf-8", errors="replace") as handle:
@@ -263,8 +227,8 @@ def thread_id(session_id: str | None, agent_id: str | None,
               fallback: str) -> str:
     """What identifies one file's conversation.
 
-    A sidechain's id carries both, because its `sessionId` is its parent's and
-    on its own would collide with every other subagent of the same session.
+    A sidechain's id carries both, because its `sessionId` is its parent's
+    and would collide with every other subagent of that session.
     """
     base = session_id or fallback
     return f"{base}/{AGENT_PREFIX}-{agent_id}" if agent_id else base
@@ -340,10 +304,8 @@ def _maybe_str(value: Any) -> str | None:
 def _text_of(message: Any) -> str:
     """The text of a turn, from whichever shape the record uses.
 
-    A block that is not text -- a tool call, an image -- is skipped rather than
-    stringified. A tool invocation rendered as its repr becomes searchable prose
-    that says nothing, and would then be scanned for decision markers it cannot
-    contain.
+    A block that is not text, such as a tool call or an image, is skipped
+    rather than rendered as its repr.
     """
     if not isinstance(message, dict):
         return ""

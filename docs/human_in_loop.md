@@ -315,14 +315,12 @@ Three things follow that a caller of this API should know:
   and `qmcp.governed` offers no function that does it -- a test fails the moment
   somebody adds one.
 
-And one thing the seam **does not enforce**, said here because a reader who
-assumes otherwise is the reader it costs: **a slow call is not stopped.**
+One thing the seam **does not enforce: a slow call is not stopped.**
 `Bound.seconds` is measured, and `context.over_bound` reports whether it was
 exceeded, but nothing interrupts the call — a run can exceed its expectation and
-still arrive as a draft, and that is the honest report rather than a refusal
-nothing carried out. Interrupting a callable that module does not own is not
-something Python offers for free, and a check claiming it would be a green one
-standing exactly where you believe something is enforced.
+still arrive as a draft. Python offers no free way to interrupt a callable the
+module does not own, and the seam reports the measurement rather than claiming
+an enforcement it does not carry out. `chars` is enforced.
 
 The shape is servable and drawable:
 

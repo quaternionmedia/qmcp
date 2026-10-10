@@ -1,8 +1,7 @@
 """Dispatching a sweep: a worker per shape, and nothing chosen in advance.
 
-The test worth reading is the last one in the first section: a share whose shape
-has no worker is reported and queued, never dropped. A sweep that quietly
-omitted fifteen of twenty-four repositories would look finished.
+A share whose shape has no worker is reported and queued, never dropped, so an
+unworked sweep never looks finished.
 """
 
 from __future__ import annotations
@@ -52,10 +51,8 @@ def test_the_mix_of_workers_follows_the_shares(monkeypatch):
 
 
 def test_a_shape_with_no_worker_is_queued_and_named():
-    """THE ONE THAT MATTERS.
-
-    Dropping it would leave the sweep looking finished with two thirds of the
-    repositories untouched.
+    """A share whose shape has no worker comes back `NEEDS_WORKER`, not
+    dropped.
 
     Mutation: skip unregistered shapes and this fails.
     """

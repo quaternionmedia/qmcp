@@ -352,9 +352,9 @@ class _Stalling:
 
 
 def test_a_stalled_call_unloads_the_model_and_is_made_once_more(tmp_path):
-    """Seen live: the runner stopped producing tokens, and every later call
-    queued behind it until the model was unloaded. Mutation: drop the retry --
-    red, the run fails on the first stall."""
+    """A runner that stops producing tokens holds every later call until the
+    model is unloaded. Mutation: drop the retry -- red, the run fails on the
+    first stall."""
     service = _Stalling(stalls=1)
     client = httpx.Client(transport=httpx.MockTransport(service))
 

@@ -1,8 +1,7 @@
 """Answers that two runs over the same rows agree about.
 
-THE TESTS WORTH READING ARE THE FIRST THREE. Determinism is not a property you
-add; it is three specific ways an answer stops being reproducible -- a clock, a
-default, and a silent omission -- and each one has a test.
+The first three tests cover the three ways an answer stops being
+reproducible: a clock, a default, and a silent omission.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ def invocation(when, model=None, status="SUCCESS", tool="planner"):
 
 
 def test_a_window_must_be_stated_in_utc():
-    """THE CLOCK. "Today" is a fact about a timezone, not about the world. A
-    naive datetime would take its meaning from wherever it was read.
+    """The clock: a naive datetime would take its meaning from wherever it
+    was read, so a window refuses one.
 
     Mutation: accept naive datetimes and this fails.
     """
@@ -46,11 +45,10 @@ def test_a_window_must_be_stated_in_utc():
 
 
 def test_a_day_window_is_named_by_the_caller_and_reads_no_clock():
-    """THE DEFAULT. A window filled in from the wall clock returns different
+    """The default: a window filled in from the wall clock returns different
     rows on two runs, so `Window.day` takes the day.
 
-    Mutation: default `on` to `date.today()` and this stops being assertable --
-    which is the point.
+    Mutation: default `on` to `date.today()` and this stops being assertable.
     """
     window = Window.day(date(2026, 8, 21))
     assert window.start == datetime(2026, 8, 21, tzinfo=UTC)
@@ -59,10 +57,8 @@ def test_a_day_window_is_named_by_the_caller_and_reads_no_clock():
 
 
 def test_an_invocation_with_no_model_is_counted_as_unknown():
-    """THE SILENT OMISSION. Dropping it would report two models where fifty-five
-    invocations ran, and the missing fifty-three would look like nothing.
-
-    Measured on the real database: 55 of 55 recorded no model.
+    """The silent omission: a row with no model is counted as `unknown`, not
+    dropped.
 
     Mutation: skip rows with no model and this fails.
     """
@@ -188,8 +184,8 @@ def test_a_phase_is_matched_whatever_its_case():
 
 
 def test_a_delta_with_no_harness_recorded_is_unattributed_not_dropped():
-    """Measured on the real database: 51 of 59 in flight had no harness. A
-    report showing only the 8 would describe a tenth of the work.
+    """A delta in flight with no harness recorded is reported as
+    unattributed, not dropped.
 
     Mutation: filter to rows with a harness and this fails.
     """

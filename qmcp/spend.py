@@ -1,32 +1,27 @@
 """What a command is allowed to spend, and what it says when it spent nothing.
 
-**THIS MODULE DOES NOT CALL A PAID SERVICE. It is what a module that does must
-pass through**, and it exists so that a reader can find out whether a command
-spends without tracing a call graph.
-`governance/qm/records/DRAFT-no-unattended-spending.md` is the decision.
+This module calls no paid service. A module that does passes through it, so a
+reader can tell whether a command spends without tracing a call graph. The
+rule is `governance/qm/records/DRAFT-no-unattended-spending.md`: no unattended
+process may call a paid service; every paid call is a direct, deterministic,
+human-issued command.
 
-THE RULE, IN ONE SENTENCE. No unattended process may call a paid service; every
-paid call is a direct, deterministic, human-issued command.
+Zero is the default and a real count. A command with a budget of zero does
+every free thing it can, establishes what the paid work would cost, and stops;
+the number that free pass produces is what a second pass is issued against.
 
-ZERO IS THE DEFAULT AND IT IS A REAL COUNT. A command issued with a budget of
-zero does every free thing it can, establishes what the paid work would cost,
-and stops. That is how a count gets stated in advance without spending to find
-it out -- the first pass is free, and the number it produces is what a second
-pass is issued against.
-
-ZERO IS NEVER A SENTINEL FOR UNKNOWN, and the distinction is load-bearing:
+Zero is never a sentinel for unknown:
 
     authorised   how many calls the person permitted. Always known.
     made         how many were made. Always known.
     would_need   how many the work requires. May be `{"unknown": reason}`.
 
-Reporting `would_need: 0` when nobody could count would claim the work is free.
-That is the substitution `harness-status.json`'s reading block refuses and the
-harness payload already avoids, arriving here in a new register.
+`would_need: 0` claims the work is free, so a count nobody could take is
+`unknown`, as in `harness-status.json`'s reading block.
 
-WHAT THIS CANNOT DO. Stop a module that never asked it. Clause 6 of the record
-is a rule about writing rather than a derivation, and a paid surface added
-without declaring it is the failure this depends on people not committing.
+What this cannot do: stop a module that never asked it. Clause 6 of the record
+is a rule about writing code, and a paid surface added without declaring it
+passes unseen.
 """
 
 from __future__ import annotations
@@ -34,8 +29,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-# The default, and it is not a placeholder. A command nobody gave a number to
-# has been given zero, which is a budget rather than an absence of one.
+# The default, not a placeholder: a command given no number has been given
+# zero, which is a budget.
 FREE = 0
 
 
@@ -103,10 +98,8 @@ class Budget:
 def declare(budget: Budget, would_need: int | dict[str, str] | None) -> dict[str, Any]:
     """What this run spent, and what the work would cost, for a consumer.
 
-    CARRIED WITH THE PAYLOAD, NOT INFERRED FROM IT. A consumer must be able to
-    tell a free-path result from a complete one without guessing at an empty
-    field: they are different claims, and a partial answer presented as whole
-    is the shape of finding this organisation keeps recording.
+    Carried with the payload, so a consumer tells a free-path result from a
+    complete one without guessing at an empty field.
     """
     if would_need is None:
         would_need = unknown("this run did not establish what the work costs")
