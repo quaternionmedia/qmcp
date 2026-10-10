@@ -537,9 +537,8 @@ the advisory declaration in place of the refused one; changing the setting
 with `PUT` changes the block.
 
 `walkthrough/07-saving-a-shape-is-not-running-it.md` exercises every route
-above through the test client, and `qmcp/topology_designs.py` and
-`qmcp/orchestration_service.py` hold the reasoning. These routes save and
-judge designs and invoke no model; the voice runner runs a supported saved
+above through the test client. These routes save and judge designs and invoke
+no model; the voice runner runs a supported saved
 design only after a fresh approval, and each `capability` block carries the
 runner's `voice_runnable`, `voice_spends`, `voice_writes` and `voice_decides`
 beside the framework's declaration.
