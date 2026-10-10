@@ -105,10 +105,8 @@ class ModelReport:
     def summary(self) -> str:
         """The window first, then what was read, then what is unknown.
 
-        The window leads because a figure without one is not an answer to
-        anything, and the unknown count is never omitted -- a report of two
-        models that silently dropped fifty-three unrecorded invocations would
-        be worse than no report.
+        The window leads because a figure without one answers nothing, and the
+        count of invocations that recorded no model is never omitted.
         """
         lines = [f"{self.window.describe()}: {self.rows_read} invocation(s) read"]
         if not self.runs:
