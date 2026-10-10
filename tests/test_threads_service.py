@@ -1,9 +1,7 @@
-"""The read-only archive routes, and where they refuse to be served.
+"""The archive routes, and where they refuse to be served.
 
-The tests worth reading are the two refusals: a source nobody declared, and a
-server bound off loopback. Both are about what reaches a socket -- the archive
-holds somebody's conversations, which is a different thing from the tools and
-invocations every other route here publishes.
+Two refusals: a source that is not declared, and a server bound off loopback.
+The archive holds somebody's conversations, so neither reaches a socket.
 """
 
 from __future__ import annotations
@@ -138,12 +136,9 @@ def test_every_declared_source_is_one_this_project_ships():
 
 
 def test_the_routes_are_not_mounted_off_loopback():
-    """THE ONE THAT MATTERS.
-
-    `qmcp cookbook serve` offers `--host 0.0.0.0` so a container can reach the
-    server. The archive is somebody's conversations, so the routes are not
-    registered at all off loopback -- a 403 would still tell a caller the
-    archive is there.
+    """`qmcp cookbook serve` offers `--host 0.0.0.0` so a container can reach
+    the server. Off loopback the archive routes are not registered at all,
+    because a 403 would still tell a caller the archive is there.
 
     Mutation: register unconditionally and this fails.
     """

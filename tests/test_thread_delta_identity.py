@@ -1,9 +1,7 @@
 """A thread's delta identity, published rather than re-derived downstream.
 
-The listing had every fact about a conversation except the one that makes it a
-delta: its address. A consumer wanting to show threads on a delta board had two
-options -- ask for it, or reimplement `thread-{id}` and the project it hangs
-under. This is the first option existing.
+The thread listing carries each thread's delta address, so a consumer showing
+threads on a delta board reads it rather than reimplementing `thread-{id}`.
 """
 
 from __future__ import annotations
@@ -13,14 +11,9 @@ from qmcp.threads.service import as_delta_row, source_classes, summarise
 
 
 def test_the_address_matches_the_one_the_delta_actually_carries():
-    """THE ONE THAT MATTERS.
+    """The listing's address and the payload's address are the same string.
 
-    Two ways of naming the same thing, checked against each other. If they ever
-    disagree, a board shows an address nothing can be found at.
-
-    Mutation: change the prefix in `thread_name` and this fails -- which is the
-    point, because without it only the payload would move and the listing would
-    keep publishing the old address.
+    Mutation: change the prefix in `thread_name` and this fails.
     """
     thread = Thread(id="abc123", title="A conversation")
     claude = source_classes()["claude"]

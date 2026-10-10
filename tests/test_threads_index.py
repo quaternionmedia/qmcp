@@ -75,13 +75,8 @@ def test_turns_appended_is_growth():
 
 
 def test_a_turn_edited_in_place_is_divergence_not_growth():
-    """THE ONE THAT WAS WRONG.
-
-    The first `classify` checked only that the old ids were a prefix of the
-    new. Identical ids with different text satisfied that, so an edited
-    conversation reported as having grown by zero turns -- a divergence
-    classified as the ordinary case, which is the single direction this must
-    not fail in.
+    """The same turn ids with different text is divergence, not growth by zero
+    turns.
 
     Mutation: drop the `len(new) > len(old)` guard and this fails.
     """

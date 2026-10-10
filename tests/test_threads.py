@@ -348,10 +348,7 @@ def test_an_absent_export_is_zero_threads_and_not_a_failure(tmp_path):
 
 
 def test_a_file_that_will_not_parse_is_named_and_not_counted(tmp_path):
-    """THE ONE THIS MODULE'S DOCSTRING WARNS ABOUT, AND THE FIRST VERSION DID.
-
-    `survey` counted files, so a directory of two with one malformed reported
-    two and fetched one. It reads them now.
+    """`survey` parses every file, so a malformed one is named and not counted.
 
     Mutation: count `files()` instead of reading and this fails.
     """

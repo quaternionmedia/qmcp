@@ -2,22 +2,12 @@
 
     ~/.qmcp/threads/claude/*.json      one conversation per file
 
-**VERIFIED ONCE, AGAINST ONE REAL EXPORT.** This was written from the documented
-format with no export to hand, and was checked on 2026-08-20 against an actual
-one: 94 conversations, every one detected as Claude, and **no conversation
-carrying messages parsed to zero turns**. Four came through empty and were empty
-in the export too -- untitled, with no `chat_messages` at all.
+The format is the documented one, checked against one real export; that is
+not a guarantee. A conversation that will not parse is reported by name.
 
-That is one export from one account on one date. It is much stronger than the
-guess it replaces and it is not a guarantee: an exporter that changes its shape
-will be found by a conversation that will not parse, which is reported by name
-rather than skipped. The failure being guarded against is a board quietly
-showing thirty-seven of forty.
-
-WHAT IS DELIBERATELY ABSENT. The API. It is a second source behind the same
-contract, and when it arrives it spends against the `Budget` the contract
-already passes. This one never spends, so `survey` reports `would_need: 0` --
-a real zero, meaning there is no paid work to do.
+This source never spends, so `survey` reports `would_need: 0`. An API source
+would be a second source behind the same contract, spending against the
+`Budget` the contract passes.
 """
 
 from __future__ import annotations
@@ -40,13 +30,10 @@ class ClaudeThreads(LocalCacheSource):
     # what they settled, never about turns.
     perspective = "claude/thread"
 
-    # Decided rather than defaulted: thread deltas belong to the harness that
-    # pulled them. `plans/qmpm-standardisations.md` 1 still has the open
-    # question of whether a delta may span owners; until it is settled, this is
-    # a home somebody chose.
-    # Derived from the checkout rather than named here: four modules held this
-    # literal, and a fork of this harness emitted deltas belonging to another
-    # organisation. `qmcp.identity` has the reasoning.
+    # Thread deltas belong to the harness that pulled them, derived from the
+    # checkout so a fork's deltas belong to the fork; see `qmcp.identity`.
+    # Whether a delta may span owners is open in
+    # `plans/qmpm-standardisations.md` 1.
     project = identity.this_project()
 
     def parse(self, document: Any, path: Path) -> Thread:
@@ -95,10 +82,8 @@ def _maybe_str(value: Any) -> str | None:
 def _text_of(message: dict) -> str:
     """The message's text, from whichever shape this export uses.
 
-    Newer exports carry a `content` list of typed blocks; older ones a flat
-    `text`. Both are read, and a block whose type is not text is skipped rather
-    than stringified -- an image rendered as its repr would become searchable
-    prose that says nothing.
+    Reads a flat `text` or a `content` list of typed blocks. A block whose type
+    is not text, such as an image, is skipped rather than rendered as its repr.
     """
     text = message.get("text")
     if isinstance(text, str) and text:

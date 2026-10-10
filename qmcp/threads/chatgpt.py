@@ -2,32 +2,18 @@
 
     ~/.qmcp/threads/chatgpt/*.json     one conversation per file
 
-**VERIFIED ONCE, AGAINST ONE REAL EXPORT.** Written from the documented format
-with none to hand, and checked on 2026-08-21 against an actual one: 34
-conversations, all 34 parsed, and **no conversation carrying messages that
-parsed to zero turns**. 354 turns, 116 from the person and 238 from the
-assistant, which is the ratio a real archive has and a broken reading does not.
+The format is the documented one, checked against one real export. It stores
+messages as a `mapping` of nodes with parent pointers: a tree, of which the
+conversation a person read is one path.
 
-That is one export from one account on one date, and this format has more room
-to be wrong than the Claude one: it stores messages as a `mapping` of nodes with
-parent pointers rather than a list -- a tree, of which the conversation you
-actually read is one path.
+This flattens the tree: every node with text is taken, in timestamp order. A
+conversation with regenerated or branched replies therefore yields turns that
+were alternatives to each other rather than one sequence.
 
-**THIS FLATTENS THE TREE AND SAYS SO.** Every node with text is taken, in
-timestamp order. A conversation with regenerated or branched replies therefore
-yields turns that were alternatives to each other rather than a sequence
-somebody read. That is a real inaccuracy; it is preferred to silently choosing
-one path, because choosing would look correct and this looks like what it is.
-The `same-as` relation exists for the day somebody wants to say two branches
-were one strand.
-
-ONE DIFFERENCE FROM THE CLAUDE SOURCE, AND IT IS NOT COSMETIC. Its perspective
-is its own — `chatgpt/thread`. Two assistants discussing the same work produce
-two sets of deltas, and neither is the other's duplicate: they are two
-perspectives on one strand. `same-as` is how somebody says they are the same
-strand once they have read both, and
-`governance/qm/records/DRAFT-deltas-compose.md` 4 is why neither address is
-retired when they do.
+The perspective is `chatgpt/thread`, distinct from the Claude source's, so two
+assistants discussing the same work produce two sets of deltas. `same-as`
+states that they are one strand, and neither address is retired
+(`governance/qm/records/DRAFT-deltas-compose.md` 4).
 """
 
 from __future__ import annotations
@@ -46,9 +32,8 @@ class ChatGPTThreads(LocalCacheSource):
     name = "chatgpt"
     folder = "chatgpt"
     perspective = "chatgpt/thread"
-    # Derived from the checkout rather than named here: four modules held this
-    # literal, and a fork of this harness emitted deltas belonging to another
-    # organisation. `qmcp.identity` has the reasoning.
+    # Derived from the checkout, so a fork's deltas belong to the fork; see
+    # `qmcp.identity`.
     project = identity.this_project()
 
     def parse(self, document: Any, path: Path) -> Thread:
@@ -101,9 +86,8 @@ def _maybe_str(value: Any) -> str | None:
 def _text_of(message: dict) -> str:
     """The message's text, from the `content.parts` shape.
 
-    A part that is not a string is skipped rather than stringified. Attachments
-    arrive as objects, and one rendered as its repr becomes prose that reads
-    like content and is not.
+    A part that is not a string, such as an attachment, is skipped rather than
+    rendered as its repr.
     """
     content = message.get("content")
     if not isinstance(content, dict):

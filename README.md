@@ -336,6 +336,7 @@ The system follows a three-plane architecture:
 - [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
 - [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
 - [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
+- [Thread Archive](docs/threads.md) - Conversations read as units of work
 - [Deployment](docs/deployment.md) - Production deployment guide
 - [Contributing](docs/contributing.md) - Development guidelines
 - [Roadmap](docs/ROADMAP.md) - Development phases
