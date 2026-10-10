@@ -2,6 +2,9 @@
 
     uv run qmcp feedback run
 
+That command is claimed and not routed: `qmcp.cli` has no `feedback` group
+(`tests/test_declared_commands.py`, `ONLY_CLAIMED`). Call `once` directly.
+
 `FeedbackTopology` is a pipeline topology that implements `run`, for this one
 shape; `BaseTopology.run` raises `NotImplementedError`.
 

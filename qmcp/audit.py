@@ -3,6 +3,10 @@
     uv run qmcp audit models --since 2026-08-21
     uv run qmcp audit in-flight
 
+Those commands are claimed and not routed: `qmcp.cli` has no `audit` group,
+and `tests/test_declared_commands.py` lists it in `ONLY_CLAIMED`. Call
+`models_run` and `in_flight` directly.
+
 Two runs over the same rows give the same answer:
 
 - a window is a UTC half-open interval, stated in the answer, because

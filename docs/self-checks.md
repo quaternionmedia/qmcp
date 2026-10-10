@@ -5,12 +5,16 @@ the project's own gates through it. This page describes each and what it
 cannot see. `walkthrough/02-a-run-that-found-something.md` runs the self-check
 end to end.
 
-| Command | Module | What it answers |
+| Entry point | Module | What it answers |
 |---|---|---|
 | `qmcp dashboard` | `qmcp/dashboard.py` | what the harness has run, and what waits on a person |
-| `qmcp audit models`, `qmcp audit in-flight` | `qmcp/audit.py` | which models ran in a window; which deltas are moving, through what |
+| `audit.models_run`, `audit.in_flight` | `qmcp/audit.py` | which models ran in a window; which deltas are moving, through what |
 | `qmcp selfcheck` | `qmcp/selfcheck.py` | whether this repository passes its own gates |
-| `qmcp feedback run` | `qmcp/feedback.py` | the gates and the panel's diagnostics, together |
+| `feedback.once` | `qmcp/feedback.py` | the gates and the panel's diagnostics, together |
+
+`audit` and `feedback` are Python entry points with no command: their modules
+name `uv run qmcp audit ...` and `uv run qmcp feedback run`, and
+`tests/test_declared_commands.py` lists both as claimed and not routed.
 
 ## Unknown is not zero
 
@@ -54,8 +58,9 @@ them (`records/DRAFT-a-disagreement-is-a-delta.md`).
 
 ## Audit
 
-    uv run qmcp audit models --since 2026-08-21
-    uv run qmcp audit in-flight
+`audit.models_run(rows, window)` and `audit.in_flight(rows, at)` take rows
+rather than a session, so one function answers for the harness's tables and
+for what crosses the seam.
 
 An audit answer is deterministic: two runs over the same rows give the same
 answer. Three things would break that, and each is ruled out:
@@ -106,9 +111,8 @@ nothing reports success here too.
 
 ## The feedback loop
 
-    uv run qmcp feedback run
-
-`FeedbackTopology` is a pipeline topology that implements `run` for one shape.
+`feedback.once(harness, panel)` runs one pass; `FeedbackTopology.run` wraps
+it. `FeedbackTopology` is a pipeline topology that implements `run` for one shape.
 It is not registered: `TopologyRegistry` is keyed by `TopologyType` and
 replaces silently, so a second class claiming `PIPELINE` would win or lose by
 import order.

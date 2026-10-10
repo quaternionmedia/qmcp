@@ -2,6 +2,9 @@
 
     uv run qmcp sweep run <plan.json>
 
+That command is claimed and not routed: `qmcp.cli` has no `sweep` group
+(`tests/test_declared_commands.py`, `ONLY_CLAIMED`). Call `run` directly.
+
 The topology is not a setting. Each share of the work arrives carrying its
 shape, a worker is registered for each shape, and the topology is whatever the
 mix of shapes makes it, without a line changing.
