@@ -1,9 +1,8 @@
 """The orchestration plane over HTTP, and the parameter it must not have.
 
-THE TEST WORTH READING IS THE ONE ABOUT `person`. A window can supply workers,
-a budget, a model and a build, and can never supply a person's judgement by
-query string. `qmcp.orchestration.unmet` holds that line in code; these routes
-must not open a door round it.
+A window can supply workers, a budget, a model and a build, and never a
+person's judgement: the routes have no `person` parameter, as
+`qmcp.orchestration.unmet` has none.
 """
 
 from __future__ import annotations
@@ -121,12 +120,9 @@ def test_built_overrides_the_declared_status(served):
 
 
 def test_person_is_never_supplied_and_there_is_no_parameter_for_it(served):
-    """THE ONE THAT MATTERS.
-
-    Give the route everything a caller can have, plus a `person` parameter
-    it does not declare, and council is still short of a person. The route
-    has no such parameter, and this checks the absence rather than trusting
-    the docstring.
+    """Given everything a caller can have, plus an undeclared `person`
+    parameter, council is still short of a person. This checks the route has
+    no such parameter.
 
     Mutation: add `person: bool = Query(False)` and pass it to `unmet` (which
     would also need a branch) and this fails.

@@ -412,6 +412,83 @@ uv run python examples/flows/council_deliberation.py run \
     --llm-model "llama3.1"
 ```
 
+## The capability plane
+
+`qmcp.orchestration.PLANE` declares, for every registered topology, what
+running it would do: its status, whether it spends money, writes to a
+repository or decides, why, and what a caller must supply first. `uv run qmcp
+orchestration plane` prints it, and `GET /v1/orchestration/plane` serves it.
+Every declaration is written by hand and read, never discovered by running the
+shape, since running it would already be the act being judged.
+
+**Statuses.** `runs` is implemented and safe for ordinary work. `brainstorm` is
+a designed shape whose `run` still raises: a proposal, not a runtime.
+`refused` is a shape whose design performs an act this organisation reserves
+for a person.
+
+**Refusals belong to a pairing.** `governance/qm/ci/attested-registry.yaml`
+lists the acts that are a person's by constitution -- ratifying a record,
+cutting a tag, authorising a paid call, among others. A topology that decides
+is refused when pointed at one of them, and allowed an ordinary question. A
+topology that only reports is allowed either, because reporting on an act does
+not perform it. `refuses(kind, act, config)` answers for one pairing, and the
+design routes ask it with `?act=`.
+
+**Options.** `OPTIONS` declares a shape that behaves differently under one
+setting, read from the design's own configuration. A council with
+`arbiter_can_override` false is the advisory council: no arbiter decides, so it
+is a proposal for an ordinary question and is still refused an attested act.
+
+**Needs and their remedies.** Every need names what supplies it: a build, a
+budget, workers, a model, or a person. `unmet` reports what a caller is still
+short of, and `GET /v1/orchestration/runnable` answers for a given hand. A need
+for a person is never supplied by a parameter, so a refused shape cannot be
+made runnable by a request.
+
+**Drift.** `undeclared()` lists registered topologies with no declaration and
+declarations for nothing; `stubs()` lists shapes still inheriting the base
+`run`, so a `runs` declaration the registry contradicts is visible; and
+`unregistered_types()` lists names in the vocabulary that nothing implements.
+
+A window reads all of this from the routes rather than keeping its own copy of
+which shapes spend, decide or are refused.
+
+## Views of a topology
+
+`qmcp.topology_view` describes a topology as boxes and arrows, for any window
+to draw. A `View` holds kinds and notes and no coordinates, glyphs, colours or
+widths, so a terminal panel and a browser graph draw from one description.
+
+**Levels.** Level 0 is the black box: what goes in and what comes out. Level 1
+is the parts. Level 2 is the flow between them. Levels 0 and 1 are derived from
+level 2, so a summary cannot disagree with the flow it summarises.
+
+**Kinds.** A box is an input, a worker, a gate, a store or an output; an arrow
+is a flow, feedback or a refusal. A window may draw kinds alike and may not
+merge them: a refusal drawn as a flow would read as a path that is taken. The
+plane's marks travel with the view, so a shape that spends, writes or decides
+shows it, and a refused shape is drawn refused rather than left out of the
+gallery.
+
+**Channels.** `/v1/topology/encoding` declares which visual channel carries
+which data axis, so every window maps a line's thickness to the same thing.
+`measured` has a channel of its own, separate from `strength`: an unmeasured
+edge is an absence of evidence, not a weak edge, and a window that runs out of
+channels drops one and says so rather than folding the two together.
+
+**Readings.** `from_relations` draws one subject and what the thread archive
+relates it to. Relations reaching the same address share one box, because the
+address says they are about one thing; their arrows are not merged, so each
+observation keeps its own weight and basis. A relation nobody measured has a
+null weight, and stays null.
+
+**What is served where.** The shapes, the encoding and the configuration
+schemas name nobody and are served wherever the server is bound. The readings
+are derived from a person's conversations and exist only on a loopback bind;
+off loopback the route is absent rather than refused, so a response reveals
+nothing about whether an archive is there. Saved designs and components write,
+and are likewise loopback only.
+
 ## Over HTTP, for a designer
 
 The server serves the vocabulary above to a window that draws it, so the window

@@ -1,7 +1,6 @@
 """One description of a topology, for windows that draw it differently.
 
-THE TEST WORTH READING IS THE FIRST ONE. The description must hold nothing that
-belongs to a terminal or to a browser, or the other window has to undo it.
+The description holds nothing that belongs to a terminal or a browser.
 """
 
 from __future__ import annotations
@@ -26,10 +25,7 @@ from qmcp.topology_view import (
 
 
 def test_the_description_holds_nothing_a_renderer_owns():
-    """THE ONE THAT MATTERS.
-
-    No coordinates, no glyphs, no colours, no widths. The moment one appears
-    the description is a picture of one window and the other has to undo it.
+    """No coordinates, glyphs, colours or widths: those belong to a window.
 
     Mutation: add an `x`/`y` or a colour to `Box` and this fails.
     """
@@ -160,11 +156,8 @@ def test_a_count_is_carried_when_it_is_known_and_absent_when_it_is_not():
 
 
 def test_strength_and_measured_never_share_a_channel():
-    """THE RULE THE WHOLE ENCODING TURNS ON.
-
-    An unmeasured edge is not a weak edge: one is an absence of evidence, the
-    other is evidence of absence. On one scale, "nobody looked" renders as "we
-    looked and it is negligible" -- a claim nobody made.
+    """An unmeasured edge is not a weak edge, so `measured` and `strength`
+    are carried by different channels.
 
     Mutation: map `measured` onto `line_weight` and this fails.
     """
@@ -240,14 +233,9 @@ def test_a_shape_arrow_has_no_weight_because_a_shape_has_no_strength():
         assert arrow.weight is None
 
 def test_several_relations_to_one_address_share_one_box():
-    """THE ONE THE TRIO DEMO FOUND, ON REAL DATA.
-
-    An address is what says two readings are about the same thing --
-    `records/DRAFT-a-route-is-an-address.md`. Keying boxes by position drew
-    three threads' readings of one delta as three nodes with the same label and
-    the same note, which reads as three deltas that happen to share a name. The
-    fixture in the demo could not show it: no two of its relations pointed
-    anywhere near each other, and only the archive had the repetition.
+    """An address says two readings are about the same thing
+    (`records/DRAFT-a-route-is-an-address.md`), so relations reaching one
+    address share one box.
 
     Mutation: key the box on the loop index and this fails.
     """
@@ -265,9 +253,7 @@ def test_several_relations_to_one_address_share_one_box():
     assert len(workers) == 1, "one address, one box"
     assert workers[0].note == same
 
-    # **AND THE ARROWS ARE NOT MERGED.** Three threads finding this relation is
-    # three observations, each with its own weight. Collapsing them would invent
-    # an aggregate nobody measured.
+    # The arrows are not merged: each observation keeps its own weight.
     assert len(view.arrows) == 3
     assert sorted(a.weight for a in view.arrows) == [0.06, 0.13, 0.17]
     assert {a.to for a in view.arrows} == {workers[0].id}
