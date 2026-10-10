@@ -380,8 +380,7 @@ uv run qmcp instructions act <id> --runtime NAME [--budget N] [--cwd PATH] [--vo
 
 A worker takes a recorded instruction, declares what it may spend, asks
 consent on the human queue, and runs it in the project's clone only on
-`approve`. Every runtime is asked, the local model included; growing a habit
-of approval into an automatic one is a later phase. The consent is an ordinary
+`approve`. Every runtime is asked, the local model included. The consent is an ordinary
 approval, `instruction-<id>` with the options `approve` and `hold`, so it is
 answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
 page, or in the command itself with `--voice`. Its prompt says the

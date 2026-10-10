@@ -56,8 +56,8 @@ understand it.
 
 ## A worker that is not there is reported
 
-On the machine this was written on there is a GPU and no model served. So
-`judgement` shares come back unanswered — by name, in a queue:
+With no judgement worker registered, `judgement` shares come back unanswered
+— by name, in a queue:
 
     >>> waiting = run([{"project": "org/c", "shape": "judgement",
     ...                 "why": "no version declared"}], "0.116.0")
