@@ -41,9 +41,8 @@ a control panel:
     >>> sorted(to_dict(build(root / "a.db")))
     ['by_status', 'by_tool', 'database', 'missing_tables', 'project', 'queue_shown', 'queue_total', 'recent', 'schema', 'totals', 'waiting']
 
-That list came out of the emitter. It used to be a sorted copy of the keys
-written into this page, which is a sentence about itself: the example passed
-whatever `to_dict` returned.
+That list came out of the emitter, so the example fails if `to_dict` changes
+its keys.
 
 `totals` are counts over this harness's whole history. `recent` is an excerpt.
 They are different claims and a consumer must not derive one from the other —

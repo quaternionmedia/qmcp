@@ -18,7 +18,7 @@ executes nothing**, and this page shows that by looking.
 The module takes the app rather than creating one, as `qmcp.topology_designs`
 does. The rows go in a database this page owns, because the configured one is
 somebody's inbox, and the roster is handed in so the page does not depend on
-what the governance submodule lists this week:
+what the governance submodule lists:
 
     >>> import tempfile
     >>> from pathlib import Path

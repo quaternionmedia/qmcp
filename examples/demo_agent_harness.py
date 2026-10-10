@@ -3,31 +3,22 @@
 
     uv run python examples/demo_agent_harness.py
 
-WHAT IT SHOWS. A running server, the tools it registers, an agent-shaped
-sequence through them -- planner, executor, reviewer -- and the audit log
-growing by exactly the number of calls made. The last part is the point: every
-invocation is recorded, so a harness that ran an agent can be asked afterwards
-what it ran.
+It shows a running server, the tools it registers, an agent-shaped sequence
+through them -- planner, executor, reviewer -- and the audit log growing by
+exactly the number of calls made: every invocation is recorded, so a harness
+that ran an agent can be asked afterwards what it ran.
 
-WHY THE AUDIT COUNT IS THE ASSERTION AND NOT THE TOOL OUTPUT. Recording an
-invocation is the code path that was broken on `main`: `ToolInvocation.execution_id`
-was `UUID NOT NULL` against an insert that supplies no id, so every call raised
-`sqlite3.IntegrityError` and 19 tests failed. A demo that only printed a
-planner's reply would have passed against that. This one exercises the fix.
+The audit count, not the tool output, is what the demo asserts: a demo that
+only printed a planner's reply would pass against a harness that recorded
+nothing. `tests/test_demo_agent_harness.py` runs this module, so the suite
+covers the demo.
 
-WHY IT IS A FILE AND NOT A SESSION TRANSCRIPT. The same demo was run by hand
-once and written into a handoff page. Nobody else could reproduce it, and a
-result nobody can reproduce is the same defect as a hand-run check reported as
-CI. `tests/test_demo_agent_harness.py` runs this module, so the demo is covered
-by the suite rather than by a memory of it having worked.
+It does not touch the operator's `./qmcp.db`: every run builds its own
+database in a temporary directory and deletes it.
 
-WHAT IT DOES NOT TOUCH. The operator's `./qmcp.db`. Every run builds its own
-database in a temporary directory and deletes it, because a demo that writes to
-the working database is one nobody runs twice.
-
-WHAT IT CANNOT SHOW ON THIS PLATFORM. The Metaflow flow layer. `import metaflow`
+What it cannot show on Windows: the Metaflow flow layer. `import metaflow`
 fails on `import fcntl`, which is POSIX-only, so the flows in `examples/flows/`
-need Docker and are outside this demo by construction rather than by omission.
+need Docker and are outside this demo.
 """
 
 from __future__ import annotations
