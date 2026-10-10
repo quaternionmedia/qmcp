@@ -1,37 +1,24 @@
 """The topology, over HTTP, for whatever wants to draw it.
 
-**THE FRONT ENDS HAD NOTHING TO FETCH.** `qmcp.topology_view` could build a view
-and hand it to anything that imported it, and both front ends are repositories
-that must not import it. So a demo could prove the two renderings agreed by
-running the harness's code in a subprocess, while nothing at either front end's
-port could obtain a topology at all. The contract was tested and the seam was
-not deployed, and those look identical from inside the demo.
-
-**TWO CLASSES OF ROUTE, AND THE DIFFERENCE IS PERSONAL DATA.**
+Two classes of route, divided by personal data:
 
 - The *shapes* -- `/v1/topology`, `/v1/topology/encoding`,
   `/v1/topology/shape/{kind}`, `/v1/topology/schema/{kind}` -- are this
-  harness's own vocabulary. A delegation topology looks the same on every
-  machine and names nobody, and so does `governed`, the seam a model is called
-  through; the schema of a shape's configuration class is the same kind of
-  fact. They are served wherever the server is bound.
+  harness's own vocabulary: the collaboration shapes, `governed` (the seam a
+  model is called through), and the schema of each shape's configuration
+  class. They name nobody and are served wherever the server is bound.
 - The *readings* -- `/v1/topology/relations/{subject}` -- are derived from the
-  thread archive, which holds a person's conversations. They carry project
-  addresses, turn counts and what somebody talked about, and they are
-  registered **only on loopback**, exactly as `qmcp.threads.service` is. Off
-  loopback the route does not exist rather than refusing, because a 403 tells
-  a caller the archive is here.
+  thread archive, which holds a person's conversations, and carry project
+  addresses, turn counts and topics. They are registered only on loopback, as
+  `qmcp.threads.service` is. Off loopback the route does not exist, so a
+  response reveals nothing about whether an archive is there.
 
-That split is the whole reason this module takes the app rather than creating
-one: the decision about what may leave the machine is already made in
-`create_app`, and a second module inventing its own answer is how two answers
-start to differ.
+`register` and `register_readings` take the app rather than creating one, so
+what may leave the machine is decided once, in `create_app`.
 
-**IT SERVES A DOCUMENT, NOT A PICTURE.** Every route returns the same flat
-payload `as_payload` produces, plus the encoding that says which visual channel
-carries which data axis. What a front end does with it is the front end's
-business -- one draws a terminal and one draws a graph, and neither is more
-correct.
+Every route returns the flat payload `qmcp.topology_view.as_payload` produces,
+with the encoding that says which visual channel carries which data axis. How
+a window draws it is the window's.
 """
 
 from __future__ import annotations
@@ -54,11 +41,9 @@ SURVEY_BUDGET = 0
 def _gallery() -> list[Any]:
     """Every shape a caller can ask for, at black-box level.
 
-    The vocabulary's shapes, and then `governed` -- which is not one of them.
-    `TopologyType` is a catalogue of collaboration patterns and the governed
-    seam is this organisation's own pipeline, so it is listed beside them
-    rather than added to the enum: a name in that vocabulary is a name every
-    consumer of the agent framework inherits.
+    The vocabulary's shapes, then `governed`, listed beside them rather than
+    added to `TopologyType`: a name in that enum is inherited by every
+    consumer of the agent framework.
     """
     from qmcp import governed
 
@@ -98,10 +83,8 @@ def register(app: Any) -> None:
     async def encoding() -> dict[str, Any]:
         """Which visual channel carries which data axis.
 
-        Served separately because a window should be able to check the mapping
-        it is honouring without fetching a view it does not want. A front end
-        that hard-coded the mapping would keep drawing an old contract, and the
-        picture would be confidently wrong.
+        Served on its own, so a window can check the mapping it draws with
+        without fetching a view.
         """
         return {"schema": 1, "encoding": tv.encoding_payload()}
 
@@ -112,10 +95,8 @@ def register(app: Any) -> None:
     ) -> dict[str, Any]:
         """One topology as a payload, at the requested resolution.
 
-        `/shape/` sits in the path so a topology can never be mistaken for the
-        `relations` route below -- one is this harness's vocabulary and the
-        other is a person's conversations, and a route that could be confused
-        for the other is the wrong shape for that boundary.
+        `/shape/` is in the path so a shape cannot be mistaken for the
+        `relations` route, which reads a person's conversations.
         """
         from qmcp import governed
         from qmcp.agentframework.models.enums import TopologyType
@@ -147,8 +128,7 @@ def register(app: Any) -> None:
         from the same table, so a config that fits the schema fits the store.
 
         `governed` is a 404 with a reason rather than an empty schema: it is a
-        seam, not a configurable shape, and an empty schema would read as a
-        shape that takes no configuration.
+        seam, not a configurable shape.
         """
         from qmcp.agentframework.models.entities.topologies import config_class_for
         from qmcp.agentframework.models.enums import TopologyType
@@ -188,10 +168,8 @@ def register(app: Any) -> None:
 def register_readings(app: Any, root: Path) -> None:
     """Attach the archive-derived readings. **Loopback only.**
 
-    Separate from `register` so the caller cannot serve these by accident. The
-    two are registered at different times in `create_app` for the same reason
-    the thread routes are: what may leave this machine is one decision, taken
-    in one place.
+    Separate from `register`, and called by `create_app` only on a loopback
+    bind, as the thread routes are.
     """
     from fastapi import HTTPException, Query
 
@@ -203,10 +181,9 @@ def register_readings(app: Any, root: Path) -> None:
         """What the archive says one project is related to, weighted.
 
         Every arrow carries the weight `qmcp.threads.consolidate` measured and
-        the basis it was read from. **A relation nobody measured arrives with a
-        null weight and must stay that way** -- filling it in would turn
-        "nobody looked" into "negligible", and a window cannot recover the
-        difference once this end has lost it.
+        the basis it was read from. A relation nobody measured has a null
+        weight, and a window keeps it null: an unmeasured edge is not a
+        negligible one.
         """
         if not subject or len(subject) > MAX_SUBJECT:
             raise HTTPException(status_code=400,

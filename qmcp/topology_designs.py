@@ -10,60 +10,41 @@
     GET  /v1/topology-components/{name}  one, by name
     PUT  /v1/topology-components/{name}  change its description, instruction or version
 
-**THE TABLE EXISTED AND NOTHING SERVED IT.** `Topology` has been a table since
-the agent framework was written, `qmcp council create` builds a row and prints
-it, and no route read or wrote one. A front end growing a designer had nowhere
-to put a design except its own storage -- and a design held by the window is a
-design the harness has never seen, so nothing could tell the designer what the
-plane thinks of it.
+A design is a topology kind with a configuration. Saving one validates the
+configuration through the class the kind declares -- the class
+`Topology.get_typed_config` reads a row through -- and stores what the class
+accepted with its defaults filled, so a design that saves also loads.
 
-**DESIGNING IS NOT AN ACT. RUNNING IS.** A refused shape can be saved here.
-`council` is refused by `qmcp.orchestration` because its arbiter decides, and
-the refusal is of the *run*: drawing the shape, describing it, keeping it, are
-none of them the act `governance/qm/ci/attested-registry.yaml` reserves. So a
-saved council comes back with the plane's refusal beside it and a sentence
-saying the design is kept and the run is what is refused. Refusing the save
-would hide the rule at the moment somebody was choosing a shape, which is the
-same reasoning `qmcp.topology_view.gallery` gives for drawing `council` rather
-than dropping it.
+Every row is returned with a `capability` block read from
+`qmcp.orchestration`: the shape's status, whether it spends, writes or
+decides, what it needs, and whether the plane refuses it, for the shape alone
+or, with `?act=`, for one pairing. This module adds no verdict of its own. A
+refused shape can still be saved: the refusal applies to running a design,
+and the block carries it beside a `saved_anyway` sentence that says so.
 
-**THE WINDOW ADDS NO GOVERNANCE, SO EVERY VERDICT HERE IS THE PLANE'S.** The
-`capability` block on every row is read from `qmcp.orchestration` -- status,
-what the shape spends, writes or decides, what it needs, and whether it is
-refused -- and this module invents none of it. A window that computed its own
-would be a second copy of the rule.
+`config.components` names reusable components and `config.compose` names
+saved designs. Both are checked on save and on change: an unknown name, a
+design composing itself, a cycle, or nesting deeper than eight levels is a
+422. A component is shared by reference, so changing it changes every design
+that names it.
 
-**A DESIGN REFERS TO COMPONENTS AND TO OTHER DESIGNS BY NAME.**
-`config.components` names reusable components and `config.compose` names saved
-designs. Both are checked when a design is saved or changed: an unknown name, a
-design composing itself, a cycle and nesting deeper than eight levels are each
-a 422. A component is shared by reference, so changing one changes what every
-design that names it reads.
+Every design and component belongs to a project: a short name such as `qmcp`,
+taken from the body or `?project=`, defaulting to the short name of the
+identity the routes were registered with. A name is unique within its project
+and references resolve within it; a composed design may name another
+project's design as `project/name`.
 
-**A CONFIG IS VALIDATED THROUGH THE CLASS ITS KIND DECLARES**, the same one
-`Topology.get_typed_config` reads a saved row through, and what is stored is
-what that class accepted with its defaults filled. So what a window reads back
-is the shape as the harness reads it, and a design that saved will load.
+Every row carries an address, `<owner>/<repo>/topology/<name>`, built by
+`qmcp.addresses` from the repository's identity. When the identity is not
+known, `address` is None and `address_unknown` gives the reason.
 
-**EVERY ROW CARRIES AN ADDRESS**, `<owner>/<repo>/topology/<name>`, built by
-`qmcp.addresses` from the repository's own identity. When the identity cannot
-be established the address is absent with the reason beside it, never guessed:
-`qmcp.identity` says why a guessed owner is worse than none.
+The routes write and carry no authorization of their own, so `create_app`
+registers them only on a loopback bind.
 
-**LOOPBACK ONLY.** These routes write and carry no authorization of their own,
-so `create_app` registers them only on a loopback bind.
-
-**NAMES BELONG TO A PROJECT.** Every design and component has a `project`, a
-short name such as `qmcp` taken from the body or `?project=` and defaulting to
-the repository's own. A name is unique within its project; references resolve
-within it. A composed design may reference another project's as
-`project/name`.
-
-WHAT THIS CANNOT DO. Delete. There is no `DELETE` route: a design or a
-component somebody saved is a record, and removing one is a decision this
-module has no way to know was somebody's. Nor run: nothing here executes a
-topology. `qmcp.integrations.agents.topology_design` runs a saved design, by
-voice and behind a consent, and the block's `voice_*` fields are what it reads.
+What this cannot do: delete -- there is no `DELETE` route for a design or a
+component -- or run a design. `qmcp.integrations.agents.topology_design` runs
+a saved design by voice, behind a consent, and reads the block's `voice_*`
+fields.
 """
 
 from __future__ import annotations
@@ -129,8 +110,7 @@ def capability_block(kind: TopologyType, act: str = "",
 
     `refusal` is `qmcp.orchestration.refuses` verbatim: a sentence, or None.
     When a kind has no declared capability the block says so through the
-    refusal rather than through empty fields -- `needs` is None, not `[]`,
-    because nobody has declared what the shape wants.
+    refusal, and `needs` is None rather than `[]`: nothing is declared.
 
     `config` is the design's own, so a council saved with
     `arbiter_can_override` false reads the advisory declaration and `option`
@@ -166,10 +146,9 @@ def capability_block(kind: TopologyType, act: str = "",
 def _stamp(when: datetime | None) -> str | None:
     """A timestamp as text, UTC either way.
 
-    SQLite stores a naive datetime, so a row just written reports `+00:00`
-    and the same row read back reports nothing -- two spellings of one
-    instant, and a window comparing them would see a change nobody made.
-    `qmcp.server` treats a stored naive datetime as UTC for the same reason.
+    SQLite stores a naive datetime, so a row just written and the same row
+    read back would otherwise spell one instant two ways. A naive value is
+    read as UTC here, as `qmcp.server` reads it.
     """
     if when is None:
         return None
@@ -259,9 +238,8 @@ def component_payload(row: TopologyComponent) -> dict[str, Any]:
 def validated_config(kind: TopologyType, config: Any) -> dict[str, Any]:
     """`config` through the kind's class, defaults filled. Raises `ValidationError`.
 
-    Raises `ValueError` for a kind with no class, which the vocabulary does not
-    currently contain; the branch exists so a new enum member without a class
-    is a refusal rather than a row nothing can load.
+    Raises `ValueError` for a kind with no class, so a vocabulary member added
+    without one is refused rather than stored as a row nothing can load.
     """
     config_class = config_class_for(kind)
     if config_class is None:
@@ -395,14 +373,12 @@ def register(app: Any, sessions: Sessions | None = None,
     async def _find(session: Any, ref: str, scope: str) -> Topology | None:
         """By id when the reference is an ASCII integer, then by name, in one project.
 
-        A name may legally be all digits, so a digit reference tries the id
-        first and the name second; the id wins a collision, and that order is
-        the rule rather than an accident of the query.
+        A name may be all digits, so a digit reference tries the id first and
+        the name second; the id wins a collision.
 
-        **`isdigit()` IS NOT `int()`'s TEST.** `'²'.isdigit()` (superscript
-        two) is True and `int('²')` raises, so a saveable name made of
-        such characters turned every read of it into a 500. The gate is the
-        conversion itself: an id is what `int` accepts and nothing wider.
+        An id is what `int` accepts. `str.isdigit()` is also true for
+        characters such as a superscript two, which `int` rejects, so the
+        reference must be ASCII digits and the conversion itself is the test.
         """
         try:
             wanted = int(ref) if ref.isascii() and ref.isdigit() else None
@@ -495,9 +471,8 @@ def register(app: Any, sessions: Sessions | None = None,
         """Save one design, validated through its kind's configuration class.
 
         422 carries the validation detail, so a window can put the message
-        beside the field. 409 is a name already taken: the name is the
-        address, and two designs at one address would be one design with two
-        histories.
+        beside the field. 409 is a name already taken in the project: the name
+        is the design's address.
         """
         raw_kind = body.get("topology_type")
         try:
@@ -602,7 +577,7 @@ def register(app: Any, sessions: Sessions | None = None,
 
         A new config is validated through the same class the save was, and
         `updated_at` moves. A body that names none of the mutable fields is a
-        400: an empty change that returned 200 would look like one.
+        400.
         """
         changes = {key: body[key] for key in MUTABLE if key in body}
         if not changes:

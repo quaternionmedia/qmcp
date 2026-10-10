@@ -3,33 +3,22 @@
     GET /v1/orchestration/plane      what every shape would do, declared
     GET /v1/orchestration/runnable   what each shape is short of, given a hand
 
-**THE PLANE WAS CLI-ONLY, AND A WINDOW CANNOT SHELL OUT.**
-`uv run qmcp orchestration plane` printed everything `qmcp.orchestration`
-declares, and the front end growing a topology designer had no way to ask the
-same question.
-A window that answered it itself -- by hard-coding which shapes spend, which
-decide, which are refused -- would be a second copy of this organisation's
-rule, kept current by nobody. So the window asks, and this is what answers.
+Every field is read from `qmcp.orchestration` -- `PLANE`, `OPTIONS`, `NEEDS`,
+`ATTESTED` and its drift reports -- and nothing is derived here, so the served
+plane and `uv run qmcp orchestration plane` give one answer. A window asks
+these routes rather than keeping its own copy of which shapes spend, decide or
+are refused.
 
-**IT SERVES THE DECLARATION AND ADDS NOTHING TO IT.** Every field here is read
-off `PLANE`, `NEEDS`, `ATTESTED` and the drift reports the module already
-computes. Nothing is derived that the module does not state, because a plane
-served over HTTP that disagreed with the one printed in a terminal would be two
-answers to one question.
+The routes name nobody -- a capability is a claim about a shape -- so they are
+served off loopback as well as on it.
 
-**SAFE TO SERVE ANYWHERE.** These routes name nobody: a capability is a claim
-about a shape, not about a person or a conversation. They are registered
-beside the topology shapes, off loopback as well as on it.
+`runnable` takes workers, a budget, a model and a build. There is no parameter
+for `person`: a shape whose need is a person's judgement is never made
+runnable by a request, as in `qmcp.orchestration.unmet`.
 
-**`person` IS NEVER SUPPLIED, AND THERE IS NO PARAMETER FOR IT.** `runnable`
-takes workers, a budget, a model and a build, which are things a caller can
-have. A shape whose need is a person's judgement is not made runnable by a
-query string, and a parameter that let it be would be the refusal quietly
-undone. `qmcp.orchestration.unmet` holds the same line.
-
-WHAT THIS CANNOT DO. Say whether a shape whose needs are all met will work.
-`unmet` reads declarations and runs nothing; the invocation record is where a
-run reports.
+What this cannot do: say whether a shape whose needs are all met will work.
+`unmet` reads declarations and runs nothing; a run reports in the invocation
+record.
 """
 
 from __future__ import annotations
@@ -62,9 +51,8 @@ def capability_payload(capability: plane.Capability) -> dict[str, Any]:
 def plane_payload() -> dict[str, Any]:
     """The whole plane as one document.
 
-    The drift reports ride along because a window showing the plane should
-    show where the plane and the registry disagree -- a declaration for a
-    shape nothing registers is a picture of something that is not there.
+    The drift reports are included so a window can show where the plane and
+    the registry disagree.
 
     `options` are the second declarations one setting selects. A window
     offering a council offers the advisory one from here, not from a copy.

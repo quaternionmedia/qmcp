@@ -2,30 +2,29 @@
 
     uv run qmcp orchestration plane
 
-**THE STUBS ARE BRAINSTORMS, AND THIS SAYS SO IN THE ONE PLACE A READER LOOKS.**
-Seven topologies are registered with a schema, a config class and a `run` that
-raises. Read as code that is a to-do list; read as design they are somebody's
-considered catalogue of collaboration shapes, written before anybody needed
-them. Neither reading is served by silence: `BRAINSTORM` names them as
-proposals, so nobody mistakes a deliberate blank for an oversight and nobody
-mistakes the registry for a runtime.
+Each registered topology has one `Capability` in `PLANE`: its status,
+whether running it spends money, writes to a repository or decides, why, and
+what a caller must supply before it can run. A capability is declared, never
+discovered by running the shape.
 
-**AND SOME OF THEM MUST NOT RUN HERE, WHICH IS A DIFFERENT STATE AGAIN.**
-`governance/qm/ci/attested-registry.yaml` names seven acts that are a person's
-by constitution -- ratifying a record, cutting a tag, closing a delta as
-complete, answering a question in the human queue, authorising a paid call.
-Those are not acts a machine performs badly; they are acts that *change what
-they assert* when a machine performs them. A topology pointed at one is refused,
-and the refusal is a property of the pairing rather than of the topology.
+A status is one of three. `RUNS`: implemented, and safe to point at ordinary
+work. `BRAINSTORM`: a designed shape whose `run` still raises -- a proposal,
+not a runtime. `REFUSED`: a shape whose design performs an act this
+organisation reserves for a person.
 
-**CAPABILITY IS DECLARED, NOT DISCOVERED.** Every entry states whether running
-it spends money, whether it writes to a repository, and which attested acts its
-shape would naturally perform. A plane that worked those out by running
-something would have already done the thing it was deciding about.
+`governance/qm/ci/attested-registry.yaml` lists those acts: ratifying a
+record, cutting a tag, closing a delta as complete, answering a question in the
+human queue and authorising a paid call among them. A topology that decides is
+refused when pointed at one, and a topology that only reports is not, so the
+refusal belongs to the pairing of shape and act. `refuses` answers for a
+pairing.
 
-WHAT THIS CANNOT DO. Stop a topology that lies in its declaration. The
-declaration is a claim by whoever wrote the entry, checked against the registry
-by `undeclared()` and against nothing else.
+`OPTIONS` declares a shape that does something else under one setting, such
+as the advisory council.
+
+What this cannot do: stop a topology whose declaration is wrong. A declaration
+is checked against the registry by `undeclared()` and `stubs()`, and against
+nothing else.
 """
 
 from __future__ import annotations
@@ -45,9 +44,8 @@ BRAINSTORM = "brainstorm"
 REFUSED = "refused"
 """Its shape performs an act this organisation reserves for a person."""
 
-# The acts, from `governance/qm/ci/attested-registry.yaml`. Restated because
-# this repository's corpus pin predates that file -- `undeclared()` reports the
-# drift rather than this module pretending the list is authoritative.
+# The acts, as `governance/qm/ci/attested-registry.yaml` lists them, restated
+# here. The registry is the authority.
 ATTESTED = (
     "ratify a record",
     "cut a version tag",
@@ -63,10 +61,8 @@ ATTESTED = (
 class Need:
     """One thing a topology must have before it can be run, and what supplies it.
 
-    **A NEED THAT DOES NOT NAME ITS REMEDY IS A DEAD END**, which is the lesson
-    `dossier.views` learned the same week: telling somebody a topology cannot
-    run, without saying what would make it run, leaves them where the silence
-    did.
+    Every need names its remedy, so a reader told that a shape cannot run is
+    also told what would make it run.
     """
 
     key: str
@@ -136,23 +132,20 @@ PLANE: tuple[Capability, ...] = (
     Capability(
         TopologyType.PIPELINE, BRAINSTORM, spends=False, writes=False,
         decides=False,
-        why="stages in sequence. The registered class is still a stub, and the "
-            "concrete pipelines -- `qmcp.feedback` for the self-checks, "
-            "`intake` for an export -- run without claiming the type. They "
-            "cannot claim it safely: `TopologyRegistry` is keyed by type and "
-            "replaces silently, so a second class claiming PIPELINE wins or "
-            "loses by import order rather than colliding",
+        why="stages in sequence. The registered class is a stub. "
+            "`qmcp.feedback` and `intake` are working pipelines that do not "
+            "register the type: `TopologyRegistry` keeps one class per type, "
+            "and import order would decide which one it kept",
         needs=(Need(BUILD,
                     "the registered class is a stub whose `run` raises",
-                    "somebody writes it; `qmcp.feedback` and `intake` are the "
-                    "concrete pipelines that already work"),),
+                    "somebody writes it; `qmcp.feedback` and `intake` are "
+                    "working pipelines to start from"),),
         voice_runnable=True),
     Capability(
         TopologyType.DELEGATION, RUNS, spends=False, writes=False, decides=False,
         why="route each unit of work to the worker registered for its shape. "
-            "`qmcp.sweep` already had this shape before it had this name: nine "
-            "parsers and fifteen questions, and the mix follows the work "
-            "rather than a setting",
+            "`qmcp.sweep` routes its parsers and questions this way, so the "
+            "mix follows the work rather than a setting",
         needs=(Need(WORKERS,
                     "it routes each unit of work to the worker registered for "
                     "its shape, and an unregistered shape has nowhere to go",
@@ -170,9 +163,9 @@ PLANE: tuple[Capability, ...] = (
     Capability(
         TopologyType.ENSEMBLE, BRAINSTORM, spends=True, writes=False,
         decides=False,
-        why="several workers on the same item, answers combined. Plausible and "
-            "unbuilt. It spends by construction -- N answers to one question -- "
-            "so the first version needs a budget before it needs a runtime",
+        why="several workers on the same item, answers combined. Unbuilt. "
+            "Every run spends -- N answers to one question -- so it needs a "
+            "budget as well as a runtime",
         needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
                Need(BUDGET,
                     "N answers to one question is N paid calls, and the "
@@ -182,9 +175,8 @@ PLANE: tuple[Capability, ...] = (
         voice_runnable=True),
     Capability(
         TopologyType.DEBATE, BRAINSTORM, spends=True, writes=False, decides=True,
-        why="positions argued to a conclusion. A good shape for a question with "
-            "no right answer, and unbuilt. It decides, so it is not for an "
-            "attested act",
+        why="positions argued to a conclusion, for a question with no right "
+            "answer. Unbuilt. It decides, so it is not for an attested act",
         needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
                Need(BUDGET, "positions are argued by paid calls",
                     "issue it against an authorised budget"),),
@@ -192,8 +184,8 @@ PLANE: tuple[Capability, ...] = (
     Capability(
         TopologyType.CHAIN_OF_COMMAND, BRAINSTORM, spends=True, writes=False,
         decides=True,
-        why="escalation up a hierarchy. Unbuilt, and the escalation terminates "
-            "in something choosing",
+        why="escalation up a hierarchy, ending in something choosing. "
+            "Unbuilt",
         needs=(Need(BUILD, "nobody has written it", "somebody writes it"),
                Need(BUDGET, "each escalation is a paid call",
                     "issue it against an authorised budget"),),
@@ -201,26 +193,21 @@ PLANE: tuple[Capability, ...] = (
     Capability(
         TopologyType.COMPOUND, BRAINSTORM, spends=True, writes=False,
         decides=False,
-        why="topologies composed of topologies. Cannot usefully run until more "
-            "than one of its parts does, which is an ordering fact rather than "
-            "a judgement about the shape",
+        why="topologies composed of topologies. It runs usefully once more "
+            "than one of its parts runs",
         needs=(Need(BUILD,
                     "it composes topologies, and more than one of its parts "
                     "has to run first",
-                    "build the parts; this is an ordering fact rather than a "
-                    "judgement about the shape"),),
+                    "build the parts first"),),
         voice_runnable=True),
     Capability(
         TopologyType.COUNCIL, REFUSED, spends=True, writes=False, decides=True,
         why="its default config gives the arbiter the final decision when "
-            "consensus fails -- 'Council manager who facilitates and makes "
-            "final decisions'. That is adjudication by construction. "
-            "Deliberation is welcome here and the deciding is not: a council "
-            "that reached a verdict on whether to ratify would be a machine "
-            "performing an act `ci/attested-registry.yaml` reserves for a "
-            "person, and the verdict would be indistinguishable from one "
-            "somebody made. `arbiter_can_override` false is the advisory "
-            "council, declared in `OPTIONS`",
+            "consensus fails, so the shape adjudicates. A council deciding "
+            "whether to ratify would be a machine performing an act "
+            "`ci/attested-registry.yaml` reserves for a person. "
+            "`arbiter_can_override` false is the advisory council, declared in "
+            "`OPTIONS`",
         needs=(Need(PERSON,
                     "its arbiter takes the final decision when consensus "
                     "fails, and that is an act the constitution reserves",
@@ -233,9 +220,8 @@ PLANE: tuple[Capability, ...] = (
 class Option:
     """One configuration under which a shape would do something else.
 
-    **THE SHAPE'S ROW STILL STANDS.** An option is a second declaration for
-    one setting, not an amendment to the first: a design that does not set
-    it, or sets it otherwise, is read against `PLANE` exactly as before.
+    An option is a second declaration for one setting. A design that does
+    not select it is read against the kind's row in `PLANE`.
     """
 
     setting: str
@@ -296,10 +282,9 @@ def unmet(capability: Capability, *, built: bool | None = None,
           ) -> tuple[Need, ...]:
     """What this shape is still short of, given what the caller has.
 
-    **`status` AND `needs` ANSWER DIFFERENT QUESTIONS AND BOTH ARE ASKED.** A
-    shape nobody built is short of a build whatever else the caller brings; a
-    built one can still be short of a budget. Reporting only the first would
-    tell somebody to write code they already have.
+    `status` and `needs` answer different questions, and both are asked: a
+    shape nobody has built is short of a build whatever else the caller
+    brings, and a built one can still be short of a budget.
 
     `built` overrides the declared status, so a caller who has written a
     runtime for a `BRAINSTORM` shape can ask what else it wants.
@@ -315,9 +300,8 @@ def unmet(capability: Capability, *, built: bool | None = None,
             continue
         if need.key == MODEL and model:
             continue
-        # PERSON is never supplied here. A shape whose need is a person's
-        # judgement is not made runnable by passing an argument, and a branch
-        # that let it be would be the refusal quietly undone.
+        # PERSON is never supplied: a shape whose need is a person's judgement
+        # is not made runnable by an argument.
         short.append(need)
     return tuple(short)
 
@@ -334,10 +318,9 @@ def by_type() -> dict[TopologyType, Capability]:
 def undeclared() -> list[str]:
     """Registered topologies with no capability, and declarations for nothing.
 
-    Both directions. A topology somebody registers and nobody declares would
-    run with its cost and its authority unstated, which is the whole failure
-    this module exists against; a declaration for a topology nobody registered
-    describes something that is not there.
+    Both directions: a registered topology with no declaration would run with
+    its cost and its authority unstated, and a declaration with no registered
+    topology describes nothing.
     """
     registered = set(TopologyRegistry._topologies)
     declared = set(by_type())
@@ -352,10 +335,9 @@ def undeclared() -> list[str]:
 def stubs() -> list[str]:
     """Registered topologies whose `run` is still the base class's.
 
-    **THE CHECK THAT CAUGHT THE PLANE LYING.** A declaration of `RUNS` is a
-    claim about a class, and the class is reachable, so the claim is checkable.
-    It said the pipeline ran; the registry held the stub, because two classes
-    claimed one type and the winner depended on what had been imported.
+    A `RUNS` declaration is a claim about a reachable class, so this checks
+    it. `TopologyRegistry` keeps one class per type, and when two classes
+    register one type the import order decides which is kept.
     """
     found = []
     for kind, cls in sorted(TopologyRegistry._topologies.items(),
@@ -368,9 +350,8 @@ def stubs() -> list[str]:
 def unregistered_types() -> list[str]:
     """Names in the vocabulary that no topology implements.
 
-    Reported rather than removed. `mesh`, `star` and `ring` are in
-    `TopologyType` with no class and no config -- which is a smaller brainstorm
-    than the seven with schemas, and still somebody's intent.
+    `mesh`, `star` and `ring` are in `TopologyType` with no class and no
+    config. They are reported, not removed.
     """
     registered = set(TopologyRegistry._topologies)
     return sorted(t.value for t in TopologyType if t not in registered)
@@ -380,11 +361,10 @@ def refuses(kind: TopologyType, act: str,
             config: dict[str, Any] | None = None) -> str | None:
     """Why this pairing is refused, or None.
 
-    THE REFUSAL IS A PROPERTY OF THE PAIRING. A deciding topology is fine
-    pointed at a question nobody's constitution reserves, and a reporting
-    topology is fine pointed at an attested act because reporting is not
-    performing. It is the combination that is refused, so both are named in
-    the answer.
+    The refusal belongs to the pairing. A deciding topology is allowed a
+    question nobody's constitution reserves, and a reporting topology is
+    allowed an attested act, because reporting on an act is not performing
+    it. The answer names both.
 
     `config` is the design's configuration. It changes the answer only where
     it selects one of `OPTIONS`, and the answer then names that setting.
@@ -448,7 +428,7 @@ def render() -> str:
     return "\n".join(lines)
 
 
-# --- the two shapes this work actually needed ---------------------------------
+# --- the two shapes that run ---------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -465,14 +445,9 @@ class Routed:
 class DelegationTopology(BaseTopology):
     """Route each unit of work to the worker registered for its shape.
 
-    **THIS IS THE SHAPE `qmcp.sweep` ALREADY WAS.** Nine parsers and fifteen
-    questions, chosen by the work rather than by a setting. Generalised here so
-    the manager knows the shape by name, and so a second caller does not write
-    a third dispatcher.
-
-    A unit whose shape has no worker is `taken=False` and named. That is the
-    property that matters: dropping it silently would leave a run looking
-    finished with two thirds of its work untouched.
+    A unit whose shape has no worker is returned with `taken=False` and
+    named, never dropped, so a run that left work untouched says so.
+    `qmcp.sweep` routes its parsers and questions this way.
     """
 
     topology_type = TopologyType.DELEGATION
@@ -539,15 +514,11 @@ class Checked:
 class CrossCheckTopology(BaseTopology):
     """Several independent checkers on one claim.
 
-    **IT REPORTS AND DOES NOT DECIDE.** The consensus is a count, and what to
-    do about a split is a person's. A cross-check that closed the question
-    would be the deciding shape wearing a reporting name -- and every mutation
-    this pair has run today was a cross-check of exactly this form: break the
-    thing, see whether the guard says so.
+    It reports and does not decide: the consensus is a count, and what to do
+    about a split is a person's.
 
-    `independent` is not decoration. Checkers that saw each other's reasoning
-    would be one checker with extra steps, which is the failure mode of every
-    panel that agrees too easily.
+    The checkers are independent. A checker that saw another's reasoning
+    would not be a second opinion.
     """
 
     topology_type = TopologyType.CROSS_CHECK
@@ -571,8 +542,7 @@ def cross_check(claim: Any,
     """Ask each checker independently. A checker that raises is a `False`.
 
     A raising checker counts against rather than being dropped: a check that
-    could not be made is not agreement, and treating it as absent would let a
-    broken checker quietly raise everybody else's share of the vote.
+    could not be made is not agreement.
     """
     verdicts: list[bool] = []
     reasons: list[str] = []

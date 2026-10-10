@@ -3,33 +3,20 @@
     uv run qmcp topology gallery
     uv run qmcp topology show pipeline --level 2
 
-**ONE DESCRIPTION, MANY RENDERERS, AND THE DESCRIPTION DRAWS NOTHING.** A `View`
-is boxes and arrows with kinds and notes. It holds no coordinates, no glyphs, no
-colours and no widths, because the moment it holds one of those it is a picture
-of a terminal or a picture of a browser and the other window has to undo it.
-`dossier` draws these as text in a panel; `codecarto` draws them as a graph in a
-page. Both are looking at the same flow, and neither is looking at the other's
-drawing.
+A `View` is boxes and arrows with kinds and notes. It holds no coordinates,
+glyphs, colours or widths, so every window draws from the same description:
+`dossier` draws it as text in a panel and `codecarto` as a graph in a page.
 
-**A SINGLE VIEW, AT A LEVEL, RATHER THAN A SEQUENCE OF SCREENS.** Level 0 is the
-black box: what goes in, what comes out, and nothing about how. Level 1 is the
-parts. Level 2 is the flow between them. It is one view because the question
-"what does this do" and the question "how does it do it" are the same question
-asked at two distances, and a tool that answers them on two screens makes a
-reader hold one in their head while looking at the other.
+A view is one topology at one level. Level 0 is the black box: what goes in
+and what comes out. Level 1 is the parts. Level 2 is the flow between them.
 
-**A WINDOW MAY SHOW LESS THAN THE DESCRIPTION CARRIES, AND NEVER MORE.** Boxes
-carry a `kind` and a `note`; arrows carry a kind that distinguishes flow from
-feedback from refusal. A terminal will collapse some of that to a border style
-and a browser will not. What neither may do is invent a dimension the
-description does not hold -- a renderer that coloured by "importance" would be
-drawing a judgement nobody recorded.
+Boxes carry a `kind` and a `note`; arrows carry a kind that tells flow from
+feedback from refusal. A window may show less than the description carries --
+a terminal collapses some of it to a border style -- and never more: it draws
+no dimension the description does not hold.
 
-**THE PLANE'S DECLARATIONS ARE PART OF THE PICTURE.** A topology that spends,
-writes or decides shows it, and a refused one is drawn refused rather than
-omitted. A gallery that quietly dropped `council` would be a gallery that made
-this organisation's rule invisible at exactly the moment somebody was choosing
-a shape.
+The plane's declarations are part of the view. A topology that spends, writes
+or decides shows it, and a refused one is drawn refused rather than omitted.
 """
 
 from __future__ import annotations
@@ -50,8 +37,7 @@ STORE = "store"
 OUTPUT = "output"
 
 # What an arrow means. A renderer may draw all three alike; it may not merge
-# them, because a refusal that looked like a flow would draw a path nothing
-# takes.
+# them, or a refusal would read as a path that is taken.
 FLOW = "flow"
 FEEDBACK = "feedback"
 REFUSAL = "refusal"
@@ -137,9 +123,8 @@ class View:
         return next((b for b in self.boxes if b.id == box_id), None)
 
 
-# The shapes, at level 2. Levels 0 and 1 are derived from these rather than
-# written three times -- a black box that disagreed with the flow it summarises
-# would be the drift this corpus keeps recording.
+# The shapes, at level 2. Levels 0 and 1 are derived from these, so a black
+# box cannot disagree with the flow it summarises.
 _SHAPES: dict[TopologyType, dict[str, Any]] = {
     TopologyType.PIPELINE: {
         "caption": "stages in sequence, each one's output the next one's input",
@@ -240,9 +225,8 @@ def view_of(kind: TopologyType, level: int = FLOWS) -> View:
     shape = _SHAPES.get(kind)
     capability = by_type().get(kind)
     if shape is None:
-        # Declared in the vocabulary, drawn by nothing. Shown as a black box
-        # with nothing inside rather than omitted: a gallery that dropped it
-        # would hide that the name exists.
+        # Declared in the vocabulary, drawn by nothing: shown as an empty
+        # black box rather than omitted, so the name stays visible.
         return View(topology=kind.value, level=BLACK_BOX,
                     boxes=(Box("in", "work", INPUT),
                            Box("box", kind.value, WORKER,
@@ -281,8 +265,7 @@ def view_of(kind: TopologyType, level: int = FLOWS) -> View:
 def gallery(level: int = BLACK_BOX) -> list[View]:
     """Every core topology at one level, in the plane's order.
 
-    Refused and unbuilt shapes are here. The gallery is where somebody chooses,
-    and a chooser needs to see the one they must not use.
+    Refused and unbuilt shapes are included, marked as such.
     """
     return [view_of(kind, level) for kind in _SHAPES]
 
@@ -290,8 +273,8 @@ def gallery(level: int = BLACK_BOX) -> list[View]:
 def as_payload(view: View) -> dict[str, Any]:
     """The view as data, for a window on the other side of the seam.
 
-    Flat and JSON-shaped on purpose: `dossier` reads this over HTTP and
-    `codecarto` will read the same thing. Neither imports this module.
+    Flat and JSON-shaped: windows read it over HTTP and import nothing from
+    this module.
     """
     return {
         "topology": view.topology,
@@ -310,9 +293,8 @@ def as_payload(view: View) -> dict[str, Any]:
 def _subject_address(subject: str, relations: list[dict[str, Any]]) -> str:
     """`<owner>/<subject>`, with the owner read off the relations.
 
-    Returns "" when no relation names an owner, which is a real answer: the
-    subject is a name somebody typed and nothing here can say whose it is.
-    A guessed owner would send a reader to another account's repository.
+    Returns "" when no relation names an owner: the subject is then a name
+    with no known owner, and no owner is guessed.
     """
     if "/" in subject:
         return subject
@@ -329,34 +311,19 @@ def from_relations(subject: str, relations: list[dict[str, Any]],
                    caption: str = "") -> View:
     """A view of one thing and what it is related to, with the edges weighted.
 
-    **THIS IS WHERE WEIGHT COMES FROM, AND IT IS NEVER INVENTED HERE.** Each
-    relation carries a `weight` and the `evidence` it was read from --
-    `qmcp.threads.consolidate` measures both. This arranges them into boxes and
-    arrows and changes neither.
+    Each relation carries a `weight` and the `evidence` it was read from, both
+    measured by `qmcp.threads.consolidate`; this arranges them into boxes and
+    arrows and changes neither. A relation with no weight produces an arrow
+    with `weight=None`, which a window draws differently from a weak one: an
+    unmeasured edge is not a negligible one.
 
-    A relation with no weight produces an arrow with `weight=None`, which every
-    window must draw differently from a weak one. Filling it in with a default
-    would turn "nobody measured this" into "this is negligible", and the two
-    are opposite claims about the same edge.
-
-    **ONE BOX PER ADDRESS, NOT ONE PER RELATION.** Several relations reaching the
-    same address are several pieces of evidence about one thing, and the address
-    is what says they are one thing -- `records/DRAFT-a-route-is-an-address.md`.
-    Keying boxes by position instead drew a real archive's three readings of one
-    delta as three separate nodes carrying the same label and the same note,
-    which reads as three deltas that happen to share a name. Found by
-    `protocols/trio_demo.py` on the thread archive; the fixture could not show it
-    because no two of its relations pointed anywhere near each other.
-
-    The arrows are *not* merged. Three threads each finding this relation is
-    three observations, each with its own weight and its own basis, and
-    collapsing them into one would invent an aggregate nobody measured.
+    There is one box per address, not one per relation: relations reaching the
+    same address are evidence about one thing
+    (`records/DRAFT-a-route-is-an-address.md`). The arrows are not merged, so
+    each relation keeps its own weight and basis.
     """
-    # **THE SUBJECT CARRIES ITS OWN ADDRESS.** It had none, so the one box
-    # naming the project a reader asked about was the only box they could not
-    # follow -- every relation target was navigable and the subject was not.
-    # `owner_of` is taken from the relations rather than assumed: they are
-    # addresses this survey already resolved.
+    # The subject carries its own address, like every relation target. Its
+    # owner is read from the relations, which are resolved addresses.
     subject_address = _subject_address(subject, relations)
     boxes = [Box("subject", subject, INPUT, note=subject_address)]
     arrows = []
@@ -386,18 +353,14 @@ def from_relations(subject: str, relations: list[dict[str, Any]],
 
 # --- which visual channel carries which data axis ------------------------------
 #
-# **A CHANNEL IS DECLARED HERE OR THE TWO WINDOWS WILL DISAGREE.** If each
-# renderer picks its own mapping, thickness means strength in one and recency in
-# the other, and two people looking at one flow read opposite things from the
-# same line. The mapping is part of the description.
+# Each channel is declared here, so every window maps it to the same data axis
+# and a line's thickness means the same thing in each.
 #
-# **AND `unknown` IS ITS OWN AXIS, NOT THE BOTTOM OF STRENGTH.** This is the
-# rule the whole encoding turns on. An unmeasured edge is not a weak edge: one
-# is an absence of evidence and the other is evidence of absence. Putting them
-# on one scale makes "nobody looked" render as "we looked and it is negligible",
-# which is a claim nobody made. So `measured` gets a *different channel* from
-# `strength` -- style and colour rather than width -- and a window that runs out
-# of channels drops one and says so rather than folding two axes into one.
+# `measured` is its own axis, not the bottom of `strength`: an unmeasured edge
+# is an absence of evidence, not evidence of absence. It therefore has a
+# different channel -- style and colour rather than width -- and a window that
+# runs out of channels drops one and says so rather than folding two axes into
+# one.
 
 
 @dataclass(frozen=True)
