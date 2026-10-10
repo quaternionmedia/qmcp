@@ -1,26 +1,16 @@
 """qmcp's dashboard: what it shows, and what it refuses to pretend.
 
-Every test builds its own database FROM THIS PROJECT'S OWN MODEL METADATA, and
-inserts through the models rather than through hand-written SQL. That is the
-difference between testing the dashboard and testing a second, private idea of
-what the schema is. The hand-written version of this file agreed with the models
-by coincidence and used two status strings the enum does not contain -- `ERROR`
-and, on the consumer's side, `FAILURE` -- while both suites stayed green.
+Every test builds its own database from this project's model metadata and
+inserts through the models rather than hand-written SQL, so the tests use the
+schema the dashboard reads.
 
 The dashboard reads a file directly rather than the HTTP API, so nothing here
-needs a server, which is the same property that lets the real one explain why
-the server is down.
+needs a server.
 
-THE TESTS WORTH READING ARE THE DEGRADED ONES. A dashboard is easy to write so
-that it works on healthy data and raises on everything else, and the states it
-has to survive here are real: this database has been missing a table the code
-expected, and has been empty.
-
-AN EMPTY DASHBOARD AND A BROKEN ONE ARE NOT TOLD APART BY THE TABLE COUNT. This
-file used to say they were. A database holding two unrelated tables reports a
-table count like any other, so the count distinguishes nothing a consumer can
-act on. What tells them apart is that a count nobody could take is `unknown`
-with a reason, and never zero.
+The degraded cases -- a database missing a table, an empty one -- are tested
+alongside the healthy one. An empty dashboard and a broken one are told apart
+by a count that could not be taken being `unknown` with a reason, never zero;
+the table count does not tell them apart.
 """
 
 from __future__ import annotations
@@ -173,11 +163,8 @@ def test_an_empty_dashboard_is_distinguishable_from_a_broken_one(tmp_path):
 
 
 def test_a_count_nobody_took_is_unknown_rather_than_zero(tmp_path):
-    """The name of this test used to be `..._count_as_zero_rather_than_raising`.
-
-    Not raising was right and was never the question. Returning zero was the
-    error: it made a database missing its tables report a clean bill of health,
-    and the consumer stored that zero as a fact about the harness.
+    """A database missing its tables reports each count as unknown, not zero
+    and not an exception.
     """
     view = build(make_db(tmp_path / "a.db", with_tables=False))
     assert (view.human_requests, view.human_responses) == (None, None)
@@ -258,13 +245,10 @@ def test_a_healthy_payload_carries_plain_numbers(tmp_path):
 def test_the_emitter_conforms_to_the_shared_payload_vectors():
     """Every case the control panel is also held to.
 
-    TWO IMPLEMENTATIONS, ONE SET OF CASES -- the same trade this project makes
-    for the address grammar. The vectors were not hand-written: each payload in
-    them came out of this emitter reading a database built from these models,
-    so a case that stops being producible stops being in the file.
-
-    This is what replaced a hand-written fixture on each side of the seam that
-    agreed with each other and with nothing else.
+    Two implementations, one set of cases, as for the address grammar. Each
+    payload in the vectors is this emitter's output over a database built
+    from these models, so a case that stops being producible stops being in
+    the file.
     """
     if not VECTORS.is_file():
         pytest.fail(
@@ -297,7 +281,7 @@ def test_the_emitter_conforms_to_the_shared_payload_vectors():
             )
 
 
-# --- the cap, which used to be silent ------------------------------------------
+# --- the cap ------------------------------------------------------------------
 
 
 def _queue_of(tmp_path, count: int):
@@ -319,12 +303,7 @@ def _queue_of(tmp_path, count: int):
 
 
 def test_a_truncated_queue_says_how_many_it_holds(tmp_path):
-    """THE ONE THAT MATTERS.
-
-    A queue of fifteen arrived as ten and nothing said so, so a person acting
-    on `dossier`'s Outstanding list was acting on a work list that had quietly
-    dropped the five most recently asked. Found by queueing two governed runs
-    against a live harness and finding neither in the payload.
+    """A queue longer than the cap reports its full size beside the rows.
 
     Mutation, quoted as it printed: `"queue_total": view.queue_total` replaced
     with `len(view.waiting)`.

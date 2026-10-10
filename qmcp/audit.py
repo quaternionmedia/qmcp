@@ -3,37 +3,22 @@
     uv run qmcp audit models --since 2026-08-21
     uv run qmcp audit in-flight
 
-**DETERMINISTIC MEANS TWO RUNS OVER THE SAME ROWS GIVE THE SAME ANSWER, AND
-THAT IS A STRONGER CLAIM THAN IT SOUNDS.** Three things break it and all three
-are avoided here rather than mitigated:
+Two runs over the same rows give the same answer:
 
-*The clock.* "Today" is not a fact about the world; it is a fact about a
-timezone. `created_at` is written in UTC, so a window is a UTC half-open
-interval stated in the answer -- never `date.today()`, which gives two different
-answers either side of midnight in two different places, both correct and
-neither reproducible.
+- a window is a UTC half-open interval, stated in the answer, because
+  `created_at` is written in UTC; nothing reads `date.today()`;
+- `Window` has no default: a caller states it, and `Window.day()` makes that
+  easy;
+- an invocation that recorded no model is `unknown`, counted, and shown beside
+  the models that are named.
 
-*The default.* A window nobody named would be filled in from the wall clock, so
-the same query run twice returns different rows. `Window` has no default: a
-caller states it, and `Window.day()` exists to make stating it easy rather than
-to make it optional.
+`tool_invocations` has no model column. A model is read from the invocation's
+`input_params`, where `record_model` puts it; nothing is inferred from a tool's
+name.
 
-*The silent omission.* An invocation that recorded no model is not evidence of a
-model that ran unrecorded, and it is not evidence of nothing running. It is
-`unknown`, it is counted, and it appears in the answer beside the models that
-are named.
-
-**WHAT CANNOT BE ANSWERED TODAY, SAID PLAINLY.** `tool_invocations` has no model
-column and `agent_types` is empty, so "which models ran" currently answers
-`unknown` for every row. That is the honest state of the record rather than a
-defect in the query, and `record_model` is the path that makes it answerable
-going forward. A module that inferred a model from a tool name would be
-answering a question nobody's data supports.
-
-**THE PAIR IS THE BRIDGE TEST.** Both sides can compute the same figures -- the
-harness from its own tables, the panel from what crosses the seam. Agreement is
-evidence the bridge carries what it claims to; disagreement is a finding, and
-`compare()` reports it as one rather than picking a winner.
+`compare()` is the bridge test: the harness and the panel each compute the
+same figures, and a disagreement is reported as a finding, with no winner
+picked. `docs/self-checks.md` describes it.
 """
 
 from __future__ import annotations
@@ -142,9 +127,7 @@ class ModelReport:
 def model_of(params: Any) -> str:
     """The model an invocation recorded, or `unknown`.
 
-    **NOTHING IS INFERRED FROM A TOOL NAME.** `planner` is a tool, not a model,
-    and mapping one to the other would be this module inventing the fact it was
-    asked to report.
+    Nothing is inferred from a tool name: `planner` is a tool, not a model.
     """
     if isinstance(params, str):
         try:
@@ -277,22 +260,13 @@ class Disagreement:
 def compare(harness: dict[str, Any], panel: dict[str, Any]) -> list[Disagreement]:
     """Where the two sides of the pair disagree about the same question.
 
-    **THIS IS THE BRIDGE TEST, AND IT PICKS NO WINNER.** Both sides count from
-    what they hold; agreement is evidence the seam carried what it claimed to.
-    A disagreement is a finding about the bridge, and deciding which side is
-    right needs somebody who can look at both -- exactly the split that made
-    the panel report an absent archive while the harness served 203 threads.
+    Picks no winner: agreement is evidence the seam carried what it claims
+    to, and a disagreement is a finding about the bridge for somebody who can
+    look at both sides.
 
-    A figure only one side reports is a disagreement too: a bridge that drops a
-    field is a bridge that lost it, and reading the shared keys alone would
-    report that as agreement.
-
-    **SO SCOPE THE COMPARISON TO WHAT THE ROUTE CLAIMS TO CARRY.** That rule
-    makes any figure one side simply does not send look like a loss. The first
-    bridge run compared the harness's invocation count against a threads route
-    and reported a disagreement -- correctly by the rule, and wrongly about the
-    world, because `/v1/threads` never promised invocations. Pass the carried
-    figures, not everything each side happens to know.
+    A figure only one side reports is a disagreement too, shown as
+    "not reported". So pass only the figures the route claims to carry, not
+    everything each side knows.
     """
     found = []
     for key in sorted(set(harness) | set(panel)):
@@ -329,19 +303,13 @@ def _failed(row: Any) -> bool:
 
 
 def record_model(params: dict[str, Any] | None, model: str | None) -> dict[str, Any]:
-    """Put the model where `model_of` will find it, so today's answer is
-    `unknown` and tomorrow's is not.
+    """Put the model in `params` where `model_of` will find it.
 
-    **THIS IS THE WHOLE REMEDY, AND IT IS DELIBERATELY SMALL.** The reason
-    "which models ran" cannot be answered is not that the query is weak; it is
-    that fifty-five invocations recorded no model. Adding a column would be a
-    migration and a second place for the fact to live -- `input_params` is
-    already JSON, already written on every invocation, and already the thing
-    `model_of` reads.
+    The model lives in `input_params`, which is JSON written on every
+    invocation, rather than in a column of its own.
 
-    `None` is left absent rather than written as the string "unknown". An
-    absent key and a recorded "unknown" both read as unknown today, and only
-    the first stays true if somebody later learns which model it was.
+    `None` is left absent rather than written as the string "unknown", so a
+    model learned later can still be recorded truthfully.
     """
     out = dict(params or {})
     if model and model.strip():

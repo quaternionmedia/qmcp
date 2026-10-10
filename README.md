@@ -337,6 +337,7 @@ The system follows a three-plane architecture:
 - [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
 - [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
 - [Thread Archive](docs/threads.md) - Conversations read as units of work
+- [Self-Checks](docs/self-checks.md) - Dashboard, audit, self-check and the feedback loop
 - [Deployment](docs/deployment.md) - Production deployment guide
 - [Contributing](docs/contributing.md) - Development guidelines
 - [Roadmap](docs/ROADMAP.md) - Development phases

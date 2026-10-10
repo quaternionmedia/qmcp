@@ -137,7 +137,7 @@ def test_a_failure_raises_one_question_with_the_options_named():
 
 
 def test_the_question_has_the_same_id_every_run():
-    """Asking again each run would bury the one nobody had answered yet."""
+    """One question per failing check, however many runs raise it."""
     assert ask(finding(), PROJECT).id == ask(finding(), PROJECT).id
 
 
