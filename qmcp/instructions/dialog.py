@@ -61,10 +61,8 @@ _AGREE, *_ALIASES = vocabulary.phrases("answer.agree")
 CONFIRM = [_AGREE, vocabulary.phrases("answer.again")[0]]
 AGREE_ALIASES = tuple(_ALIASES)
 # How sure the engine must be of an instruction for the read-back to ask nothing
-# (`tacit_above`), and how long it then listens for an interruption. Measured
-# on synthesized instructions, whisper's base model scored 0.5 to 0.75; above
-# 0.7, the takes it got wrong were near misses ("box" for "vox"), and each is
-# still read back aloud with a moment to interrupt.
+# (`tacit_above`), and how long it then listens for an interruption. A take
+# above the threshold is still read back aloud, with a moment to interrupt.
 TACIT_ABOVE = 0.7
 TACIT_SECONDS = 2.5
 # Names an instruction's take is hinted with, at most: the engine bounds a
