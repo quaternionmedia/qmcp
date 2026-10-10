@@ -52,10 +52,8 @@ def test_the_mix_of_workers_follows_the_shares(monkeypatch):
 
 
 def test_a_shape_with_no_worker_is_queued_and_named():
-    """THE ONE THAT MATTERS.
-
-    Dropping it would leave the sweep looking finished with two thirds of the
-    repositories untouched.
+    """A share whose shape has no worker comes back `NEEDS_WORKER`, not
+    dropped.
 
     Mutation: skip unregistered shapes and this fails.
     """

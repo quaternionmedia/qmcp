@@ -2,40 +2,34 @@
 
     uv run qmcp topology show governed --level 2
 
-**THE PIPELINE IS DETERMINISTIC AND ONE BOX INSIDE IT IS NOT.** That asymmetry
-is the whole design. `governance/qm/PRINCIPLES.md` P17 asks for the black box's
-surface to be minimised and metered at one seam, and this module is that seam:
-a fixed sequence of total stages with exactly one call to something that has no
-halting guarantee, budgeted before it and bounded after it.
+The pipeline is deterministic and one box inside it is not: a fixed sequence
+of total stages around exactly one call to something with no halting
+guarantee, budgeted before it and bounded after it. This module is the one
+metered seam `governance/qm/PRINCIPLES.md` P17 asks for.
 
-**IT ENDS AT THE HUMAN GATE AND DOES NOT PASS IT.** What comes back is a draft.
-There is no function here that turns a draft into a decision, because answering
-a question in the human-in-the-loop queue is one of the acts
-`governance/qm/ci/attested-registry.yaml` reserves for a person. `queued()`
-builds the payload that puts a draft in front of somebody; posting it and
-answering it are two different acts and only the first is a machine's.
+It ends at the human gate and does not pass it. What comes back is a draft,
+and nothing here turns a draft into a decision: answering a question in the
+human-in-the-loop queue is reserved for a person
+(`governance/qm/ci/attested-registry.yaml`). `queued()` builds the payload that
+puts a draft in front of somebody and does not post it.
 
-**THE STAGES ARE DECLARED ONCE AND THE DRAWING IS DERIVED FROM THEM.** `STAGES`
-is what `run` walks and what `view` draws, so the picture cannot describe a
-pipeline the code does not run -- P12, and the drift this organisation keeps
-finding whenever a behaviour is described in a second place beside the code.
+`STAGES` is what `run` walks and what `view` draws, so the picture cannot
+describe a pipeline the code does not run (P12).
 
-**NO VENDOR APPEARS HERE.** The model is a callable the caller passes in. A
-module that imported one would be this repository choosing a supplier on behalf
-of every reader of the corpus, which `governance/qm` forbids and
-`qmcp.localmodel` is the declared exception to.
+No vendor appears here: the model is a callable the caller passes in.
+`qmcp.localmodel` is the declared exception that names one.
 
-WHAT THIS CANNOT DO, STATED SO NOBODY READS MORE INTO IT:
+What this cannot do:
 
-- **It cannot stop a slow call.** `Bound.seconds` is measured and reported,
-  never enforced: interrupting a callable this module does not own is not
-  something Python offers for free, and a guard that claimed to would be a
-  green check standing where a reader believes something is enforced.
-- **It cannot stop a caller reading a draft and acting on it.** It can only
-  make sure the thing they read says what it is.
-- **It cannot govern a paid call made somewhere else.** Like `qmcp.spend`, it
-  is what a module that spends must pass through, and a surface added without
-  passing through it is the failure this depends on people not committing.
+- stop a slow call. `Bound.seconds` is measured and reported, never enforced;
+  Python offers no free way to interrupt a callable this module does not own;
+- stop a caller reading a draft and acting on it. It makes sure the thing they
+  read says what it is;
+- govern a paid call made somewhere else. Like `qmcp.spend`, it is what a
+  module that spends must pass through.
+
+`docs/human_in_loop.md` ("Where a request comes from, when a model produced
+it") describes the seam for a caller of the queue.
 """
 
 from __future__ import annotations
@@ -62,9 +56,8 @@ DRAFTED = "drafted"
 
 STATES = (REFUSED, STOPPED, DRAFTED)
 
-# The default ceiling on what one call may return. Generous on purpose: the
-# bound exists to catch a runaway, not to trim an answer, and a bound that
-# fires on ordinary work teaches people to raise it without reading it.
+# The default ceiling on what one call may return. Generous, because the bound
+# catches a runaway rather than trimming an answer.
 MAX_CHARS = 200_000
 
 
@@ -72,17 +65,14 @@ MAX_CHARS = 200_000
 class Bound:
     """A ceiling on one call, and which parts of it are enforced.
 
-    **`chars` IS ENFORCED HERE AND `seconds` IS NOT**, and the difference is
-    named in the field rather than left in a docstring somebody may not reach.
-    Both are reported. P17's second obligation is that a bound which fires is
-    reported and never absorbed, and reporting an unenforced measurement is
-    within that; claiming to enforce it would not be.
+    `chars` is enforced here and `seconds` is not; both are reported. A bound
+    that fires is reported and never absorbed (P17).
     """
 
     chars: int = MAX_CHARS
     seconds: float | None = None
     """The elapsed time this call was expected to stay under, or `None` for no
-    expectation. **Measured and reported. Never enforced** -- nothing here
+    expectation. Measured and reported, never enforced: nothing here
     interrupts the call."""
 
     def __post_init__(self) -> None:
@@ -121,10 +111,9 @@ class Request:
 class Outcome:
     """What one run of the pipeline did, whether or not it called anything.
 
-    **EVERY FIELD IS POPULATED ON EVERY PATH.** A refused run reports the
-    stages it reached and the spend it declared exactly as a drafted one does,
-    because a consumer telling those apart by which fields are empty is the
-    substitution `qmcp.spend` was written to refuse.
+    Every field is populated on every path: a refused run reports the stages
+    it reached and the spend it declared as a drafted one does, so a consumer
+    never tells them apart by which fields are empty.
     """
 
     state: str
