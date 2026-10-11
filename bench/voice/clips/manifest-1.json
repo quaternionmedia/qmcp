@@ -1,0 +1,162 @@
+[
+ {
+  "clip": "00_confirm_zira_160.wav",
+  "text": "record",
+  "question": "confirm",
+  "expected": "record",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "01_confirm_zira_160.wav",
+  "text": "again",
+  "question": "confirm",
+  "expected": "again",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "02_consent_zira_160.wav",
+  "text": "approve",
+  "question": "consent",
+  "expected": "approve",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "03_consent_zira_160.wav",
+  "text": "hold",
+  "question": "consent",
+  "expected": "hold",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "04_consent_zira_160.wav",
+  "text": "yes",
+  "question": "consent",
+  "expected": "approve",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "05_more_zira_160.wav",
+  "text": "yes",
+  "question": "more",
+  "expected": "yes",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "06_more_zira_160.wav",
+  "text": "no",
+  "question": "more",
+  "expected": "no",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "07_stop_zira_160.wav",
+  "text": "stop listening",
+  "question": "stop",
+  "expected": "stop",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "08_choice_zira_160.wav",
+  "text": "Q M C P",
+  "question": "choice",
+  "expected": "qmcp",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "09_choice_zira_160.wav",
+  "text": "vox",
+  "question": "choice",
+  "expected": "vox",
+  "voice": "zira",
+  "rate": 160
+ },
+ {
+  "clip": "00_confirm_zira_230.wav",
+  "text": "record",
+  "question": "confirm",
+  "expected": "record",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "01_confirm_zira_230.wav",
+  "text": "again",
+  "question": "confirm",
+  "expected": "again",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "02_consent_zira_230.wav",
+  "text": "approve",
+  "question": "consent",
+  "expected": "approve",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "03_consent_zira_230.wav",
+  "text": "hold",
+  "question": "consent",
+  "expected": "hold",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "04_consent_zira_230.wav",
+  "text": "yes",
+  "question": "consent",
+  "expected": "approve",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "05_more_zira_230.wav",
+  "text": "yes",
+  "question": "more",
+  "expected": "yes",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "06_more_zira_230.wav",
+  "text": "no",
+  "question": "more",
+  "expected": "no",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "07_stop_zira_230.wav",
+  "text": "stop listening",
+  "question": "stop",
+  "expected": "stop",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "08_choice_zira_230.wav",
+  "text": "Q M C P",
+  "question": "choice",
+  "expected": "qmcp",
+  "voice": "zira",
+  "rate": 230
+ },
+ {
+  "clip": "09_choice_zira_230.wav",
+  "text": "vox",
+  "question": "choice",
+  "expected": "vox",
+  "voice": "zira",
+  "rate": 230
+ }
+]

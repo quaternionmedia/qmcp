@@ -1,0 +1,44 @@
+whisper/transcribe.py:132: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+00_confirm_david_160.wav
+01_confirm_david_160.wav
+02_consent_david_160.wav
+03_consent_david_160.wav
+04_consent_david_160.wav
+05_more_david_160.wav
+06_more_david_160.wav
+07_stop_david_160.wav
+08_choice_david_160.wav
+09_choice_david_160.wav
+00_confirm_david_230.wav
+01_confirm_david_230.wav
+02_consent_david_230.wav
+03_consent_david_230.wav
+04_consent_david_230.wav
+05_more_david_230.wav
+06_more_david_230.wav
+07_stop_david_230.wav
+08_choice_david_230.wav
+09_choice_david_230.wav
+00_confirm_zira_160.wav
+01_confirm_zira_160.wav
+02_consent_zira_160.wav
+03_consent_zira_160.wav
+04_consent_zira_160.wav
+05_more_zira_160.wav
+06_more_zira_160.wav
+07_stop_zira_160.wav
+08_choice_zira_160.wav
+09_choice_zira_160.wav
+00_confirm_zira_230.wav
+01_confirm_zira_230.wav
+02_consent_zira_230.wav
+03_consent_zira_230.wav
+04_consent_zira_230.wav
+05_more_zira_230.wav
+06_more_zira_230.wav
+07_stop_zira_230.wav
+08_choice_zira_230.wav
+09_choice_zira_230.wav
+written transcripts.jsonl
+exit=0

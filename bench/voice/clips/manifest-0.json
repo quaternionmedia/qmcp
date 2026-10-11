@@ -1,0 +1,162 @@
+[
+ {
+  "clip": "00_confirm_david_160.wav",
+  "text": "record",
+  "question": "confirm",
+  "expected": "record",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "01_confirm_david_160.wav",
+  "text": "again",
+  "question": "confirm",
+  "expected": "again",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "02_consent_david_160.wav",
+  "text": "approve",
+  "question": "consent",
+  "expected": "approve",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "03_consent_david_160.wav",
+  "text": "hold",
+  "question": "consent",
+  "expected": "hold",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "04_consent_david_160.wav",
+  "text": "yes",
+  "question": "consent",
+  "expected": "approve",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "05_more_david_160.wav",
+  "text": "yes",
+  "question": "more",
+  "expected": "yes",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "06_more_david_160.wav",
+  "text": "no",
+  "question": "more",
+  "expected": "no",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "07_stop_david_160.wav",
+  "text": "stop listening",
+  "question": "stop",
+  "expected": "stop",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "08_choice_david_160.wav",
+  "text": "Q M C P",
+  "question": "choice",
+  "expected": "qmcp",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "09_choice_david_160.wav",
+  "text": "vox",
+  "question": "choice",
+  "expected": "vox",
+  "voice": "david",
+  "rate": 160
+ },
+ {
+  "clip": "00_confirm_david_230.wav",
+  "text": "record",
+  "question": "confirm",
+  "expected": "record",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "01_confirm_david_230.wav",
+  "text": "again",
+  "question": "confirm",
+  "expected": "again",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "02_consent_david_230.wav",
+  "text": "approve",
+  "question": "consent",
+  "expected": "approve",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "03_consent_david_230.wav",
+  "text": "hold",
+  "question": "consent",
+  "expected": "hold",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "04_consent_david_230.wav",
+  "text": "yes",
+  "question": "consent",
+  "expected": "approve",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "05_more_david_230.wav",
+  "text": "yes",
+  "question": "more",
+  "expected": "yes",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "06_more_david_230.wav",
+  "text": "no",
+  "question": "more",
+  "expected": "no",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "07_stop_david_230.wav",
+  "text": "stop listening",
+  "question": "stop",
+  "expected": "stop",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "08_choice_david_230.wav",
+  "text": "Q M C P",
+  "question": "choice",
+  "expected": "qmcp",
+  "voice": "david",
+  "rate": 230
+ },
+ {
+  "clip": "09_choice_david_230.wav",
+  "text": "vox",
+  "question": "choice",
+  "expected": "vox",
+  "voice": "david",
+  "rate": 230
+ }
+]

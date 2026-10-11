@@ -1,0 +1,494 @@
+[
+ {
+  "clip": "00_david_-1.wav",
+  "text": "Run preflight in qmcp.",
+  "terms": [
+   "preflight",
+   "qmcp"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "01_david_-1.wav",
+  "text": "Check the datapoints in joe.",
+  "terms": [
+   "datapoints",
+   "joe"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "02_david_-1.wav",
+  "text": "Run the cookbook converse check in qmcp.",
+  "terms": [
+   "cookbook",
+   "converse",
+   "qmcp"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "03_david_-1.wav",
+  "text": "Run the mutations in vox.",
+  "terms": [
+   "mutations",
+   "vox"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "04_david_-1.wav",
+  "text": "What does the handoff say in qm?",
+  "terms": [
+   "handoff",
+   "qm"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "05_david_-1.wav",
+  "text": "Run the gates in qm.",
+  "terms": [
+   "gates",
+   "qm"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "06_david_-1.wav",
+  "text": "Show the transcript segments in joe.",
+  "terms": [
+   "transcript",
+   "segments",
+   "joe"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "07_david_-1.wav",
+  "text": "Check the estate in qm.",
+  "terms": [
+   "estate",
+   "qm"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "08_david_-1.wav",
+  "text": "Read the walkthrough in vox.",
+  "terms": [
+   "walkthrough",
+   "vox"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "09_david_-1.wav",
+  "text": "What does the endpointer do in joe?",
+  "terms": [
+   "endpointer",
+   "joe"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "10_david_-1.wav",
+  "text": "Which records are drafts in qm?",
+  "terms": [
+   "records",
+   "drafts",
+   "qm"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "11_david_-1.wav",
+  "text": "Summarise the roadmap in qmcp.",
+  "terms": [
+   "roadmap",
+   "qmcp"
+  ],
+  "voice": "david",
+  "rate": -1
+ },
+ {
+  "clip": "00_david_+2.wav",
+  "text": "Run preflight in qmcp.",
+  "terms": [
+   "preflight",
+   "qmcp"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "01_david_+2.wav",
+  "text": "Check the datapoints in joe.",
+  "terms": [
+   "datapoints",
+   "joe"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "02_david_+2.wav",
+  "text": "Run the cookbook converse check in qmcp.",
+  "terms": [
+   "cookbook",
+   "converse",
+   "qmcp"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "03_david_+2.wav",
+  "text": "Run the mutations in vox.",
+  "terms": [
+   "mutations",
+   "vox"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "04_david_+2.wav",
+  "text": "What does the handoff say in qm?",
+  "terms": [
+   "handoff",
+   "qm"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "05_david_+2.wav",
+  "text": "Run the gates in qm.",
+  "terms": [
+   "gates",
+   "qm"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "06_david_+2.wav",
+  "text": "Show the transcript segments in joe.",
+  "terms": [
+   "transcript",
+   "segments",
+   "joe"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "07_david_+2.wav",
+  "text": "Check the estate in qm.",
+  "terms": [
+   "estate",
+   "qm"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "08_david_+2.wav",
+  "text": "Read the walkthrough in vox.",
+  "terms": [
+   "walkthrough",
+   "vox"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "09_david_+2.wav",
+  "text": "What does the endpointer do in joe?",
+  "terms": [
+   "endpointer",
+   "joe"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "10_david_+2.wav",
+  "text": "Which records are drafts in qm?",
+  "terms": [
+   "records",
+   "drafts",
+   "qm"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "11_david_+2.wav",
+  "text": "Summarise the roadmap in qmcp.",
+  "terms": [
+   "roadmap",
+   "qmcp"
+  ],
+  "voice": "david",
+  "rate": 2
+ },
+ {
+  "clip": "00_zira_-1.wav",
+  "text": "Run preflight in qmcp.",
+  "terms": [
+   "preflight",
+   "qmcp"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "01_zira_-1.wav",
+  "text": "Check the datapoints in joe.",
+  "terms": [
+   "datapoints",
+   "joe"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "02_zira_-1.wav",
+  "text": "Run the cookbook converse check in qmcp.",
+  "terms": [
+   "cookbook",
+   "converse",
+   "qmcp"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "03_zira_-1.wav",
+  "text": "Run the mutations in vox.",
+  "terms": [
+   "mutations",
+   "vox"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "04_zira_-1.wav",
+  "text": "What does the handoff say in qm?",
+  "terms": [
+   "handoff",
+   "qm"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "05_zira_-1.wav",
+  "text": "Run the gates in qm.",
+  "terms": [
+   "gates",
+   "qm"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "06_zira_-1.wav",
+  "text": "Show the transcript segments in joe.",
+  "terms": [
+   "transcript",
+   "segments",
+   "joe"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "07_zira_-1.wav",
+  "text": "Check the estate in qm.",
+  "terms": [
+   "estate",
+   "qm"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "08_zira_-1.wav",
+  "text": "Read the walkthrough in vox.",
+  "terms": [
+   "walkthrough",
+   "vox"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "09_zira_-1.wav",
+  "text": "What does the endpointer do in joe?",
+  "terms": [
+   "endpointer",
+   "joe"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "10_zira_-1.wav",
+  "text": "Which records are drafts in qm?",
+  "terms": [
+   "records",
+   "drafts",
+   "qm"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "11_zira_-1.wav",
+  "text": "Summarise the roadmap in qmcp.",
+  "terms": [
+   "roadmap",
+   "qmcp"
+  ],
+  "voice": "zira",
+  "rate": -1
+ },
+ {
+  "clip": "00_zira_+2.wav",
+  "text": "Run preflight in qmcp.",
+  "terms": [
+   "preflight",
+   "qmcp"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "01_zira_+2.wav",
+  "text": "Check the datapoints in joe.",
+  "terms": [
+   "datapoints",
+   "joe"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "02_zira_+2.wav",
+  "text": "Run the cookbook converse check in qmcp.",
+  "terms": [
+   "cookbook",
+   "converse",
+   "qmcp"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "03_zira_+2.wav",
+  "text": "Run the mutations in vox.",
+  "terms": [
+   "mutations",
+   "vox"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "04_zira_+2.wav",
+  "text": "What does the handoff say in qm?",
+  "terms": [
+   "handoff",
+   "qm"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "05_zira_+2.wav",
+  "text": "Run the gates in qm.",
+  "terms": [
+   "gates",
+   "qm"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "06_zira_+2.wav",
+  "text": "Show the transcript segments in joe.",
+  "terms": [
+   "transcript",
+   "segments",
+   "joe"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "07_zira_+2.wav",
+  "text": "Check the estate in qm.",
+  "terms": [
+   "estate",
+   "qm"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "08_zira_+2.wav",
+  "text": "Read the walkthrough in vox.",
+  "terms": [
+   "walkthrough",
+   "vox"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "09_zira_+2.wav",
+  "text": "What does the endpointer do in joe?",
+  "terms": [
+   "endpointer",
+   "joe"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "10_zira_+2.wav",
+  "text": "Which records are drafts in qm?",
+  "terms": [
+   "records",
+   "drafts",
+   "qm"
+  ],
+  "voice": "zira",
+  "rate": 2
+ },
+ {
+  "clip": "11_zira_+2.wav",
+  "text": "Summarise the roadmap in qmcp.",
+  "terms": [
+   "roadmap",
+   "qmcp"
+  ],
+  "voice": "zira",
+  "rate": 2
+ }
+]

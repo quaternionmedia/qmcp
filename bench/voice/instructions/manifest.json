@@ -1,0 +1,194 @@
+[
+ {
+  "clip": "00_david_-2.wav",
+  "text": "Which file in qmcp says what qmcp is?",
+  "voice": "david",
+  "rate": -2
+ },
+ {
+  "clip": "01_david_-2.wav",
+  "text": "In one sentence, what did that file say qmcp is for?",
+  "voice": "david",
+  "rate": -2
+ },
+ {
+  "clip": "02_david_-2.wav",
+  "text": "Deploy qmcp to the pi.",
+  "voice": "david",
+  "rate": -2
+ },
+ {
+  "clip": "03_david_-2.wav",
+  "text": "Move the vectors from vox into qmcp.",
+  "voice": "david",
+  "rate": -2
+ },
+ {
+  "clip": "04_david_-2.wav",
+  "text": "Run the test suite in joe and report what fails.",
+  "voice": "david",
+  "rate": -2
+ },
+ {
+  "clip": "05_david_-2.wav",
+  "text": "Summarise the open pull requests in qm.",
+  "voice": "david",
+  "rate": -2
+ },
+ {
+  "clip": "06_david_-2.wav",
+  "text": "Rotate the qmcp logs.",
+  "voice": "david",
+  "rate": -2
+ },
+ {
+  "clip": "07_david_-2.wav",
+  "text": "What changed in vox since yesterday?",
+  "voice": "david",
+  "rate": -2
+ },
+ {
+  "clip": "00_david_+3.wav",
+  "text": "Which file in qmcp says what qmcp is?",
+  "voice": "david",
+  "rate": 3
+ },
+ {
+  "clip": "01_david_+3.wav",
+  "text": "In one sentence, what did that file say qmcp is for?",
+  "voice": "david",
+  "rate": 3
+ },
+ {
+  "clip": "02_david_+3.wav",
+  "text": "Deploy qmcp to the pi.",
+  "voice": "david",
+  "rate": 3
+ },
+ {
+  "clip": "03_david_+3.wav",
+  "text": "Move the vectors from vox into qmcp.",
+  "voice": "david",
+  "rate": 3
+ },
+ {
+  "clip": "04_david_+3.wav",
+  "text": "Run the test suite in joe and report what fails.",
+  "voice": "david",
+  "rate": 3
+ },
+ {
+  "clip": "05_david_+3.wav",
+  "text": "Summarise the open pull requests in qm.",
+  "voice": "david",
+  "rate": 3
+ },
+ {
+  "clip": "06_david_+3.wav",
+  "text": "Rotate the qmcp logs.",
+  "voice": "david",
+  "rate": 3
+ },
+ {
+  "clip": "07_david_+3.wav",
+  "text": "What changed in vox since yesterday?",
+  "voice": "david",
+  "rate": 3
+ },
+ {
+  "clip": "00_zira_-2.wav",
+  "text": "Which file in qmcp says what qmcp is?",
+  "voice": "zira",
+  "rate": -2
+ },
+ {
+  "clip": "01_zira_-2.wav",
+  "text": "In one sentence, what did that file say qmcp is for?",
+  "voice": "zira",
+  "rate": -2
+ },
+ {
+  "clip": "02_zira_-2.wav",
+  "text": "Deploy qmcp to the pi.",
+  "voice": "zira",
+  "rate": -2
+ },
+ {
+  "clip": "03_zira_-2.wav",
+  "text": "Move the vectors from vox into qmcp.",
+  "voice": "zira",
+  "rate": -2
+ },
+ {
+  "clip": "04_zira_-2.wav",
+  "text": "Run the test suite in joe and report what fails.",
+  "voice": "zira",
+  "rate": -2
+ },
+ {
+  "clip": "05_zira_-2.wav",
+  "text": "Summarise the open pull requests in qm.",
+  "voice": "zira",
+  "rate": -2
+ },
+ {
+  "clip": "06_zira_-2.wav",
+  "text": "Rotate the qmcp logs.",
+  "voice": "zira",
+  "rate": -2
+ },
+ {
+  "clip": "07_zira_-2.wav",
+  "text": "What changed in vox since yesterday?",
+  "voice": "zira",
+  "rate": -2
+ },
+ {
+  "clip": "00_zira_+3.wav",
+  "text": "Which file in qmcp says what qmcp is?",
+  "voice": "zira",
+  "rate": 3
+ },
+ {
+  "clip": "01_zira_+3.wav",
+  "text": "In one sentence, what did that file say qmcp is for?",
+  "voice": "zira",
+  "rate": 3
+ },
+ {
+  "clip": "02_zira_+3.wav",
+  "text": "Deploy qmcp to the pi.",
+  "voice": "zira",
+  "rate": 3
+ },
+ {
+  "clip": "03_zira_+3.wav",
+  "text": "Move the vectors from vox into qmcp.",
+  "voice": "zira",
+  "rate": 3
+ },
+ {
+  "clip": "04_zira_+3.wav",
+  "text": "Run the test suite in joe and report what fails.",
+  "voice": "zira",
+  "rate": 3
+ },
+ {
+  "clip": "05_zira_+3.wav",
+  "text": "Summarise the open pull requests in qm.",
+  "voice": "zira",
+  "rate": 3
+ },
+ {
+  "clip": "06_zira_+3.wav",
+  "text": "Rotate the qmcp logs.",
+  "voice": "zira",
+  "rate": 3
+ },
+ {
+  "clip": "07_zira_+3.wav",
+  "text": "What changed in vox since yesterday?",
+  "voice": "zira",
+  "rate": 3
+ }
+]
