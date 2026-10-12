@@ -48,9 +48,11 @@ class VoiceRuns:
         self._log_dir = log_dir or Path(tempfile.gettempdir())
         self._process = None
         # What the conversation is: `approval` for a request on the human
-        # queue, `instruction` for one being taken. The request id is set only
-        # for the first, and stays in the status for the second so a reader of
-        # the payload sees one shape.
+        # queue, `instruction` for one being taken, `act` for an instruction
+        # being acted on (`qmcp.instructions.service`), which may ask its
+        # consent aloud. The id is the request's for the first and the
+        # instruction's for the third, and stays in the status for the second
+        # so a reader of the payload sees one shape.
         self._kind: str | None = None
         self._request_id: str | None = None
         self._log: Path | None = None

@@ -5,6 +5,7 @@
     GET  /v1/instructions/{id}         one row
     POST /v1/instructions/voice        take one by voice on this machine; 202 or 409
     GET  /v1/instructions/voice        whether that is running, and how the last ended
+    POST /v1/instructions/{id}/act     act on one, behind consent; 202, 404, 409 or 422
 
 **LOOPBACK ONLY, LIKE THE VOICE ROUTES.** An instruction is a person's own
 words about what should be done, and the voice route makes this machine speak
@@ -12,12 +13,19 @@ and listen. Neither belongs on a socket somebody elsewhere can reach, so
 `qmcp.server` registers these only when it is bound to loopback and they do not
 exist otherwise -- nothing to reach, rather than something that refuses.
 
-**THE SPOKEN ROUTE STARTS A COMMAND.** `POST /v1/instructions/voice` runs
-`qmcp instruct --voice` in a process of its own, through the tracker the
-approval route uses, for the reasons `qmcp.integrations.voice.service` gives:
-the synthesizer wants a main thread, the command already carries the preflight
-and every message a person needs, and there is one microphone. Sharing the
-tracker is what makes "one conversation at a time" true across both kinds.
+**THE SPOKEN ROUTE STARTS A COMMAND, AND SO DOES THE ACT ROUTE.** `POST
+/v1/instructions/voice` runs `qmcp instruct --voice` in a process of its own,
+through the tracker the approval route uses, for the reasons
+`qmcp.integrations.voice.service` gives: the synthesizer wants a main thread,
+the command already carries the preflight and every message a person needs,
+and there is one microphone. Sharing the tracker is what makes "one
+conversation at a time" true across both kinds. `POST /v1/instructions/{id}/act`
+runs `qmcp instructions act` the same way, with the runtime, the budget and the
+clone the body names and nothing defaulted: the command asks consent on the
+human queue and runs an agent only on approve (`qmcp.instructions.act`), and
+an agent run is one at a time here as a conversation is. With `voice` in the
+body the command asks the consent aloud itself, which is the only way a page
+can have it asked by voice while the act holds the one conversation.
 
 **THE SERVER RESOLVES; THE RECORD IS THE SERVER'S.** A typed instruction and a
 page's arrive as text and are read against the roster here, so every row's
@@ -42,6 +50,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from qmcp.db.models import Instruction, InstructionSource, InstructionStatus
 from qmcp.instructions import resolve, roster_names
+from qmcp.integrations.agents import runtime_names
 from qmcp.integrations.voice.service import VoiceRuns
 
 Sessions = Callable[[], Any]
@@ -76,6 +85,39 @@ class InstructionCreate(BaseModel):
         if not text.strip():
             raise ValueError("an instruction has to say something")
         return text.strip()
+
+
+class ActRequest(BaseModel):
+    """What a caller sends to act on an instruction. Nothing here has a default
+    that runs anything: the runtime is required and the budget is zero."""
+
+    runtime: str = Field(..., min_length=1,
+                         description="The agent runtime, by the name its adapter declares")
+    budget: int = Field(default=0, ge=0,
+                        description="Runs the command may make; 0 declares and stops")
+    cwd: str | None = Field(default=None,
+                            description="The clone to run in; without it, the one the"
+                                        " project's last act ran in. Blank is none.")
+    voice: bool = Field(default=False,
+                        description="Ask the consent aloud on this machine, in the command")
+
+    @field_validator("runtime")
+    @classmethod
+    def _a_runtime_that_exists(cls, runtime: str) -> str:
+        # Checked here, before the command is started: the command refuses a
+        # name the registry lacks, but by then this route has answered 202
+        # and a page reads that as an act under way.
+        if runtime not in runtime_names():
+            raise ValueError(f"{runtime!r} is not a runtime. The names are:"
+                             f" {', '.join(runtime_names())}.")
+        return runtime
+
+    @field_validator("cwd")
+    @classmethod
+    def _blank_is_none(cls, cwd: str | None) -> str | None:
+        # A page that sends an empty field means no clone was given, and a
+        # directory of spaces is not one the act could run in.
+        return cwd.strip() or None if cwd is not None else None
 
 
 def register(app: Any, runs: VoiceRuns, engine: str = "joe",
@@ -177,3 +219,41 @@ def register(app: Any, runs: VoiceRuns, engine: str = "joe",
             raise HTTPException(status_code=404,
                                 detail=f"Instruction '{instruction_id}' not found")
         return row
+
+    @app.post("/v1/instructions/{instruction_id}/act", status_code=202)
+    async def act_on_instruction(instruction_id: str, body: ActRequest,
+                                 request: Request) -> dict[str, Any]:
+        """Act on one instruction, here, as `qmcp instructions act`.
+
+        202 once the command has started; `GET /v1/instructions/voice` says
+        how it ends, as it does for a conversation. 404 for no such
+        instruction, 409 while a conversation or another act runs, 422 for a
+        runtime the registry does not name. The command asks consent on the
+        human queue and runs nothing until it is approved; the row's status
+        says where it got to.
+        """
+        async with sessions() as session:
+            row = (await session.execute(
+                select(Instruction).where(Instruction.id == instruction_id)
+            )).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404,
+                                detail=f"Instruction '{instruction_id}' not found")
+
+        host, port = request.scope.get("server") or ("127.0.0.1", 3141)
+        argv = [sys.executable, "-m", "qmcp", "instructions", "act", instruction_id,
+                "--runtime", body.runtime, "--budget", str(body.budget),
+                "--base-url", f"http://{host}:{port}"]
+        if body.cwd:
+            argv += ["--cwd", body.cwd]
+        if body.voice:
+            argv += ["--voice", "--engine", engine]
+            if engine_url:
+                argv += ["--engine-url", engine_url]
+        try:
+            return runs.start(argv, kind="act", request_id=instruction_id)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"A conversation or an act is already running, for '{exc}'."
+                       " One at a time.")
