@@ -5,6 +5,7 @@ from qmcp.integrations.voice.adapter import (
     UnclearResponse,
     VoiceApprovalLoop,
     choose_option,
+    match_option,
     parse_yes_no,
 )
 
@@ -334,6 +335,28 @@ def test_noinput_and_nomatch_are_reprompted_differently():
         "I didn't hear anything. Say approve or hold.",
         "I heard: banana. Say approve or hold.",
     ]
+
+
+@pytest.mark.parametrize(
+    "text,options,expected",
+    [
+        # A transcript carries no hyphen, so the option's is a word break.
+        ("cuelist python", ["rad-godot", "Cuelist-python"], "Cuelist-python"),
+        ("rad-godot", ["rad-godot", "Cuelist-python"], "rad-godot"),
+        # The longer option says every word the shorter does: it is the one said.
+        ("rad godot", ["rad", "rad-godot"], "rad-godot"),
+        ("rad", ["rad", "rad-godot"], "rad"),
+        # Two options neither of which covers the other is still a nomatch.
+        ("rad and vox", ["rad", "vox"], None),
+        ("approve all", ["approve", "approve all"], "approve all"),
+    ],
+)
+def test_match_option_reads_a_hyphen_as_a_word_break_and_prefers_the_covering_option(
+        text, options, expected):
+    """Mutation: keep the hyphen out of the word break (`re.sub` on the
+    option alone) -- red on the first row; drop the covering rule -- red on
+    `rad godot` and `approve all`, both nomatch."""
+    assert match_option(text, options) == expected
 
 
 def test_three_or_more_options_are_spoken_as_a_list():

@@ -4,6 +4,7 @@ All models use SQLModel for Pydantic + SQLAlchemy integration.
 These models support:
 - Tool invocation audit logging
 - Human-in-the-loop request/response tracking
+- The instruction inbox: what a person asked for, recorded and not run
 """
 
 from datetime import UTC, datetime
@@ -105,3 +106,45 @@ class HumanResponse(SQLModel, table=True):
     response_metadata: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     responded_by: str | None = Field(default=None)  # Optional: who responded
     created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class InstructionSource(str, Enum):
+    """How an instruction arrived: spoken, typed at a terminal, or sent by a page."""
+
+    VOICE = "voice"
+    TYPED = "typed"
+    PAGE = "page"
+
+
+class InstructionStatus(str, Enum):
+    """Whether an instruction has a project.
+
+    Both values describe a record and neither describes a run: nothing in this
+    vocabulary says an instruction is being acted on or has been. Acting is a
+    later change with a migration of its own, and the statuses it needs are
+    its to add.
+    """
+
+    RECORDED = "recorded"
+    UNRESOLVED = "unresolved"
+
+
+class Instruction(SQLModel, table=True):
+    """What a person asked for, in their words, against a project.
+
+    Recording one executes nothing. `detail` carries the evidence for the
+    project: which roster names the text matched and the rule that read them,
+    and for a spoken instruction every transcript the dialog took, in order.
+    """
+
+    __tablename__ = "instructions"
+    __table_args__ = {"extend_existing": True}
+
+    id: str = Field(default_factory=generate_uuid, primary_key=True)
+    text: str
+    project: str | None = Field(default=None, index=True)
+    source: InstructionSource = Field(index=True)
+    status: InstructionStatus = Field(default=InstructionStatus.RECORDED, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+    detail: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))

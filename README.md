@@ -212,8 +212,9 @@ The topology, orchestration and design routes name nobody and are served
 wherever the server is bound. `walkthrough/07-saving-a-shape-is-not-running-it.md`
 exercises them, and the reason a refused shape can be saved is in
 `qmcp/topology_designs.py`. The archive-derived readings under
-`/v1/topology/relations/` and `/v1/threads` are loopback-only and are not in
-this table.
+`/v1/topology/relations/`, `/v1/threads`, the voice routes and the instruction
+inbox under `/v1/instructions` are loopback-only and are not in this table;
+`docs/integrations/voice.md` has the last two.
 
 ## Built-in Tools
 
