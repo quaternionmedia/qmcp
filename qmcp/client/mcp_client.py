@@ -55,6 +55,10 @@ def default_base_url() -> str:
     return f"http://{settings.host}:{settings.port}"
 
 
+def _scope(project: str | None) -> dict[str, str] | None:
+    return {"project": project} if project else None
+
+
 class MCPClientError(Exception):
     """Base exception for MCP client errors."""
 
@@ -185,6 +189,70 @@ class MCPClient:
             )
             for t in data["tools"]
         ]
+
+    def list_topologies(self, project: str | None = None) -> dict[str, Any]:
+        """List saved topology designs."""
+        response = self._client.get("/v1/topologies", params=_scope(project))
+        response.raise_for_status()
+        return response.json()
+
+    def get_topology(self, name: str, project: str | None = None) -> dict[str, Any]:
+        """Read one saved topology design by name or id."""
+        response = self._client.get(
+            f"/v1/topologies/{name}", params=_scope(project)
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def create_topology(self, design: dict[str, Any]) -> dict[str, Any]:
+        """Save a validated topology design; `project` rides in the body."""
+        response = self._client.post("/v1/topologies", json=design)
+        response.raise_for_status()
+        return response.json()
+
+    def update_topology(
+        self, name: str, changes: dict[str, Any], project: str | None = None
+    ) -> dict[str, Any]:
+        """Update the mutable fields of a saved topology design."""
+        response = self._client.put(
+            f"/v1/topologies/{name}", json=changes, params=_scope(project)
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def list_topology_components(self, project: str | None = None) -> dict[str, Any]:
+        """List reusable named topology components."""
+        response = self._client.get(
+            "/v1/topology-components", params=_scope(project)
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_topology_component(
+        self, name: str, project: str | None = None
+    ) -> dict[str, Any]:
+        """Read a reusable topology component by name."""
+        response = self._client.get(
+            f"/v1/topology-components/{name}", params=_scope(project)
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def create_topology_component(self, component: dict[str, Any]) -> dict[str, Any]:
+        """Save a reusable topology component; `project` rides in the body."""
+        response = self._client.post("/v1/topology-components", json=component)
+        response.raise_for_status()
+        return response.json()
+
+    def update_topology_component(
+        self, name: str, changes: dict[str, Any], project: str | None = None
+    ) -> dict[str, Any]:
+        """Update a reusable component's prompt or description."""
+        response = self._client.put(
+            f"/v1/topology-components/{name}", json=changes, params=_scope(project)
+        )
+        response.raise_for_status()
+        return response.json()
 
     def invoke_tool(
         self,

@@ -275,16 +275,22 @@ Add `--no-sync` to skip syncing flow dependencies if the image is already built.
 | `/v1/topologies` | GET | Every saved design, addressed, with the plane's verdict |
 | `/v1/topologies/{ref}` | GET | One design by id or by name; `?act=` judges a pairing |
 | `/v1/topologies/{ref}` | PUT | Change a design's description, config or version |
+| `/v1/topology-components` | POST | Save a reusable, named instruction component |
+| `/v1/topology-components` | GET | Every saved component of one project |
+| `/v1/topology-components/{name}` | GET | One component by name |
+| `/v1/topology-components/{name}` | PUT | Change a component's description, instruction or version |
 | `/metrics` | GET | Prometheus metrics |
 | `/metrics/json` | GET | Metrics as JSON |
 
-The topology, orchestration and design routes name nobody and are served
-wherever the server is bound. `walkthrough/07-saving-a-shape-is-not-running-it.md`
-exercises them, and the reason a refused shape can be saved is in
-`qmcp/topology_designs.py`. The archive-derived readings under
-`/v1/topology/relations/`, `/v1/threads`, the voice routes and the instruction
-inbox under `/v1/instructions` are loopback-only and are not in this table;
-`docs/integrations/voice.md` has the last two.
+The topology and orchestration routes name nobody and are served wherever the
+server is bound. The design and component routes write and carry no
+authorization of their own, so they are served only on a loopback bind;
+`walkthrough/07-saving-a-shape-is-not-running-it.md` exercises them, and the
+reason a refused shape can be saved is in `qmcp/topology_designs.py`. The
+archive-derived readings under `/v1/topology/relations/`, `/v1/threads`, the
+voice routes and the instruction inbox under `/v1/instructions` are
+loopback-only too and are not in this table; `docs/integrations/voice.md` has
+the last two.
 
 ## Built-in Tools
 
