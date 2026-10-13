@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     voice_engine: str = "joe"
     voice_engine_url: str | None = None
 
+    # The spoken conversation `qmcp serve --converse` starts beside the server:
+    # the runtime it acts with (None: no conversation), where a project acted on
+    # for the first time is looked for, and a word an instruction must begin with.
+    converse_runtime: str | None = None
+    converse_clones: str | None = None
+    converse_wake: str | None = None
+    converse_synth: str = "pyttsx3"
+    # How sure the speech engine must be of a spoken instruction for its
+    # read-back to ask nothing, silence agreeing; above 1 always asks.
+    voice_tacit_confidence: float = 0.7
+    # Whether an instruction's take is hinted with the core projects' terms as
+    # well as their names (`qmcp vocabulary`); off until real takes say it helps.
+    voice_hint_terms: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

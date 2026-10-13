@@ -22,6 +22,7 @@ import uvicorn
 
 from qmcp import __version__
 from qmcp.config import get_settings
+from qmcp.db.models import InstructionStatus
 
 
 def _find_repo_root() -> Path:
@@ -342,8 +343,23 @@ def cli() -> None:
 @click.option("--host", "-h", default=None, help="Host to bind to")
 @click.option("--port", "-p", default=None, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
-def serve(host: str | None, port: int | None, reload: bool) -> None:
+@click.option("--converse", is_flag=True,
+              help="start the spoken conversation beside the server, on loopback;"
+                   " with the speech engine running, nothing after this is typed")
+@click.option("--runtime", "runtime_name", default=None, envvar="QMCP_AGENT_RUNTIME",
+              help="the runtime the conversation acts with; required with --converse")
+@click.option("--clones", type=click.Path(path_type=Path, file_okay=False), default=None,
+              help="where the conversation looks for a project acted on for the first"
+                   " time, as a directory named for it (default: beside this checkout)")
+@click.option("--wake", default=None,
+              help="a word the conversation's instructions must begin with")
+def serve(host: str | None, port: int | None, reload: bool, converse: bool,
+          runtime_name: str | None, clones: Path | None, wake: str | None) -> None:
     """Start the MCP server: `uv run qmcp serve`.
+
+    With --converse, the spoken conversation (`qmcp converse`) starts beside
+    it once the server is up, waits for the speech engine, and talks until it
+    is told to stop or the server stops.
 
     On Windows a running console script holds `Scripts/qmcp.exe`, so a sync
     that reinstalls qmcp -- after pulling a change to its own dependencies --
@@ -351,7 +367,103 @@ def serve(host: str | None, port: int | None, reload: bool) -> None:
     file. The server is running the code from before that change anyway, so
     the remedy is the restart it needed: stop it, and run the command again.
     """
+    if converse:
+        from qmcp.integrations.agents import runtime_class
+
+        if not runtime_name:
+            raise click.UsageError(
+                "--converse needs --runtime, or QMCP_AGENT_RUNTIME: the conversation acts"
+                " on what it is told, and a default runtime would be one nobody chose.")
+        try:
+            runtime_class(runtime_name)
+        except KeyError as exc:
+            raise click.UsageError(str(exc.args[0]))
+        os.environ["QMCP_CONVERSE_RUNTIME"] = runtime_name
+        if clones is not None:
+            os.environ["QMCP_CONVERSE_CLONES"] = str(clones)
+        if wake:
+            os.environ["QMCP_CONVERSE_WAKE"] = wake
+        # The settings are cached, and the server reads them in this process.
+        get_settings.cache_clear()
+    elif runtime_name and runtime_name != os.environ.get("QMCP_AGENT_RUNTIME"):
+        raise click.UsageError("--runtime is read only with --converse.")
     _run_server(host, port, reload)
+
+
+@cli.command("converse")
+@click.option("--runtime", "runtime_name", default=None, envvar="QMCP_AGENT_RUNTIME",
+              help="the runtime that acts on an approved instruction; required, or set"
+                   " QMCP_AGENT_RUNTIME. `local` is the model `qmcp localmodel` stands up")
+@click.option("--clones", type=click.Path(path_type=Path, file_okay=False), default=None,
+              help="where a project acted on for the first time is looked for, as a"
+                   " directory named for it (default: beside this checkout)")
+@click.option("--wake", default=None,
+              help="a word an instruction must begin with, for a room where people talk")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+@click.option("--engine", default=None,
+              help="which vox.adapters entry the speech engine is (default: the configured one)")
+@click.option("--engine-url", default=None,
+              help="where that engine listens (default: the configured one, or the adapter's own)")
+@click.option("--synth", type=click.Choice(["pyttsx3", "recording"]), default="pyttsx3",
+              show_default=True,
+              help="how it speaks: aloud, or `recording`, which writes each sentence to a"
+                   " file and plays nothing -- for a check run on a machine nobody is at")
+def converse(runtime_name: str | None, clones: Path | None, wake: str | None,
+             base_url: str | None, engine: str | None, engine_url: str | None,
+             synth: str) -> None:
+    """Talk to qmcp: one standing conversation, spoken from end to end.
+
+    It waits for this server and the speech engine, says it is ready, and asks
+    what should be done. Each instruction is read back and recorded on
+    "agree", consent is asked aloud, the runtime carries it out on "approve"
+    in the project's clone, and the outcome is said back; questions agents put
+    on the human queue are asked aloud in between. "Stop listening" or
+    "goodbye" ends it. `qmcp serve --converse` starts this beside the server.
+    """
+    from qmcp.client import MCPClient
+    from qmcp.instructions import roster_names
+    from qmcp.instructions.converse import Conversation, wait_for
+    from qmcp.integrations.agents import runtime_named
+
+    if not runtime_name:
+        raise click.UsageError(
+            "--runtime is required and has no default: the conversation acts on what it is"
+            " told, and a default runtime would be one nobody chose. Set QMCP_AGENT_RUNTIME"
+            " or pass --runtime.")
+    try:
+        runtime = runtime_named(runtime_name)
+    except KeyError as exc:
+        raise click.UsageError(str(exc.args[0]))
+    settings = get_settings()
+    engine = engine or settings.voice_engine
+    HttpSTT, Pyttsx3TTS, adapter, contract = _load_vox(engine, "converse")
+    resolved_engine = (engine_url or settings.voice_engine_url
+                       or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000"))
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    if synth == "recording":
+        from vox.tts import RecordingTTS
+
+        tts = RecordingTTS()
+    else:
+        tts = Pyttsx3TTS()
+    stt = HttpSTT(resolved_engine, contract=contract)
+    try:
+        wait_for(client, stt, echo=click.echo)
+        conversation = Conversation(stt, tts, client, runtime, roster_names(),
+                                    clones=clones, wake=wake, echo=click.echo,
+                                    tacit_above=settings.voice_tacit_confidence,
+                                    hint_terms=settings.voice_hint_terms)
+        ready = getattr(runtime, "ready", None)
+        missing = ready() if ready else None
+        if missing:
+            conversation.say(f"The {runtime_name} runtime is not ready: {missing}.")
+        ended = conversation.run()
+        click.echo(f"ended: {ended.reason}; {len(ended.turns)} instruction(s),"
+                   f" {len(ended.answered)} question(s) answered")
+    finally:
+        stt.close()
+        client.close()
 
 
 @cli.group()
@@ -403,6 +515,7 @@ def list_recipes() -> None:
     click.echo("  docker simple-plan  Run simple-plan in Docker (explicit)")
     click.echo("  serve               Start the MCP server for Docker flows")
     click.echo("  voice               HITL approval answered by voice; offline, or --live (host)")
+    click.echo("  instruct            an instruction taken by voice and recorded, not run; offline")
 
 
 @cookbook.command("voice")
@@ -418,12 +531,12 @@ def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: st
 
     Offline by default: a qmcp server on an ephemeral port over a database
     made for the run, and vox's deterministic engine in place of a speech
-    engine. Four scripted answers go through the real path (a yes, an option
-    by name, a mismatch, and silence), and each ending is checked. No
-    microphone, speakers or model are needed, and the configured queue is not
-    touched.
+    engine. Scripted answers go through the real path (a yes, an option by
+    name, a mismatch, silence, and an open question read back and recorded),
+    and each ending is checked. No microphone, speakers or model are needed,
+    and the configured queue is not touched.
 
-    `--live` asks one question aloud ("Voice check. Say approve or hold.")
+    `--live` asks one question aloud ("Voice check. Approve or hold?")
     through the configured server and a running engine, and reports what was
     recorded. It queues one request, `voice-check-<time>`, which expires in
     five minutes.
@@ -447,6 +560,104 @@ def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: st
     with HttpSTT(resolved_engine, contract=contract) as stt:
         if not run_live(client, stt, Pyttsx3TTS(), echo=click.echo):
             raise SystemExit(1)
+
+
+@cookbook.command("instruct")
+@click.option("--runtime", "runtime_name", default=None,
+              help="show continuity on this runtime instead of the offline check:"
+                   " `local` is the model `qmcp localmodel` stands up")
+@click.option("--clone", type=click.Path(path_type=Path, exists=True, file_okay=False),
+              default=None,
+              help="the clone the runtime reads, with --runtime (default: this repository)")
+@click.option("--project", default=None,
+              help="the rostered project the clone is, with --runtime (default: the clone's"
+                   " directory name, or qmcp for this repository)")
+def cookbook_instruct(runtime_name: str | None, clone: Path | None,
+                      project: str | None) -> None:
+    """The spoken-instruction loop, end to end: asked, recorded, consented, run, said back.
+
+    With --runtime, the continuity demonstration instead: two spoken
+    instructions in one project on that runtime, the second giving no clone
+    and referring back to the first, carried out only because qmcp remembers
+    the clone and hands the runtime what the first one found. Each consent is
+    answered by a script standing in for the person; nothing is written to the
+    clone, and the configured inbox is not touched.
+
+    Offline, and only offline: a qmcp server on an ephemeral port over a
+    database made for the run, and vox's deterministic engine in place of a
+    speech engine. First the inbox: each scripted dialog goes through the real
+    path -- the prompt synthesized to a file, every take returned over the
+    engine contract, the row recorded over HTTP and read back. Then the loop:
+    an instruction recorded, consent asked aloud and answered, the scripted
+    runtime run in a directory standing in for the clone, and the summary
+    said back, printed as the conversation it was. No microphone, speakers,
+    model or agent are needed, nothing is spent, and the configured inbox is
+    not touched.
+    """
+    from qmcp.instructions.check import run_continuity, run_loop, run_offline
+
+    _load_vox("joe", "cookbook instruct")
+    if runtime_name is not None:
+        from qmcp.integrations.agents import runtime_named
+
+        try:
+            runtime = runtime_named(runtime_name)
+        except KeyError as exc:
+            raise click.UsageError(str(exc.args[0]))
+        ready = getattr(runtime, "ready", None)
+        missing = ready() if ready else None
+        if missing:
+            raise SystemExit(f"Nothing ran: {missing}.")
+        if clone is None:
+            clone, project = Path(__file__).resolve().parent.parent, project or "qmcp"
+        if not run_continuity(echo=click.echo, runtime=runtime, clone=clone, project=project):
+            raise SystemExit(1)
+        return
+    if clone is not None or project is not None:
+        raise click.UsageError("--clone and --project are read only with --runtime.")
+    inbox = run_offline(echo=click.echo)
+    click.echo("")
+    loop = run_loop(echo=click.echo)
+    if not (inbox and loop):
+        raise SystemExit(1)
+
+
+@cookbook.command("converse")
+@click.option("--runtime", "runtime_name", default=None,
+              help="the runtime the session acts with (default: scripted, which spends"
+                   " nothing); `local` is the model `qmcp localmodel` stands up")
+@click.option("--clones", type=click.Path(path_type=Path, exists=True, file_okay=False),
+              default=None,
+              help="where the session looks for the project's clone (default: a directory"
+                   " made for the run with scripted; beside this checkout otherwise)")
+def cookbook_converse(runtime_name: str | None, clones: Path | None) -> None:
+    """One whole spoken session, with nothing typed: what `serve --converse` holds.
+
+    A throwaway server and vox's deterministic engine, every take scripted in
+    place of the person: an agent's question asked and answered, a silence
+    waited through, two instructions recorded, approved, carried out and said
+    back -- the second in the remembered clone, told what the first found --
+    and an end on "stop listening". The configured inbox is not touched.
+    """
+    from qmcp.instructions.check import run_conversation
+
+    _load_vox("joe", "cookbook converse")
+    runtime = None
+    if runtime_name is not None:
+        from qmcp.instructions.converse import sibling_clones
+        from qmcp.integrations.agents import runtime_named
+
+        try:
+            runtime = runtime_named(runtime_name)
+        except KeyError as exc:
+            raise click.UsageError(str(exc.args[0]))
+        ready = getattr(runtime, "ready", None)
+        missing = ready() if ready else None
+        if missing:
+            raise SystemExit(f"Nothing ran: {missing}.")
+        clones = clones or sibling_clones()
+    if not run_conversation(echo=click.echo, runtime=runtime, clones=clones):
+        raise SystemExit(1)
 
 
 @cookbook.group("docker")
@@ -1645,10 +1856,11 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
     """Answer one (or, with --forever, every) pending request by voice.
 
     Speaks the prompt through a synthesizer, listens via a running speech
-    engine, and submits the parsed yes/no. Unlike `human list` and
-    `human respond`, this goes over HTTP rather than straight to the
-    database: recognition only exists behind a running `qmcp serve` and a
-    running engine, so there is no offline path here to preserve.
+    engine, and submits the answer: one of the request's options, or for a
+    request with none, the transcript read back and confirmed. Unlike
+    `human list` and `human respond`, this goes over HTTP rather than straight
+    to the database: recognition only exists behind a running `qmcp serve` and
+    a running engine, so there is no offline path here to preserve.
 
     --engine names a module in `vox.adapters`; vox states the contract and
     names no engine of its own.
@@ -1742,6 +1954,326 @@ def _load_vox(engine: str, command: str):
     except (ImportError, AttributeError):
         raise SystemExit(f"No vox engine adapter named {engine!r}.")
     return HttpSTT, Pyttsx3TTS, adapter, contract
+
+
+# One mark per kind of state: recorded, unresolved, on the way through consent
+# or a run, ended without running, and ended with a run that succeeded.
+_INSTRUCTION_MARKS = {
+    "recorded": "[=]", "unresolved": "[?]",
+    "asking": "[>]", "consented": "[>]", "acting": "[>]",
+    "refused": "[x]", "unanswered": "[x]", "failed": "[x]",
+    "done": "[+]",
+}
+
+
+def _print_instruction(row: dict) -> None:
+    """One row, as `instruct`, `instructions list` and `instructions show` print it."""
+    status = row.get("status")
+    mark = _INSTRUCTION_MARKS.get(status, "[?]")
+    project = row.get("project") or "unresolved"
+    when = (row.get("created_at") or "")[:16].replace("T", " ")
+    click.echo(f"  {mark} {row['id']}  {project}  {row.get('source')}  {when}"
+               + (f"  {status}" if status not in ("recorded", "unresolved") else ""))
+    click.echo(f"      {row['text']}")
+    detail = row.get("detail") or {}
+    if status == "unresolved":
+        candidates = detail.get("candidates") or []
+        click.echo("      candidates: " + (", ".join(candidates) if candidates else "none")
+                   + f"  ({detail.get('rule')})")
+    if row.get("runtime"):
+        click.echo(f"      runtime: {row['runtime']}  clone: {row.get('cwd')}"
+                   + (f"  exit {row['exit_code']}" if row.get("exit_code") is not None else ""))
+
+
+@cli.command("vocabulary")
+@click.option("--json", "as_json", is_flag=True, help="print it as JSON, as the API serves it")
+def vocabulary_command(as_json: bool) -> None:
+    """What can be said to the spoken loop, and what each phrase does.
+
+    Read from `qmcp/integrations/voice/vocabulary.toml`, the one place the
+    loop's words are declared; the loop acts on these lists and no others.
+    """
+    import json
+
+    from qmcp.integrations.voice import vocabulary
+
+    shown, known = vocabulary.entries(), vocabulary.projects()
+    if as_json:
+        click.echo(json.dumps({"phrases": shown, "projects": known}, indent=2))
+        return
+    for item in shown:
+        click.echo(f"{item['key']:<24} {item['says']}")
+        said = item["phrases"] + item["words"]
+        click.echo(f"{'':<24} {' / '.join(said)}")
+    for name, project in known.items():
+        click.echo(f"{'projects.' + name:<24} {project['says']}")
+        click.echo(f"{'':<24} {' / '.join(project['terms'])}")
+        for check in project["checks"]:
+            click.echo(f"{'  check ' + check['name']:<24} {check['says']}: {' / '.join(check['phrases'])}")
+            click.echo(f"{'':<24} runs `{check['command']}`")
+
+
+@cli.command("instruct")
+@click.argument("text", required=False)
+@click.option("--project", default=None,
+              help="the project it is for, stated outright; skips the matching")
+@click.option("--source", type=click.Choice(["typed", "page"]), default="typed",
+              show_default=True, help="how a typed instruction arrived")
+@click.option("--voice", is_flag=True, help="speak the instruction instead of typing it")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+@click.option("--engine", default="joe",
+              help="which vox.adapters entry to use for speech recognition, with --voice")
+@click.option("--engine-url", default=None,
+              help="where that engine listens, with --voice (default: the adapter's own)")
+@click.option("--duration", default=30.0, type=float, show_default=True,
+              help="seconds an instruction may take: the cap, with --voice")
+@click.option("--pause-ms", default=1500, type=int, show_default=True,
+              help="how long a pause ends the take, with --voice")
+@click.option("--max-retries", default=2, type=int, show_default=True,
+              help="re-asks before giving up on an instruction nobody confirmed")
+def instruct(text: str | None, project: str | None, source: str, voice: bool,
+             base_url: str | None, engine: str, engine_url: str | None,
+             duration: float, pause_ms: int, max_retries: int) -> None:
+    """Record an instruction against a project. Recording executes nothing.
+
+    Typed, TEXT is recorded over HTTP and the row is printed: which project
+    it resolved to, by whole-word match against the roster in governance/qm,
+    or `unresolved` with the candidates when none or several matched.
+    --project states it outright and skips the matching.
+
+    --voice asks "What should be done?" aloud, listens with a long cap and a
+    long pause (an instruction has pauses mid-thought), reads the transcript
+    back ("I heard: ... Agree or again?"), and records on a yes. An
+    ambiguous project is asked back as a closed choice by name; a missing
+    one is asked for once. The engine must be reachable, as for
+    `qmcp human voice`.
+    """
+    from qmcp.client import MCPClient
+
+    if voice and text is not None:
+        raise click.UsageError("TEXT and --voice are two ways to give one instruction; pass one.")
+    if not voice and text is None:
+        raise click.UsageError("Pass the instruction as TEXT, or --voice to speak it.")
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    if not voice:
+        _print_instruction(client.create_instruction(text, source=source, project=project))
+        return
+
+    HttpSTT, Pyttsx3TTS, adapter, contract = _load_vox(engine, "instruct --voice")
+    from qmcp.instructions import roster_names
+    from qmcp.instructions.dialog import InstructionDialog
+    from qmcp.integrations.voice import UnclearResponse
+
+    resolved_engine = engine_url or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000")
+    _voice_preflight(client.base_url, resolved_engine, contract, engine)
+    with HttpSTT(resolved_engine, contract=contract) as stt:
+        dialog = InstructionDialog(stt=stt, tts=Pyttsx3TTS(), client=client,
+                                   names=roster_names(), max_retries=max_retries,
+                                   listen_duration=duration, pause_ms=pause_ms,
+                                   tacit_above=get_settings().voice_tacit_confidence)
+        try:
+            row = dialog.run_once()
+        except UnclearResponse as exc:
+            raise SystemExit(str(exc))
+    _print_instruction(row)
+
+
+@cli.group("instructions")
+def instructions() -> None:
+    """The instruction inbox: what people have asked for, and for which project.
+
+    Over HTTP, like `instruct`: the inbox is the server's record.
+    """
+
+
+@instructions.command("list")
+@click.option("--status", "status_filter",
+              # Read from the model, so the choice cannot name a state the row cannot hold.
+              type=click.Choice([s.value for s in InstructionStatus]),
+              default=None, help="only rows in this state")
+@click.option("--limit", default=50, type=int, show_default=True)
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+def instructions_list(status_filter: str | None, limit: int, base_url: str | None) -> None:
+    """What has been recorded, newest first, and where each row is: `recorded`
+    and `unresolved` have had nothing asked or run; the rest are on the path
+    `instructions act` walks, and only `acting` is a run in progress."""
+    from qmcp.client import MCPClient
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    rows = client.list_instructions(status=status_filter, limit=limit)
+    if not rows:
+        click.echo("  Nothing recorded" + (f" as {status_filter}." if status_filter else "."))
+        return
+    for row in rows:
+        _print_instruction(row)
+    click.echo(f"  {len(rows)} instruction(s).")
+
+
+@instructions.command("show")
+@click.argument("instruction_id")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+def instructions_show(instruction_id: str, base_url: str | None) -> None:
+    """One instruction, with the evidence for its project."""
+    import json as _json
+
+    from qmcp.client import MCPClient, MCPClientError
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    try:
+        row = client.get_instruction(instruction_id)
+    except MCPClientError as exc:
+        raise SystemExit(str(exc))
+    _print_instruction(row)
+    click.echo("      detail: " + _json.dumps(row.get("detail") or {}, sort_keys=True))
+
+
+@instructions.command("act")
+@click.argument("instruction_id")
+@click.option("--runtime", "runtime_name", default=None, envvar="QMCP_AGENT_RUNTIME",
+              help="which agent carries it out, by the name its adapter declares;"
+                   " required, or set QMCP_AGENT_RUNTIME. There is no default.")
+@click.option("--budget", default=0, type=int, show_default=True,
+              help="runs this command may make; 0 declares what would be asked and stops")
+@click.option("--cwd", type=click.Path(path_type=Path), default=None,
+              help="the clone to run in; without it, the one the project's last act ran in,"
+                   " from qmcp's record")
+@click.option("--voice", is_flag=True,
+              help="answer the consent by voice here, as `qmcp human voice` would")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+@click.option("--engine", default="joe",
+              help="which vox.adapters entry to use for speech recognition, with --voice")
+@click.option("--engine-url", default=None,
+              help="where that engine listens, with --voice (default: the adapter's own)")
+@click.option("--poll-interval", default=1.0, type=float, show_default=True,
+              help="seconds between reads of the pending listing while the consent waits")
+def instructions_act(instruction_id: str, runtime_name: str | None, budget: int,
+                     cwd: Path | None, voice: bool, base_url: str | None, engine: str,
+                     engine_url: str | None, poll_interval: float) -> None:
+    """Act on one instruction: declare the spend, ask consent, run only on approve.
+
+    The clone is --cwd when it is given; without it, the clone the project's
+    last act ran in, from qmcp's record. The runtime is handed the project's
+    earlier instructions and outcomes from the same record: continuity comes
+    from qmcp, not the model. A consent request
+    `instruction-<id>` with the options approve and hold goes on the human
+    queue, saying the instruction, the project, the clone, the runtime and
+    the budget, and expires after a fixed wait
+    (`qmcp.instructions.act.CONSENT_SECONDS`). Approve runs
+    the runtime in the clone and records the outcome as `done` or `failed`;
+    hold records `refused`; silence records `unanswered`. Nothing runs on any
+    path but approve, and the declaration is recorded on every path.
+
+    --budget is the number of runs this command may make, and 0 is the
+    default: it resolves the clone, declares what would be asked, and stops.
+    --runtime has no default. `scripted` runs nothing and is for checks.
+    """
+    from qmcp.client import MCPClient
+    from qmcp.instructions.act import NoSuchInstruction, act
+    from qmcp.integrations.agents import runtime_named, runtime_names
+    from qmcp.spend import Budget, render
+
+    if not runtime_name:
+        raise click.UsageError(
+            "--runtime is required and has no default: a default that ran an agent would"
+            " be a paid call nobody chose. Pass one of "
+            f"{', '.join(runtime_names())}, or set QMCP_AGENT_RUNTIME.")
+    try:
+        runtime = runtime_named(runtime_name)
+    except KeyError as exc:
+        raise click.UsageError(str(exc.args[0]))
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    stt = tts = None
+    if voice:
+        HttpSTT, Pyttsx3TTS, adapter, contract = _load_vox(engine, "instructions act --voice")
+        resolved_engine = engine_url or getattr(adapter, "DEFAULT_URL", "http://127.0.0.1:8000")
+        _voice_preflight(client.base_url, resolved_engine, contract, engine)
+        stt, tts = HttpSTT(resolved_engine, contract=contract), Pyttsx3TTS()
+
+    from qmcp.instructions.spoken import say, starting, summarise
+
+    def show(state: str, text: str) -> None:
+        click.echo(f"  [{state}] {text}")
+        # Between the approval and the run, so the person who said approve
+        # hears that it took rather than waiting on silence.
+        if state == "acting" and tts is not None:
+            say(starting(_instruction_row(instruction_id).get("project")), tts, stt)
+
+    try:
+        try:
+            done = act(instruction_id, runtime, Budget(authorised=budget), client=client,
+                       cwd=cwd, stt=stt, tts=tts, on_event=show, poll_interval=poll_interval)
+        except NoSuchInstruction as exc:
+            raise SystemExit(f"{exc}. `qmcp instructions list` shows the inbox.")
+
+        click.echo(f"  {done.instruction_id}  {done.status}  stages: {' > '.join(done.stages)}")
+        if done.cwd:
+            click.echo(f"      clone: {done.cwd}"
+                       + (f"  carrying {len(done.carried)} earlier instruction(s)"
+                          if done.carried else ""))
+        if done.request_id:
+            click.echo(f"      consent: {done.request_id}  answered: {done.answer!r}")
+        if done.why:
+            click.echo(f"      {done.why}")
+        if done.outcome is not None:
+            click.echo(f"      exit {done.outcome.exit_code} after"
+                       f" {done.outcome.elapsed_seconds:.1f}s; spent {done.outcome.spent}")
+            click.echo("      " + (done.outcome.text.strip().splitlines() or [""])[0][:200])
+        click.echo(render(done.declared))
+        # The row, not `done`, is what is said: the same row says the same
+        # thing here, in `instructions say`, and in the offline check.
+        summary = summarise(_instruction_row(done.instruction_id), why=done.why)
+        click.echo(f"  {'said' if tts is not None else 'summary'}: {summary}")
+        if tts is not None:
+            say(summary, tts, stt)
+    finally:
+        if stt is not None and hasattr(stt, "close"):
+            stt.close()
+    if done.status == "failed":
+        raise SystemExit(1)
+
+
+def _instruction_row(instruction_id: str) -> dict:
+    """One inbox row as the server would serve it, read from the database the
+    act wrote, or an empty mapping when there is none."""
+    from qmcp.db.models import Instruction
+    from qmcp.instructions import act as act_module
+
+    with act_module.configured_rows()() as session:
+        row = session.get(Instruction, instruction_id)
+        return row.model_dump(mode="json") if row is not None else {}
+
+
+@instructions.command("say")
+@click.argument("instruction_id")
+@click.option("--speak", is_flag=True,
+              help="say it aloud through vox's local synthesizer as well; no engine is contacted")
+@click.option("--base-url", default=None,
+              help="qmcp server URL (default: this machine's configured host:port)")
+def instructions_say(instruction_id: str, speak: bool, base_url: str | None) -> None:
+    """What an instruction came to, in the few sentences `act --voice` says.
+
+    Printed, and with --speak said aloud as well. The whole outcome is
+    `qmcp instructions show <id>`.
+    """
+    from qmcp.client import MCPClient, MCPClientError
+    from qmcp.instructions.spoken import say, summarise
+
+    client = MCPClient(base_url=base_url) if base_url else MCPClient()
+    try:
+        row = client.get_instruction(instruction_id)
+    except MCPClientError as exc:
+        raise SystemExit(str(exc))
+    summary = summarise(row)
+    click.echo(summary)
+    if speak:
+        _, Pyttsx3TTS, _, _ = _load_vox("joe", "instructions say --speak")
+        say(summary, Pyttsx3TTS())
 
 
 @cli.group("threads")
@@ -2044,7 +2576,7 @@ def selfcheck(database: Path | None, project: str | None, as_deltas: bool,
     from qmcp.db.models import HumanRequest, HumanResponse
     from qmcp.selfcheck import checks, render, run_check, to_delta
 
-    repo = Path(__file__).resolve().parent.parent
+    repo = _package_repo_root()
     owner_repo = project or DEFAULT_PROJECT
     target = database or _configured_database()
 
@@ -2101,6 +2633,74 @@ def selfcheck(database: Path | None, project: str | None, as_deltas: bool,
         return
 
     click.echo(render(findings, owner_repo))
+
+
+# The seed runner is reached through the governance submodule rather than copied
+# into this repository, so a change to how a workflow is simulated lands there
+# once and every fork picks it up on its next pin.
+_PREFLIGHT_RUNNER = Path("governance", "qm", "project-seed", "ci", "run_workflows_locally.py")
+
+
+def _package_repo_root() -> Path:
+    """The checkout this package was imported from, independent of the cwd.
+
+    `_find_repo_root` walks up from the working directory, which is right for a
+    command run inside a project and wrong for one that must act on this
+    repository whatever directory it was started in.
+    """
+    return Path(__file__).resolve().parent.parent
+
+
+# `help_option_names=[]` removes click's own `--help` from this command, so it
+# reaches the runner like every other argument: the runner's options are this
+# command's options, and its help page is the one that describes them.
+@cli.command("preflight", context_settings={
+    "ignore_unknown_options": True,
+    "help_option_names": [],
+})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.pass_context
+def preflight(ctx: click.Context, args: tuple[str, ...]) -> None:
+    """Run this repository's workflows locally, as the runner would.
+
+    A thin route to `governance/qm/project-seed/ci/run_workflows_locally.py`:
+    every argument is passed through unchanged (`--event`, `--ref`,
+    `--base-ref`, `--head-ref`, `--workflows`, and `--help`, which is the
+    runner's), the script runs under this interpreter from the repository
+    root, and its exit status is this command's. The first `--` is the
+    argument separator and is consumed before the runner sees it, wherever it
+    stands. Nothing is decided here, and the only line printed here is the one
+    saying the runner is not in the tree.
+
+        uv run qmcp preflight                              # a PR into main
+        uv run qmcp preflight --event push --ref main
+        uv run qmcp preflight --base-ref origin/main
+
+    The script's own docstring lists what it cannot reproduce -- `uses:` steps
+    and the runner image above all -- which is why a pass is evidence and not
+    proof.
+    """
+    repo = _package_repo_root()
+    script = repo / _PREFLIGHT_RUNNER
+    if not script.is_file():
+        # `is_file`, not `exists`: a directory at the runner's path would pass
+        # an existence check and leave the interpreter to report that it found
+        # no module there. The check cannot tell an unchecked-out submodule
+        # from one pinned before the runner existed; the message names both,
+        # and the command it gives is right for the first and harmless for the
+        # second.
+        click.echo(
+            f"the runner is not at {_PREFLIGHT_RUNNER.as_posix()}: the governance "
+            "submodule is not checked out, or is pinned before the runner "
+            "existed. Run `git submodule update --init governance/qm`.",
+            err=True,
+        )
+        ctx.exit(2)
+    # Run from the repository root rather than the cwd: the runner's
+    # `--workflows` default is a relative path, and the repository is the
+    # thing being checked whatever directory the command was started in.
+    result = subprocess.run([sys.executable, str(script), *args], cwd=repo)
+    ctx.exit(result.returncode)
 
 
 @cli.command("deltas")
@@ -2275,7 +2875,9 @@ def localmodel() -> None:
 
 @localmodel.command("check")
 def localmodel_check() -> None:
-    """What is on this machine, before anything is installed. Installs nothing."""
+    """What is on this machine, before anything is installed, and whether the
+    model is served. Installs nothing."""
+    from qmcp.integrations.agents.adapters.ollama import Runtime
     from qmcp.localmodel import look
 
     check = look()
@@ -2292,6 +2894,10 @@ def localmodel_check() -> None:
         click.echo("  the system drive is tight; --models-dir elsewhere")
     for blocker in check.blockers:
         click.echo(f"  blocked by: {blocker}")
+    runtime = Runtime()
+    missing = runtime.ready()
+    click.echo(f"  served:     {runtime.model} at {runtime.endpoint}" if missing is None
+               else f"  served:     no; {missing}")
 
 
 @localmodel.command("plan")

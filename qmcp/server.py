@@ -13,6 +13,7 @@ The server is intentionally "boring":
 - No hidden state
 """
 
+import sys
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -32,6 +33,7 @@ from qmcp.orchestration_service import register as register_orchestration
 from qmcp.threads.cache import DEFAULT_ROOT as THREAD_CACHE
 from qmcp.threads.service import register as register_threads
 from qmcp.integrations.voice.service import register as register_voice
+from qmcp.instructions.service import register as register_instructions
 from qmcp.topology_designs import register as register_topology_designs
 from qmcp.topology_service import register as register_topology
 from qmcp.topology_service import register_readings as register_topology_readings
@@ -80,8 +82,11 @@ async def lifespan(app: FastAPI):
     logger.info("database_init", database_url=settings.database_url)
     await init_db()
     logger.info("database_ready")
+    conversation = start_conversation(app, settings)
     yield
     # Shutdown
+    if conversation:
+        app.state.voice_runs.stop()
     await close_db()
     logger.info("server_shutdown")
 
@@ -100,6 +105,42 @@ def is_loopback(host: str | None) -> bool:
     configures an interface by name.
     """
     return (host or "").strip().lower() in LOOPBACK
+
+
+def conversation_argv(settings) -> list[str]:
+    """The standing conversation's command line: `qmcp converse`, in a process of
+    its own because the synthesizer wants a process's main thread on Windows,
+    against this server and the configured speech engine."""
+    argv = [sys.executable, "-m", "qmcp", "converse",
+            "--runtime", settings.converse_runtime,
+            "--base-url", f"http://{settings.host}:{settings.port}",
+            "--engine", settings.voice_engine]
+    for flag, value in (("--engine-url", settings.voice_engine_url),
+                        ("--clones", settings.converse_clones),
+                        ("--wake", settings.converse_wake),
+                        ("--synth", settings.converse_synth)):
+        if value:
+            argv += [flag, value]
+    return argv
+
+
+def start_conversation(app: FastAPI, settings) -> bool:
+    """Start the spoken conversation through the voice routes' tracker, when one
+    was asked for. Only on loopback, where the tracker exists: a server bound
+    elsewhere has no business making this machine speak and listen. Holding
+    the tracker means the page's voice buttons answer that a conversation is
+    running, rather than opening the microphone a second time."""
+    # Read with a default: a settings stand-in written before this field
+    # existed is still a server with no conversation, not a broken one.
+    if not getattr(settings, "converse_runtime", None):
+        return False
+    runs = getattr(app.state, "voice_runs", None)
+    if runs is None:
+        logger.info("conversation_not_started", reason="bound off loopback")
+        return False
+    runs.start(conversation_argv(settings), kind="conversation")
+    logger.info("conversation_started", runtime=settings.converse_runtime)
+    return True
 
 
 def create_app() -> FastAPI:
@@ -142,9 +183,12 @@ def create_app() -> FastAPI:
         register_threads(app, THREAD_CACHE)
         register_topology_readings(app, THREAD_CACHE)
         # Speaking and listening happen on this machine; nobody elsewhere
-        # may start them.
+        # may start them. The instruction inbox shares the one conversation
+        # the machine can hold, and its rows are a person's own words.
         app.state.voice_runs = register_voice(
             app, settings.voice_engine, settings.voice_engine_url)
+        register_instructions(app, app.state.voice_runs,
+                              settings.voice_engine, settings.voice_engine_url)
     else:
         logger.info(
             "thread_archive_not_served",

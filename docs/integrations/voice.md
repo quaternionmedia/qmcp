@@ -1,10 +1,15 @@
 # Voice Integration
 
-A pending human-in-the-loop request can be answered by speaking, instead of by
-typing `qmcp human respond`. The prompt is spoken aloud, the reply is
-transcribed, and the transcribed answer is submitted to the same HITL API a
-typed answer goes through — so the audit trail does not distinguish the two
-except by `responded_by`.
+Speech reaches qmcp three ways, over one seam. A pending human-in-the-loop
+request can be answered by speaking, instead of by typing `qmcp human
+respond`: the prompt is spoken aloud, the reply is transcribed, and the
+transcribed answer is submitted to the same HITL API a typed answer goes
+through — so the audit trail does not distinguish the two except by
+`responded_by`. An instruction can be spoken, recorded against a project, and
+acted on behind consent asked aloud ("An instruction is recorded, not run" and
+the sections after it). And one standing conversation does both, so that once
+two servers start nothing is typed ("Talking to qmcp").
+`docs/voice-loop-demo.md` is the loop's onboarding and cookbook.
 
 ## Overview
 
@@ -13,6 +18,7 @@ except by `responded_by`.
 | The HITL queue, its API and its audit trail | The speech seam: an engine contract, a client, and synthesis |
 | `VoiceApprovalLoop`, which turns a transcript into a response | `EngineContract`, `HttpSTT`, `VoiceSession` |
 | The retry budget and the yes/no parse | The engine contract and a deterministic stand-in for it |
+| The instruction inbox, the act behind consent, and the standing conversation | The same client and synthesizer, for every take and every sentence |
 
 Speech-to-text is not performed locally. `vox.HttpSTT` is an HTTP client
 against whatever engine an `EngineContract` describes, and it is that engine's
@@ -74,10 +80,10 @@ loop.run_forever()            # keep answering as new ones arrive
 From the CLI, alongside `qmcp human list` and `qmcp human respond`:
 
 ```bash
-qmcp human voice deploy-001     # answer that request
-qmcp human voice                # answer whatever is oldest and pending
-qmcp human voice --forever      # keep answering; Ctrl+C to stop
-qmcp human voice --engine joe   # which vox.adapters entry to talk to
+uv run qmcp human voice deploy-001     # answer that request
+uv run qmcp human voice                # answer whatever is oldest and pending
+uv run qmcp human voice --forever      # keep answering; Ctrl+C to stop
+uv run qmcp human voice --engine joe   # which vox.adapters entry to talk to
 ```
 
 The engine must be reachable. `vox doctor` reports which of the three
@@ -102,8 +108,10 @@ elsewhere has no business making this machine speak and listen.
 
 **Typed to answer by voice: two commands**, one per server — `uv run joe dev`
 in joe's checkout and `uv run qmcp serve` here. Everything after that happens
-in joe's page. The count is kept here because a rise without a stated reason is
-a regression (`governance/qm/records/DRAFT-clis-are-for-machines-and-debugging.md`).
+in joe's page. **Typed to talk to qmcp: the same two**, with `--converse` on the
+second; everything after that is spoken ("Talking to qmcp", below). The count is
+kept here because a rise without a stated reason is a regression
+(`governance/qm/records/DRAFT-clis-are-for-machines-and-debugging.md`).
 
 ## Which microphone
 
@@ -153,8 +161,8 @@ the measurement.
 
 It is a closed-choice dialog in the shape VoiceXML gives one: the request's
 own `options` are the grammar, and the prompt says them — a request carrying
-`["approve", "hold"]` is spoken as *"Launch the audit? Say approve or
-hold."*
+`["approve", "hold"]` is spoken as *"Launch the audit? Approve or
+hold?"*
 
 `parse_yes_no` normalizes casing and punctuation before matching, because a
 transcript carries both ("Yes.", "Yeah, go ahead."). Negatives are
@@ -167,23 +175,113 @@ An answer that is neither yes nor no is matched against the options by name
 (`match_option`), so "hold" answers `["approve", "hold"]` and "wait" answers
 `["ship it", "wait"]`. Naming none, or more than one, is no match.
 
+Each closed question tells the speech engine the words its answer is expected
+to be (`listen(hint=...)`; joe hands them to its transcriber as a prompt) and
+announces them as the `speaking` state's `options`, which joe's page offers as
+numbered buttons and keys. A prompt echoed back on unclear audio names every
+option, which is no match and is asked again. "repeat" -- or "what?",
+"pardon", "say that again", or the page's `R` -- says the question again
+without spending a retry, up to `MAX_REPEATS`. A transcript repeating one word
+("No. No. No.") is read as that word. A backend written before `hint` or
+`options` existed is asked without them (`listen_for`, `announce_to`).
+
 The re-ask says which of two things went wrong, up to `max_retries` (default
-2): *"I didn't hear anything."* when the transcript is empty (VoiceXML's
-noinput), or *"I heard: banana."* when something was heard and was unusable
+2): *"Didn't catch that."* when the transcript is empty (VoiceXML's
+noinput), or *"Heard banana."* when something was heard and was unusable
 (nomatch) — echoing the mishearing lets the speaker hear it. Each re-ask
 repeats the options. Exhausting the budget raises `UnclearResponse` and
 submits nothing: an ambiguous answer is never guessed at.
+
+A request with no `options` is an open question, and the transcript is the
+answer: *"What should the branch be called?"* is spoken as it is, and what is
+heard is read back once as a closed choice — *"I heard: release candidate.
+Agree or again?"* — hinted, offered and said again on "repeat" as every closed
+question is; the answer itself is not hinted. The read-back goes through the
+same helpers, so a yes records and a no listens again; `again` re-speaks the
+question; silence and a confirmation that matches neither are re-asked as
+noinput and nomatch. One budget covers the dialog: each turn the speaker has
+to be asked a second time, whether for the answer or for the confirmation,
+costs a retry, and exhausting it raises and submits nothing. An `input`
+request answered "yes" therefore records `yes`, not `approve`; a request with
+options is unaffected.
+
+## What can be said
+
+Every phrase the loop acts on without a model is declared once, in
+`qmcp/integrations/voice/vocabulary.toml`: the conversation's controls (stop,
+repeat, done, more), the answers to a closed question (yes and no, agree and
+again, and the phrases that are neither), and the core projects with the terms
+their instructions carry. The code reads its lists from there, so `uv run qmcp
+vocabulary` -- and `GET /v1/voice/vocabulary`, which joe's page reads -- shows
+exactly what is acted on. A phrase is compared lower-case with punctuation and
+apostrophes gone; a phrase heard as a whole utterance means one thing, and no
+word is both a yes and a no.
+
+Between instructions, the conversation answers a few things itself, without
+a model: `iteration.*` takes the last instruction again ("try again"), for
+another project ("same in vox"), or drops what is being asked ("never mind",
+which raises `Abandoned` at a read-back and is a hold to a consent); and
+`diagnostic.*` says what it heard last, how the last instruction ended, how
+many questions are waiting, that it can hear, which projects it knows, and what
+can be said. Each is matched on the whole utterance, so "what happened in vox
+yesterday" is an instruction and "what happened" is a question about the loop.
+
+Each core project also declares **checks**: its own commands an instruction
+can run by voice -- the test suite, an offline loop, a scan. An instruction
+whose words contain a check's phrase, as whole words, and that is recorded for
+that project, is acted on by `qmcp.integrations.agents.check.CheckRuntime`
+instead of the conversation's runtime: through the same gate, consent asked for
+every run, the written consent naming the command, the declared spend nothing.
+The command is the declared `argv`, run without a shell in the project's clone
+with no word of the instruction added to it, stopped after its `minutes`; each
+declared one leaves the clone's tracked files as they were. Its outcome's first
+line is the last line the command printed, which is what is said back. Unlike
+the model runtimes, which only read, a check runs a command: that is the
+reason each is declared by name and asked for every time.
+
+The projects' terms are shown, and reach the transcriber with an instruction's
+take only when `QMCP_VOICE_HINT_TERMS` is set. On synthesized speech they helped
+the jargon be heard; on the first real takes they lowered whisper's confidence --
+which decides whether an instruction is agreed tacitly -- and lost one take's
+words, so names alone stay the default until more real takes say otherwise.
+
+## What is said
+
+Every sentence is said through `speakable`, whoever wrote it: a "(s)" is
+dropped, a path is said by its last name, a link as "a link", "3/3" as "3 of
+3", and brackets, slashes and markdown marks are not read. What is announced to
+the engine -- and shown on joe's page -- keeps the full text, so the ear gets a
+few plain words and the eye the detail. The grammar is a short question
+(*"Approve or hold?"*), counts are words (*"one run"*), and an accepted answer
+is acknowledged with its word: *"Approved."*, *"Holding."*. The consent to act
+is said as where, what, how and how many -- *"Run in qmcp: Deploy qmcp to the
+pi. The local model, one run, with what came before. Approve or hold?"* -- and
+the request written on the queue keeps the clone's path and the budget.
+
+## Answering before the question ends
+
+Every closed question -- a consent, a question an agent put on the queue, the
+read-back of an instruction, a choice of project, "Anything else?" -- is said
+through `ask_over`, so it can be answered before it ends. The engine is
+watched first (`HttpSTT.watch`, with the parameters of the listen that
+follows), and the voice stops as soon as the engine says the person
+interrupted (`HttpSTT.interrupted`): a key or button answered, the talk key
+held, or speech louder than the question's own echo. An answer said over the
+question is heard from its first word, and an answer by key is taken the
+moment it is pressed. A backend without the routes, or a voice that cannot be
+cut short, says the question whole, as before.
 
 ## Watching the exchange
 
 The loop announces its own states to the STT backend as it goes: `speaking`
 before each question or re-ask (a re-ask carries `reason`, `noinput` or
-`nomatch`), `recorded` with the option once it is submitted, and `gave_up`
-with what was last heard. vox's `HttpSTT.announce` posts them to the engine's
-`conversation` route when its contract names one. joe's does, and joe's front
-end shows the whole turn live: the question, the open microphone, the person
-speaking, the pause, the reading, and the answer. The engine reports the
-microphone's states itself.
+`nomatch`; an open question's read-back carries `confirm`, and the question
+re-spoken after `again` carries `again`), `recorded` with the answer once it
+is submitted, and `gave_up` with what was last heard. vox's `HttpSTT.announce`
+posts them to the engine's `conversation` route when its contract names one.
+joe's does, and joe's front end shows the whole turn live: the question, the
+open microphone, the person speaking, the pause, the reading, and the answer.
+The engine reports the microphone's states itself.
 
 Announcing is optional on both sides. A backend without `announce`, or an
 engine without the route, changes nothing, and an announcement that fails is
@@ -210,7 +308,217 @@ dropped rather than stopping the question.
 - **`responded_by` is recorded as `vox`.** A voice answer is attributable as a
   voice answer, and is otherwise an ordinary human response.
 
+## An instruction is recorded, not run
+
+Everything above answers a question an agent asked. The inbox runs the other
+direction: a person speaks or types an instruction, it is recorded against a
+project, and **recording executes nothing**. Recording reaches two statuses,
+`recorded` and `unresolved`, and neither describes a run; acting on an
+instruction is a command a person issues, behind consent on the human queue,
+and is the section after this one. `qmcp.instructions` carries the why, and
+`walkthrough/08-an-instruction-is-recorded-not-run.md` runs the routes.
+
+The commands:
+
+```bash
+uv run qmcp instruct "Deploy qmcp to the pi."     # typed; prints the row
+uv run qmcp instruct --voice                       # spoken
+uv run qmcp instructions list [--status unresolved]
+uv run qmcp instructions show <id>
+```
+
+The project is read from the text by the whole-word match `qmcp threads
+consolidate` uses, against the roster in `governance/qm`: a substring inside
+another word is not a match, casing is ignored, a name followed by punctuation
+still matches, and a hyphenated name matches as a transcript says it, so `rad
+godot` is `rad-godot` -- and `rad` too, which leaves that text between the two.
+Exactly one match resolves. None or several leaves the row `unresolved` with
+the candidates and the rule in `detail`, and `--project` states the project
+outright, recorded as `stated`; a blank states nothing.
+
+Spoken, the dialog asks *"What should be done?"*, listens with a long cap and a
+long pause (`--duration`, `--pause-ms`; an instruction has pauses mid-thought,
+which is what `pause_ms` on the engine contract is for), and reads the
+transcript back: *"I heard: Deploy qmcp to the pi. Agree or again?"* A yes
+or `agree` records; a no or `again` listens again; the re-asks are the ones
+above. An instruction naming several projects is asked back as a closed choice
+by name (*"Which project? Qmcp or vox?"*), where a spoken `rad godot`
+chooses `rad-godot` over `rad`; one naming none is asked for the project once.
+A text that named its project is sent for the server to read, so the row
+carries the match; a project the person chose or spoke is `stated`, with the
+answer among the transcripts in `detail.heard`. The states reach the engine's
+conversation route as the approval dialog's do, with `confirm` on the read-back
+and `again` on a second take.
+
+**A confident instruction is agreed to tacitly.** When the speech engine says
+how sure it is of a take (joe does; `HttpSTT.last_confidence`) and that is at
+least `QMCP_VOICE_TACIT_CONFIDENCE` -- 0.7 by default, above 1 to always ask --
+the read-back says *"I heard: ..."* and asks nothing, and a moment of silence
+agrees. Any interruption cancels the tacit agreement: a word or a key in that
+moment, `agree` or a yes records, `again` or a no takes it again, and anything
+else is asked about outright. "record", the read-back's earlier word, is still
+taken as `agree`. Consent to act is never tacit.
+
+An instruction's take is hinted with the project names it is likely to carry
+-- those of the most recent instructions first, then the roster's -- which a
+transcriber spells as given: on a real take, "camcp" without them and "qmcp"
+with them.
+
+| Route | What it does |
+|---|---|
+| `POST /v1/instructions` | records `{text, source, project?, heard?}`; `201` with the row, `recorded` or `unresolved` |
+| `GET /v1/instructions?status=` | the inbox, newest first |
+| `GET /v1/instructions/{id}` | one row, with its evidence |
+| `POST /v1/instructions/voice` | takes one by voice on this machine, as `qmcp instruct --voice` in a process of its own; `202` once started, `409` while any conversation runs |
+| `GET /v1/instructions/voice` | whether a conversation is running, its kind, and how the last one ended |
+
+The routes are served only on loopback, as the voice routes are. The spoken
+route shares the voice route's tracker, so an approval being asked and an
+instruction being taken cannot overlap: there is one microphone.
+
+Without `--runtime`, `uv run qmcp cookbook instruct` is the check, offline: a
+server on an ephemeral port over its own database, vox's deterministic engine, and one
+scripted dialog per way a spoken instruction can end, through the real path --
+one project named and recorded; none named, the project asked for and the
+spoken one recorded; several named and chosen by name; and `again`, which takes
+the instruction a second time. It also checks that the instruction's take
+carried the long pause and the confirmation did not, and that each row says how
+its project was settled. `tests/test_cookbook_instruct.py` runs it and makes
+sure it can fail.
+
+## Acting on an instruction
+
+```bash
+uv run qmcp instructions act <id> --runtime NAME [--budget N] [--cwd PATH] [--voice]
+```
+
+A worker takes a recorded instruction, declares what it may spend, asks
+consent on the human queue, and runs it in the project's clone only on
+`approve`. Every runtime is asked, the local model included; growing a habit
+of approval into an automatic one is a later phase. The consent is an ordinary
+approval, `instruction-<id>` with the options `approve` and `hold`, so it is
+answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
+page, or in the command itself with `--voice`. Its prompt says the
+instruction, the project, the clone, the runtime, the budget and how much
+history is carried, and it expires after `CONSENT_SECONDS` in
+`qmcp.instructions.act`.
+
+**Continuity comes from qmcp, not the model.** The runtime is handed a brief:
+the instruction, the project, the clone, and the project's earlier
+instructions that ran, with what each found, read from this server's record
+(`qmcp.instructions.continuity`). No runtime resumes a conversation of its
+own, so the next instruction can go to a different runtime and still know what
+the last one found; the row's `detail` names the turns carried. The clone is
+`--cwd` when it is given; without it, the clone the project's last act ran in,
+so a path given once is remembered. The standing conversation, failing both,
+looks for a clone named for the project ("Talking to qmcp").
+
+`--runtime` has no default (`QMCP_AGENT_RUNTIME` stands in for it). `local` is
+the model `qmcp localmodel` stands up on this machine, reading the clone with
+tools that cannot write and spending nothing; a coding assistant's command line
+is another runtime behind the same contract, given the same brief. A product is
+named only in its adapter under `qmcp.integrations.agents.adapters`, and
+`scripted` runs nothing and is for checks. `--budget` is runs, and zero -- the
+default -- declares and stops. The row's status says where the act got to: `asking`,
+then `consented`, `refused` or `unanswered`, then `acting` and `done` or
+`failed`; `declared` is written on every path. `qmcp.instructions.act` carries
+the why, and `walkthrough/09-nothing-runs-before-consent.md` runs it.
+
+| Route | What it does |
+|---|---|
+| `POST /v1/instructions/{id}/act` | `{runtime, budget?, cwd?, voice?}`; runs the command in a process of its own, as the spoken route does; `202` once started, `404` for no such instruction, `409` while a conversation or an act runs, `422` for a runtime no adapter declares |
+
+`GET /v1/instructions/voice` reports an act as it reports a conversation, with
+`kind: act`.
+
+## The result, spoken
+
+With `--voice`, the act says *"Approved."* and *"Running in qmcp."* between
+the approval and the run, so the wait is not silence, and when the run ends it
+says what the row came to: whether it ran, where, and the outcome's first
+sentence -- *"Done in qmcp. Added a health route that answers with the
+version; the suite passes."* The whole outcome
+stays on the row. Without `--voice` the same sentence is printed. A held or
+unanswered consent says that nothing ran, and a refusal before anything was
+asked says so without reading out the flags it names.
+
+```bash
+uv run qmcp instructions say <id> [--speak]   # what an instruction came to, again
+```
+
+The summary is announced to the engine's conversation route as `speaking` and
+the turn then ends `idle` carrying it, so joe's panel shows it as the last
+thing said; it is never `recorded`, which the panel shows as an answer
+accepted. `qmcp.instructions.spoken` carries the why.
+
+`uv run qmcp cookbook instruct` is the loop, end to end and offline: after the
+inbox's cases it takes one instruction the whole way in one conversation --
+spoken and recorded, consent asked aloud and answered `approve`, the
+`scripted` runtime run in a directory standing in for the clone, and the
+summary said back -- and a second whose consent is answered `hold`, which runs
+nothing and says so. Each loop prints as the conversation it was, said and
+heard in order, and `tests/test_cookbook_instruct.py` makes sure it can fail.
+`--runtime scripted` and `--runtime local` instead take two instructions in
+one project, the second answerable only from what qmcp recorded of the first;
+`docs/voice-loop-demo.md` says what to look for.
+
+## Talking to qmcp
+
+```bash
+uv run joe dev                                  # in joe's checkout: the speech engine
+uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
+```
+
+Nothing after those two is typed, once the workstation is set up as the
+onboarding in `docs/voice-loop-demo.md` says. The conversation starts with the server,
+waits for the speech engine in either order, says *"Ready. What should be
+done?"*, and from then on is spoken:
+
+| Say | And |
+|---|---|
+| an instruction | it is read back -- *"I heard: ..."*, and heard confidently, nothing more: silence agrees |
+| `agree` / `again` | it is recorded against its project, or taken again; either one also interrupts a tacit agreement |
+| `approve` / `hold` | to the consent -- what will run, where, and how much history is carried; only `approve` runs |
+| -- | the runtime carries it out, *"Running in qmcp."*, and the answer is said back |
+| `yes` / `no` | to *"Anything else?"*: asks for the next instruction, or goes back to waiting |
+| `stop listening` / `goodbye` | ends the conversation |
+| `repeat` / `what?` | the last question again |
+
+joe's page offers each question's answers as buttons and number keys, `R` to
+repeat, `Shift`+`Esc` to stop and `~` held to keep a turn open, and plays a
+tone when it is the person's turn and another once heard; an answer by key
+needs no wake word. Silence is waited through: the microphone stays open, take
+after take, and the page shows it listening. Before each instruction, questions agents have put on
+the human queue are asked aloud, oldest first, and answered by voice; one
+nobody answers stays pending for anyone. A project acted on for the first time
+runs in a clone named for it beside this checkout, or in `--clones`, and after
+that in the clone its last act ran in, from the record. `--wake WORD` makes an
+instruction begin with a word, for a room where people talk; without it every
+utterance is read back before anything is recorded, and nothing runs without
+`approve`. A turn that fails says so and the conversation goes on.
+
+**What it keeps.** While the conversation runs it listens take after take, and
+the speech engine keeps what it records: joe writes every take to `Data/Voice`
+in its checkout, as `capture_<time>.wav`, and nothing deletes them. Everything
+said near the microphone while the conversation runs stays on that disk until
+someone deletes it.
+
+The conversation holds the one conversation this machine can hold, so the
+page's **Answer by voice** and **Instruct by voice** answer that one is running
+rather than opening the microphone a second time; it ends when the server
+stops. `uv run qmcp converse --runtime local` runs it on its own against a
+running server, and `--synth recording` writes each sentence to a file instead
+of speaking it, for a check on a machine nobody is at. `qmcp.instructions.converse`
+carries the why, `uv run qmcp cookbook converse` is one whole session
+offline, every take scripted, and the cookbook in `docs/voice-loop-demo.md` is
+what to say.
+
 ## Testing the integration
+
+`docs/voice-loop-demo.md` is the whole loop's onboarding -- set up once, then
+the offline checks, continuity on the local model, and a person at the
+microphone -- and its cookbook. This section is the voice-answer check on its
+own.
 
 `qmcp cookbook voice` is the check, in two forms that answer different
 questions:
@@ -222,23 +530,24 @@ uv run qmcp cookbook voice --live   # a person at this machine is heard
 
 **Offline**, a qmcp server is started on an ephemeral port over a database
 made for the run, and vox's deterministic engine stands in for the speech
-engine. Four scripted answers go through the real path: the request created
-over HTTP, the prompt synthesized to a file, the answer returned over the
-engine contract, and the response submitted and read back. Each ending is
-checked against its script:
+engine. Scripted answers go through the real path: the request created over
+HTTP, the prompt synthesized to a file, the answer returned over the engine
+contract, and the response submitted and read back. Each ending is checked
+against its script:
 
 | heard | the queue afterwards |
 |---|---|
 | "Yes, go ahead." | `approve`, by `vox`: a yes read onto the options |
 | "Hold." | `hold`, by `vox`: an option by name |
-| "banana" | nothing; re-asked "I heard: banana." |
-| (silence) | nothing; re-asked "I didn't hear anything." |
+| "banana" | nothing; re-asked "Heard banana." |
+| (silence) | nothing; re-asked "Didn't catch that." |
+| "release candidate", then "agree" | `release candidate`, by `vox`: an open question, read back and confirmed |
 
 The configured queue is not touched, and no microphone, speaker or model is
 needed. `tests/test_cookbook_voice.py` runs it and makes sure it can fail: a
 loop that records the first option for an answer it cannot match turns it red.
 
-**`--live`** asks one question aloud, *"Voice check. Say approve or hold."*,
+**`--live`** asks one question aloud, *"Voice check. Approve or hold?"*,
 through the configured server and a running engine, after the same
 preflight `human voice` runs. It queues one request, `voice-check-<time>`,
 which expires in five minutes, and reports what was recorded.
