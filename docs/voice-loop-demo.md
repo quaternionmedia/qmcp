@@ -312,6 +312,29 @@ that there is, the yes and no answers, and the words for agreeing to a read-back
 or taking it again. Anything else said to *What should be done?* is an
 instruction.
 
+### Try it again, or in another project
+
+After an instruction, "try again" records the same instruction anew and asks
+for consent again: what was asked runs a second time, as a new row beside the
+first, with its own outcome. "Same in vox" -- or "do that in vox", "again in
+vox" -- records it for another project instead, which is how one question is
+asked of every repository in turn. Nothing runs without its own "approve".
+"Never mind", at the read-back or between instructions, drops what is being
+asked; nothing is recorded, and to a consent it is a hold.
+
+### Ask how it stands
+
+Without a model, and without recording anything:
+
+| Say | Hear |
+|---|---|
+| "what did you hear" | the last instruction as it was heard |
+| "how did that go" | the last outcome again |
+| "what's waiting" | how many questions agents have left on the queue |
+| "can you hear me" / "testing" | *I can hear you.* -- the voice and the microphone both working |
+| "which projects" | the projects it can act in |
+| "help" | what can be said |
+
 ### Answer before the question ends
 
 Knowing the answer, give it: say "approve" over the consent, or press `1`, and
