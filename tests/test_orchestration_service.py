@@ -46,6 +46,20 @@ def test_the_plane_is_served_as_the_module_declares_it(served):
             assert set(need) == {"key", "because", "supplied_by"}
 
 
+def test_the_options_are_served_beside_the_rows_they_vary(served):
+    """A window offering a council offers the advisory one from here.
+
+    Mutation: drop `options` from `plane_payload` and this fails.
+    """
+    body = served.get("/v1/orchestration/plane").json()
+    assert [(o["setting"], o["value"], o["capability"]["topology"])
+            for o in body["options"]] == [
+        (o.setting, o.value, o.capability.topology.value) for o in plane.OPTIONS]
+    advisory = body["options"][0]["capability"]
+    assert advisory["why"] == plane.ADVISORY_COUNCIL.why
+    assert "council" in [c["topology"] for c in body["capabilities"]]
+
+
 def test_the_vocabularies_ride_along(served):
     """A window building a legend needs the words, not a guess at them."""
     body = served.get("/v1/orchestration/plane").json()

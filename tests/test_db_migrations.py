@@ -142,6 +142,47 @@ def test_the_chain_downgrades_to_the_baseline(tmp_path):
     assert describe(database) == at_head, "the round trip did not return"
 
 
+def test_scoping_names_to_a_project_keeps_the_rows_already_saved(tmp_path):
+    """A design or component saved before names had a project lands in
+    `default`, and its name becomes unique within a project rather than
+    everywhere.
+
+    Mutation: drop the `server_default` from `e5a1c9d37f02`'s `project` column
+    and the upgrade fails on the rows below.
+    """
+    import sqlite3
+    from contextlib import closing
+
+    database = tmp_path / "rows.db"
+    result = alembic("upgrade", "d4f87e6c2b91", database=database)
+    assert result.returncode == 0, result.stdout + result.stderr
+    stamp = "2026-10-05 00:00:00"
+    design = ("INSERT INTO topologies (project, name, description, topology_type,"
+              " version, config, created_at, updated_at)"
+              " VALUES (?, 'two-checkers', 'a pair', 'CROSS_CHECK', '1.0.0', '{}', ?, ?)")
+    with closing(sqlite3.connect(database)) as db, db:
+        db.execute("INSERT INTO topologies (name, description, topology_type,"
+                   " version, config, created_at, updated_at)"
+                   " VALUES ('two-checkers', 'a pair', 'CROSS_CHECK', '1.0.0',"
+                   " '{}', ?, ?)", (stamp, stamp))
+        db.execute("INSERT INTO topology_components (name, description,"
+                   " instruction, version, created_at, updated_at)"
+                   " VALUES ('reviewer', 'reads', 'Read it.', '1.0.0', ?, ?)",
+                   (stamp, stamp))
+
+    result = alembic("upgrade", "head", database=database)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    with closing(sqlite3.connect(database)) as db, db:
+        assert db.execute("SELECT project, name FROM topologies").fetchall() == [
+            ("default", "two-checkers")]
+        assert db.execute("SELECT project, name FROM topology_components"
+                          ).fetchall() == [("default", "reviewer")]
+        db.execute(design, ("joe", stamp, stamp))
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(design, ("default", stamp, stamp))
+
+
 # --- the failure that actually happened --------------------------------------
 
 

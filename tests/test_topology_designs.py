@@ -161,6 +161,44 @@ def test_an_allowed_shape_carries_no_refusal_and_no_saved_anyway(served):
     assert body["capability"]["status"] == plane.RUNS
 
 
+ADVISORY = {"setting": "arbiter_can_override", "value": False}
+
+
+def test_an_advisory_council_reads_its_own_declaration(served):
+    """The option is read off the saved config, not off the kind.
+
+    Mutation: drop `row.config` from the `capability_block` call in
+    `row_payload` and this fails -- the advisory council comes back refused.
+    """
+    body = saved(served, name="advisors", kind="council",
+                 arbiter_can_override=False)
+    capability = body["capability"]
+    assert capability["option"] == ADVISORY
+    assert capability["status"] == plane.BRAINSTORM
+    assert capability["why"] == plane.ADVISORY_COUNCIL.why
+    assert capability["refusal"] is None
+    assert "saved_anyway" not in capability
+
+
+def test_an_advisory_council_is_still_refused_an_attested_act(served):
+    saved(served, name="advisors", kind="council", arbiter_can_override=False)
+    capability = served.get("/v1/topologies/advisors",
+                            params={"act": "ratify a record"}).json()["capability"]
+    assert "arbiter_can_override=False" in capability["refusal"]
+    assert "designing a shape is not an act" in capability["saved_anyway"]
+
+
+def test_changing_the_setting_changes_the_declaration(served):
+    """One council, two declarations, chosen by its config as it stands."""
+    assert saved(served, name="the-council", kind="council"
+                 )["capability"]["option"] is None
+    changed = served.put("/v1/topologies/the-council",
+                         json={"config": {"arbiter_can_override": False}})
+    assert changed.status_code == 200, changed.json()
+    assert changed.json()["capability"]["option"] == ADVISORY
+    assert changed.json()["capability"]["refusal"] is None
+
+
 def test_the_capability_block_is_the_planes_declaration(served):
     """Nothing here invents a verdict. Every field is read off the plane.
 
@@ -362,10 +400,11 @@ def test_a_saved_row_loads_through_get_typed_config(tmp_path):
 # --- the wiring ----------------------------------------------------------------
 
 
-def test_the_server_serves_the_designs_and_the_plane_anywhere(client):
+def test_the_server_serves_the_plane_anywhere_and_the_designs_on_loopback(client):
     """Through `create_app` and its lifespan, so the table `init_db` creates
     is the one the route writes. The `client` fixture binds loopback; the
-    structural check below is what says these are not behind that guard.
+    structural check below says the plane is outside that guard and the
+    designs inside it.
     """
     import ast
     import pathlib
@@ -388,5 +427,30 @@ def test_the_server_serves_the_designs_and_the_plane_anywhere(client):
             for inner in ast.walk(ast.Module(body=node.body, type_ignores=[])):
                 if isinstance(inner, ast.Call):
                     guarded_calls.add(getattr(inner.func, "id", ""))
-    assert "register_topology_designs" not in guarded_calls
     assert "register_orchestration" not in guarded_calls
+    assert "register_topology_designs" in guarded_calls
+
+
+def test_designs_and_components_are_not_served_off_loopback(monkeypatch):
+    """They write and carry no authorization, so off loopback there is
+    nothing to reach rather than something that refuses.
+
+    Mutation: register the designs outside the `is_loopback` guard and this
+    fails.
+    """
+    import qmcp.server
+
+    class OffLoopback:
+        host = "0.0.0.0"
+        port = 3141
+        debug = False
+        database_url = "sqlite+aiosqlite:///:memory:"
+        log_level = "WARNING"
+        voice_engine = "joe"
+        voice_engine_url = None
+
+    monkeypatch.setattr(qmcp.server, "get_settings", lambda: OffLoopback())
+    paths = {getattr(r, "path", "") for r in qmcp.server.create_app().routes}
+
+    assert not [p for p in paths if p.startswith(("/v1/topologies", "/v1/topology-components"))]
+    assert "/v1/orchestration/plane" in paths

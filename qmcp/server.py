@@ -172,14 +172,14 @@ def create_app() -> FastAPI:
     # caller the archive is there.
     # The topology *shapes* name nobody and are served wherever this is bound.
     # The *readings* are derived from the archive and follow it exactly.
-    # The orchestration plane and the saved designs are shapes too: a
-    # capability is a claim about a shape and a design is a shape with a
-    # configuration, so both are served beside the shapes.
+    # The orchestration plane is a shape too and is served beside the shapes.
+    # Saved designs and components are writable and carry no authorization
+    # of their own, so they sit behind the loopback guard.
     register_topology(app)
     register_orchestration(app)
-    register_topology_designs(app)
 
     if is_loopback(settings.host):
+        register_topology_designs(app)
         register_threads(app, THREAD_CACHE)
         register_topology_readings(app, THREAD_CACHE)
         # Speaking and listening happen on this machine; nobody elsewhere

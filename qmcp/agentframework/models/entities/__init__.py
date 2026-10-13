@@ -15,7 +15,7 @@ from .audit import AuditLog, MetricRecord, AgentToolInvocation
 from .executions import Checkpoint, Execution, Result
 from .messages import Message
 from .resources import ResourceAllocation
-from .topologies import Topology, TopologyMembership
+from .topologies import Topology, TopologyComponent, TopologyMembership
 from .workflows import WorkflowTemplate
 
 __all__ = [
@@ -25,6 +25,7 @@ __all__ = [
     "AgentSkill",
     # Topologies
     "Topology",
+    "TopologyComponent",
     "TopologyMembership",
     # Executions
     "Execution",
