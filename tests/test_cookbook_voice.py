@@ -43,6 +43,34 @@ def test_the_offline_check_fails_when_the_loop_guesses(monkeypatch):
     assert "recorded 'approve', expected None" in result.output
 
 
+def test_the_offline_check_records_an_open_answer_through_the_real_path():
+    """The open-question case: two transcripts over the engine contract, the
+    first read back and recorded on the second. Seen red with `_ask_open`
+    returning `heard.strip()` in place of the read-back: the row turns
+    `[FAIL]` for the missing re-ask though the recorded answer is right."""
+    result = CliRunner().invoke(cli, ["cookbook", "voice"])
+
+    assert result.exit_code == 0, result.output
+    row = '[ok]   heard "release candidate", "agree" recorded "release candidate" by vox'
+    assert row in result.output
+
+
+def test_the_offline_check_fails_when_an_open_answer_is_recorded_unconfirmed(monkeypatch):
+    """A loop that records the first transcript without reading it back
+    records what the engine misheard. The check must say so, even though
+    what was recorded is the scripted answer."""
+    monkeypatch.setattr(
+        adapter.VoiceApprovalLoop, "_ask_open",
+        lambda self, prompt: (self.tts.speak(prompt), self.stt.listen()[0])[1],
+    )
+
+    result = CliRunner().invoke(cli, ["cookbook", "voice"])
+
+    assert result.exit_code == 1, result.output
+    assert '[FAIL] heard "release candidate", "agree"' in result.output
+    assert "no turn beginning 'I heard: release candidate. Agree or again?'" in result.output
+
+
 def test_the_offline_check_fails_when_the_prompt_omits_the_options(monkeypatch):
     monkeypatch.setattr(adapter, "say_options", lambda options: "")
 
@@ -94,7 +122,7 @@ def test_live_records_the_spoken_option(tmp_path):
 
     assert ok is True
     assert response.response == "approve" and response.responded_by == "vox"
-    assert 'asking:  "Voice check. Say approve or hold."' in lines
+    assert 'asking:  "Voice check. Approve or hold?"' in lines
 
 
 def test_live_records_nothing_for_an_unclear_answer(tmp_path):

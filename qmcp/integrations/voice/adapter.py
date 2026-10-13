@@ -1,4 +1,8 @@
-"""The voice-approval loop: speak a prompt, listen, parse yes/no, submit.
+"""The voice-approval loop: speak a prompt, listen, parse the answer, submit.
+
+A request carrying `options` is a closed choice and the options are its
+grammar. A request carrying none is an open question: the transcript itself is
+the answer, read back once and recorded when the speaker says so.
 
 Structurally typed against vox's `SpeechToText`/`TextToSpeech` shape rather
 than importing vox at module load — this module only needs objects with a
@@ -14,35 +18,119 @@ from typing import Protocol
 
 from qmcp.client import HumanRequestExpiredError, MCPClient
 from qmcp.client.mcp_client import HumanResponse
+from qmcp.integrations.voice import vocabulary
 
-_YES_WORDS = {
-    "yes",
-    "yeah",
-    "yep",
-    "yup",
-    "sure",
-    "affirmative",
-    "correct",
-    "approve",
-    "approved",
-    "confirm",
-    "confirmed",
-}
-_NO_WORDS = {
-    "no",
-    "nope",
-    "nah",
-    "negative",
-    "reject",
-    "rejected",
-    "deny",
-    "denied",
-    "stop",
-    "cancel",
-}
-_YES_PHRASES = ("go ahead", "do it", "sounds good")
-_NO_PHRASES = ("do not", "dont", "hold off", "not now")
-_UNCLEAR_PHRASES = ("not sure", "not certain", "dont know")
+# A yes or a no: a word anywhere in the answer, or a phrase inside it
+# (`vocabulary.toml`, `answer.*`).
+_YES_WORDS = set(vocabulary.words("answer.yes"))
+_NO_WORDS = set(vocabulary.words("answer.no"))
+_YES_PHRASES = vocabulary.phrases("answer.yes")
+_NO_PHRASES = vocabulary.phrases("answer.no")
+_UNCLEAR_PHRASES = vocabulary.phrases("answer.unclear")
+
+# The grammar of an open question's read-back, in the order it is spoken, read
+# as the instruction dialog reads its own (`vocabulary.toml`, `answer.agree`
+# and `answer.again`). `_ask_open` parses the confirmation with
+# `parse_yes_no` and `match_option`: a yes or `agree` records the answer, a no
+# or `again` asks the question again. Neither word is in the yes/no
+# vocabulary. The rest of `answer.agree` is accepted as `agree` and never
+# offered.
+_AGREE, *_AGREE_ALIASES = vocabulary.phrases("answer.agree")
+_CONFIRM = [_AGREE, vocabulary.phrases("answer.again")[0]]
+
+# Asks for the question again rather than answering it, matched on the whole
+# utterance -- what a key on joe's page sends as well. "again" alone is not
+# one: it is the read-back's own option.
+REPEAT = vocabulary.phrases("conversation.repeat")
+# Repeats granted per question before a request to repeat is read as no answer.
+MAX_REPEATS = 3
+
+
+def plain_words(text: str) -> str:
+    """An utterance as words alone -- lower case, no punctuation -- with a word
+    said over and over read once: a transcriber that returns "No. No. No."
+    has heard "no"."""
+    words = re.sub(r"[^\w\s]", " ", (text or "").lower().replace("'", "")).split()
+    if len(words) > 1 and len(set(words)) == 1:
+        words = words[:1]
+    return " ".join(words)
+
+
+def asks_repeat(text: str) -> bool:
+    """Whether an utterance asks for the question again."""
+    return plain_words(text) in REPEAT
+
+
+def listen_for(stt, duration: float, *, pause_ms: int | None = None, hint=None):
+    """`stt.listen`, told the words a short answer is expected to be.
+
+    vox's backends take `hint` and an engine biases its transcription toward
+    it; a backend written against the shape before `hint` existed refuses the
+    keyword, and is asked again without it rather than failing the question.
+    """
+    kwargs: dict = {"duration": duration}
+    if pause_ms is not None:
+        kwargs["pause_ms"] = pause_ms
+    if hint:
+        kwargs["hint"] = list(hint)
+    try:
+        return stt.listen(**kwargs)
+    except TypeError as exc:
+        if "hint" not in kwargs or "hint" not in str(exc):
+            raise
+        del kwargs["hint"]
+        return stt.listen(**kwargs)
+
+
+def ask_over(stt, tts, text: str, *, duration: float, pause_ms: int | None = None,
+             hint=None) -> None:
+    """Say a question so it can be answered before it ends.
+
+    The engine is watched first (`stt.watch`), with the parameters of the
+    listen that follows, so an answer said over the question is heard from
+    its first word; and the voice stops as soon as the engine says the person
+    interrupted (`stt.interrupted`) -- answered by key, held the talk key, or
+    spoke over it. A backend without either, or a voice that cannot be cut
+    short, says the question whole, as before. The listen is the caller's.
+    """
+    watch = getattr(stt, "watch", None)
+    if callable(watch):
+        try:
+            watch(duration, pause_ms=pause_ms, hint=list(hint) if hint else None)
+        except Exception:  # noqa: BLE001 -- a question that cannot be watched is still asked
+            pass
+    interrupted = getattr(stt, "interrupted", None)
+    if callable(interrupted):
+        try:
+            tts.speak(text, until=interrupted)
+            return
+        except TypeError as exc:
+            if "until" not in str(exc):
+                raise
+    tts.speak(text)
+
+
+def announce_to(stt, state: str, text: str = "", reason: str | None = None,
+                options=None) -> None:
+    """Post one dialog state to the backend's `announce`, a question carrying
+    its options so a display can offer them as keys and buttons. A backend
+    without `announce`, one that fails, or one written before options existed
+    costs the dialog nothing."""
+    post = getattr(stt, "announce", None)
+    if post is None:
+        return
+    extra = {"reason": reason} if reason else {}
+    try:
+        if options:
+            try:
+                post(state, text, options=list(options), **extra)
+                return
+            except TypeError as exc:
+                if "options" not in str(exc):
+                    raise
+        post(state, text, **extra)
+    except Exception:
+        pass
 
 
 def parse_yes_no(text: str) -> bool | None:
@@ -84,35 +172,129 @@ def choose_option(decision: bool, options: list[str]) -> str:
     return options[0] if decision else options[-1]
 
 
+def _words(text: str) -> set[str]:
+    """The words of a transcript or an option, lower-cased, punctuation gone.
+
+    A hyphen is a word break and not punctuation: an option `rad-godot` is
+    the two words a transcript carries when somebody says it, since no
+    transcript writes the hyphen.
+    """
+    return set(re.sub(r"[^\w\s]", "", text.lower().replace("-", " ")).split())
+
+
 def match_option(text: str, options: list[str]) -> str | None:
     """The request's own option a transcript names, or None.
 
     The options are the grammar, as a VoiceXML field's are: an answer that
     says one of them is that answer, whether or not it is a yes/no word.
-    An option is named when every word of it appears in the transcript;
-    naming none, or more than one, is no match.
+    An option is named when every word of it appears in the transcript.
+    Naming none is no match; naming several is no match unless one of them
+    says every word the others do, when it is the one meant -- `rad godot`
+    names `rad` too, and the longer option is what was said.
     """
-    words = set(re.sub(r"[^\w\s]", "", text.lower()).split())
-    named = [
-        option
-        for option in options
-        if (option_words := set(re.sub(r"[^\w\s]", "", option.lower()).split()))
-        and option_words <= words
-    ]
-    return named[0] if len(named) == 1 else None
+    words = _words(text)
+    named = [option for option in options
+             if (option_words := _words(option)) and option_words <= words]
+    if len(named) == 1:
+        return named[0]
+    covering = [option for option in named
+                if all(_words(other) <= _words(option) for other in named)]
+    return covering[0] if len(covering) == 1 else None
+
+
+def _said(text: str, chars: int | None = None) -> str:
+    """What was heard, to be said back inside a sentence. A transcript carries
+    its own closing stop, which the sentence around it would double."""
+    return text.strip()[:chars].rstrip(".!?")
 
 
 def say_options(options: list[str]) -> str:
-    """The spoken grammar: "Say approve or hold." / "Say red, green, or blue."."""
+    """The spoken grammar, in as few words as it takes: "Approve or hold?" /
+    "Red, green, or blue?"."""
     if len(options) == 1:
-        return f"Say {options[0]}."
-    if len(options) == 2:
-        return f"Say {options[0]} or {options[1]}."
-    return f"Say {', '.join(options[:-1])}, or {options[-1]}."
+        said = f"{options[0]}?"
+    elif len(options) == 2:
+        said = f"{options[0]} or {options[1]}?"
+    else:
+        said = f"{', '.join(options[:-1])}, or {options[-1]}?"
+    return said[:1].upper() + said[1:]
+
+
+NUMBERS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+
+
+def counted(n: int, word: str) -> str:
+    """"one run", "two runs": a count as a listener hears it, never "1 run(s)"."""
+    said = NUMBERS[n] if 0 <= n < len(NUMBERS) else str(n)
+    return f"{said} {word}" if n == 1 else f"{said} {word}s"
+
+
+# What a synthesizer would read aloud as syntax: "(s)", markdown, brackets,
+# a path's folders, a link. Each is a rule a test names.
+_PLURAL_MARK = re.compile(r"\(s\)")
+_LINK = re.compile(r"\bhttps?://\S+")
+_MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_FRACTION = re.compile(r"\b(\d+)/(\d+)\b")
+# A drive or rooted path, anything with two separators, or one separator
+# before a file's extension; "and/or" and "3/3" are not paths.
+_PATH = re.compile(r"[A-Za-z]:(?:[\\/][^\s\\/]+)+"
+                   r"|(?<!\S)[\\/][^\s\\/]+(?:[\\/][^\s\\/]+)*"
+                   r"|(?:[^\s\\/]+[\\/]){2,}[^\s\\/]+"
+                   r"|[^\s\\/]+[\\/][^\s\\/]+\.[A-Za-z]\w{0,4}\b")
+_SYMBOLS = re.compile(r"[*`#_~<>\[\]{}()|\\/]+")
+
+
+def speakable(text: str) -> str:
+    """`text` as a synthesizer should say it: words and ordinary punctuation.
+
+    A "(s)" is dropped, a markdown link keeps its words, a link becomes "a
+    link", "3/3" is "3 of 3", a path keeps its last name
+    ("C:/work/clones/qmcp" is "qmcp"), and brackets, parentheses, slashes
+    and markdown marks go, so a sentence is never read with its syntax.
+    Whitespace is collapsed.
+    """
+    said = _PLURAL_MARK.sub("", text or "")
+    said = _MARKDOWN_LINK.sub(r"\1", said)
+    said = _LINK.sub("a link", said)
+    said = _FRACTION.sub(r"\1 of \2", said)
+    said = _PATH.sub(lambda m: re.split(r"[\\/]", m.group(0).rstrip("\\/"))[-1], said)
+    said = _SYMBOLS.sub(" ", said)
+    said = re.sub(r"\s+([,.;:!?])", r"\1", " ".join(said.split()))
+    return said
+
+
+class Speakable:
+    """A synthesizer that says every sentence `speakable`, whoever wrote it."""
+
+    def __init__(self, tts):
+        self.tts = tts
+
+    def speak(self, text: str, *args, **kwargs):
+        return self.tts.speak(speakable(text), *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.tts, name)
+
+
+def speakably(tts):
+    """`tts`, wrapped once in `Speakable`."""
+    return tts if isinstance(tts, Speakable) or tts is None else Speakable(tts)
+
+
+# How an accepted answer is acknowledged: the word, as a listener expects it.
+ACKNOWLEDGED = {"approve": "Approved.", "hold": "Holding.", "reject": "Rejected.",
+                "yes": "Yes.", "no": "No."}
 
 
 class SpeechToText(Protocol):
-    def listen(self, duration: float = 5.0) -> tuple[str, str]: ...
+    def listen(self, duration: float = 5.0, *, pause_ms: int | None = None) -> tuple[str, str]:
+        """Up to `duration` seconds, transcribed; `pause_ms` is how long a pause
+        ends the take early, for a backend that stops when the speaker does.
+
+        The closed-choice dialog never passes it, so a backend's own default
+        serves a one-word answer. An instruction has pauses mid-thought and
+        asks for a longer one (`qmcp.instructions.dialog`)."""
+        ...
 
 
 class TextToSpeech(Protocol):
@@ -120,7 +302,12 @@ class TextToSpeech(Protocol):
 
 
 class UnclearResponse(Exception):
-    """Raised when a spoken answer never parsed as yes/no within the retry budget."""
+    """Raised when no spoken answer was usable within the retry budget."""
+
+
+class Abandoned(UnclearResponse):
+    """Raised when the person said to drop what was being asked ("never mind"):
+    nothing is recorded, as for an answer that never parsed."""
 
 
 class VoiceApprovalLoop:
@@ -142,12 +329,16 @@ class VoiceApprovalLoop:
         listen_duration: float = 5.0,
     ):
         self.stt = stt
-        self.tts = tts
+        self.tts = speakably(tts)
         self.client = client or MCPClient()
         self.max_retries = max_retries
         self.listen_duration = listen_duration
         # Requests `run_forever` asked and got no usable answer to, oldest first.
         self.unanswered: list[str] = []
+
+    def _say(self, text: str, options: list[str] | None) -> None:
+        """Say a question the person may answer before it ends (`ask_over`)."""
+        ask_over(self.stt, self.tts, text, duration=self.listen_duration, hint=options)
 
     def _ask(self, prompt: str, options: list[str]) -> str:
         """Speak the prompt and its options, listen, and return the option chosen.
@@ -158,14 +349,23 @@ class VoiceApprovalLoop:
         re-ask says which of two things went wrong — nothing heard
         (noinput) or something heard and unusable (nomatch), echoing what
         was heard so the speaker can hear the mishearing. Unclear after the
-        retry budget raises, and nothing is guessed.
+        retry budget raises, and nothing is guessed. Every question can be
+        answered before it ends, by key or by voice (`ask_over`).
         """
         grammar = say_options(options)
-        self._announce("speaking", f"{prompt} {grammar}")
-        self.tts.speak(f"{prompt} {grammar}")
+        question = f"{prompt} {grammar}"
+        self._announce("speaking", question, options=options)
+        self._say(question, options)
         heard = ""
-        for attempt in range(self.max_retries + 1):
-            heard, _ = self.stt.listen(duration=self.listen_duration)
+        attempt = repeats = 0
+        while attempt <= self.max_retries:
+            heard, _ = listen_for(self.stt, self.listen_duration, hint=options)
+            # Asked to say it again: said again, and no retry spent.
+            if asks_repeat(heard) and repeats < MAX_REPEATS:
+                repeats += 1
+                self._announce("speaking", question, reason="repeat", options=options)
+                self._say(question, options)
+                continue
             decision = parse_yes_no(heard)
             if decision is not None:
                 return choose_option(decision, options)
@@ -174,11 +374,80 @@ class VoiceApprovalLoop:
                 return named
             if attempt < self.max_retries:
                 if not heard.strip():
+                    reask, reason = f"Didn't catch that. {grammar}", "noinput"
+                else:
+                    reask, reason = f"Heard {_said(heard, 80)}. {grammar}", "nomatch"
+                self._announce("speaking", reask, reason=reason, options=options)
+                self._say(reask, options)
+            attempt += 1
+        self._announce("gave_up", heard.strip())
+        raise UnclearResponse(
+            f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
+        )
+
+    def _ask_open(self, prompt: str) -> str:
+        """Speak the prompt, listen, read the transcript back, and return it once confirmed.
+
+        An open question has no grammar for the answer, so the transcript is
+        the answer and the speaker is the only check on it: it is read back
+        as a closed choice between `agree` and `again`, hinted and offered as
+        every closed choice is and parsed with the same helpers, so a yes
+        records and a no re-asks. "repeat" says the read-back again without
+        spending a retry, up to `MAX_REPEATS`. The question, the read-back
+        and every re-ask can be answered before they end (`ask_over`), each
+        watched for the take that follows it.
+
+        One budget covers the whole dialog. Every turn the speaker has to be
+        asked for a second time costs a retry -- nothing heard for the answer
+        (noinput), nothing usable for the confirmation (noinput or nomatch),
+        or `again` -- and the turns that move the dialog forward cost nothing.
+        Exhausting it raises, and nothing is guessed or recorded.
+        """
+        grammar = say_options(_CONFIRM)
+        self._announce("speaking", prompt)
+        self._say(prompt, None)
+        heard = ""
+        answer: str | None = None
+        repeats = 0
+        for reasks in range(self.max_retries + 1):
+            while True:
+                if answer is None:
+                    heard, _ = self.stt.listen(duration=self.listen_duration)
+                    if not heard.strip():
+                        reask, reason = f"I didn't hear anything. {prompt}", "noinput"
+                        break
+                    answer = heard.strip()
+                    readback = f"I heard: {_said(answer)}. {grammar}"
+                    self._announce("speaking", readback, reason="confirm", options=_CONFIRM)
+                    self._say(readback, _CONFIRM)
+                    continue
+                heard, _ = listen_for(self.stt, self.listen_duration, hint=_CONFIRM)
+                # Asked to say it again: the read-back again, and no retry spent.
+                if asks_repeat(heard) and repeats < MAX_REPEATS:
+                    repeats += 1
+                    self._announce("speaking", readback, reason="repeat", options=_CONFIRM)
+                    self._say(readback, _CONFIRM)
+                    continue
+                decision = parse_yes_no(heard)
+                named = match_option(heard, _CONFIRM) or (
+                    "agree" if match_option(heard, _AGREE_ALIASES) else None)
+                # The decision is consulted before the option named, as `_ask`
+                # does: "don't agree" names agree and is a no.
+                if decision is True or (decision is None and named == "agree"):
+                    return answer
+                if decision is False or named == "again":
+                    reask, reason, answer = prompt, "again", None
+                elif not heard.strip():
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {heard.strip()[:80]}. {grammar}", "nomatch"
-                self._announce("speaking", reask, reason=reason)
-                self.tts.speak(reask)
+                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                break
+            if reasks < self.max_retries:
+                # A re-ask of the read-back offers its options; a re-ask of
+                # the question has none to offer.
+                offered = _CONFIRM if answer is not None else None
+                self._announce("speaking", reask, reason=reason, options=offered)
+                self._say(reask, offered)
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
             f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
@@ -188,37 +457,37 @@ class VoiceApprovalLoop:
         """Answer one pending request by voice.
 
         If the request already has a response, returns it without asking
-        again. Raises `UnclearResponse` if the spoken answer never parses.
+        again. Raises `UnclearResponse` if no spoken answer was usable.
         """
         request, existing = self.client.get_human_request(request_id)
         if existing is not None:
             return existing
 
-        options = request.options or ["approve", "reject"]
-        answer = self._ask(request.prompt, options)
+        # A request may carry a shorter form for the ear (`context.spoken`):
+        # what a page shows in full can be too long to listen to.
+        spoken = (request.context or {}).get("spoken")
+        prompt = spoken if isinstance(spoken, str) and spoken.strip() else request.prompt
+        if request.options:
+            answer = self._ask(prompt, request.options)
+        else:
+            answer = self._ask_open(prompt)
 
         response = self.client.submit_human_response(
             request_id=request_id, response=answer, responded_by="vox"
         )
         self._announce("recorded", answer)
-        self.tts.speak(f"Recorded: {answer}")
+        self.tts.speak(ACKNOWLEDGED.get(answer, "Noted."))
         return response
 
-    def _announce(self, state: str, text: str = "", reason: str | None = None) -> None:
+    def _announce(self, state: str, text: str = "", reason: str | None = None,
+                  options: list[str] | None = None) -> None:
         """Tell whatever shows the exchange what the dialog is doing.
 
-        The dialog's own states -- `speaking` (with the reason on a re-ask),
-        `recorded`, `gave_up` -- go to the STT backend's `announce`, which
-        vox's `HttpSTT` has for an engine that names a conversation route.
-        A backend without one, or one that fails, costs the dialog nothing.
+        The dialog's own states -- `speaking` (with the reason on a re-ask,
+        and the question's options), `recorded`, `gave_up` -- go to the STT
+        backend's `announce` (`announce_to`).
         """
-        announce = getattr(self.stt, "announce", None)
-        if announce is None:
-            return
-        try:
-            announce(state, text, reason=reason)
-        except Exception:
-            pass
+        announce_to(self.stt, state, text, reason, options)
 
     def run_forever(self, poll_interval: float = 2.0, max_iterations: int | None = None) -> int:
         """Keep answering pending requests as they appear.
