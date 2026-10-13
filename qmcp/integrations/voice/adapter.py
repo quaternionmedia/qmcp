@@ -56,6 +56,73 @@ _CONFIRM = ["agree", "again"]
 # Accepted as `agree` and never offered.
 _AGREE_ALIASES = ["record"]
 
+# Asks for the question again rather than answering it, matched on the whole
+# utterance -- what a key on joe's page sends as well. "again" alone is not
+# one: it is the read-back's own option.
+REPEAT = ("repeat", "repeat that", "say that again", "come again", "pardon", "what",
+          "what was that", "sorry")
+# Repeats granted per question before a request to repeat is read as no answer.
+MAX_REPEATS = 3
+
+
+def plain_words(text: str) -> str:
+    """An utterance as words alone -- lower case, no punctuation -- with a word
+    said over and over read once: a transcriber that returns "No. No. No."
+    has heard "no"."""
+    words = re.sub(r"[^\w\s]", " ", (text or "").lower().replace("'", "")).split()
+    if len(words) > 1 and len(set(words)) == 1:
+        words = words[:1]
+    return " ".join(words)
+
+
+def asks_repeat(text: str) -> bool:
+    """Whether an utterance asks for the question again."""
+    return plain_words(text) in REPEAT
+
+
+def listen_for(stt, duration: float, *, pause_ms: int | None = None, hint=None):
+    """`stt.listen`, told the words a short answer is expected to be.
+
+    vox's backends take `hint` and an engine biases its transcription toward
+    it; a backend written against the shape before `hint` existed refuses the
+    keyword, and is asked again without it rather than failing the question.
+    """
+    kwargs: dict = {"duration": duration}
+    if pause_ms is not None:
+        kwargs["pause_ms"] = pause_ms
+    if hint:
+        kwargs["hint"] = list(hint)
+    try:
+        return stt.listen(**kwargs)
+    except TypeError as exc:
+        if "hint" not in kwargs or "hint" not in str(exc):
+            raise
+        del kwargs["hint"]
+        return stt.listen(**kwargs)
+
+
+def announce_to(stt, state: str, text: str = "", reason: str | None = None,
+                options=None) -> None:
+    """Post one dialog state to the backend's `announce`, a question carrying
+    its options so a display can offer them as keys and buttons. A backend
+    without `announce`, one that fails, or one written before options existed
+    costs the dialog nothing."""
+    post = getattr(stt, "announce", None)
+    if post is None:
+        return
+    extra = {"reason": reason} if reason else {}
+    try:
+        if options:
+            try:
+                post(state, text, options=list(options), **extra)
+                return
+            except TypeError as exc:
+                if "options" not in str(exc):
+                    raise
+        post(state, text, **extra)
+    except Exception:
+        pass
+
 
 def parse_yes_no(text: str) -> bool | None:
     """Parse a spoken response as approve (True), reject (False), or unclear (None).
@@ -198,11 +265,19 @@ class VoiceApprovalLoop:
         retry budget raises, and nothing is guessed.
         """
         grammar = say_options(options)
-        self._announce("speaking", f"{prompt} {grammar}")
-        self.tts.speak(f"{prompt} {grammar}")
+        question = f"{prompt} {grammar}"
+        self._announce("speaking", question, options=options)
+        self.tts.speak(question)
         heard = ""
-        for attempt in range(self.max_retries + 1):
-            heard, _ = self.stt.listen(duration=self.listen_duration)
+        attempt = repeats = 0
+        while attempt <= self.max_retries:
+            heard, _ = listen_for(self.stt, self.listen_duration, hint=options)
+            # Asked to say it again: said again, and no retry spent.
+            if asks_repeat(heard) and repeats < MAX_REPEATS:
+                repeats += 1
+                self._announce("speaking", question, reason="repeat", options=options)
+                self.tts.speak(question)
+                continue
             decision = parse_yes_no(heard)
             if decision is not None:
                 return choose_option(decision, options)
@@ -214,8 +289,9 @@ class VoiceApprovalLoop:
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
                     reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
-                self._announce("speaking", reask, reason=reason)
+                self._announce("speaking", reask, reason=reason, options=options)
                 self.tts.speak(reask)
+            attempt += 1
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
             f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
@@ -226,8 +302,10 @@ class VoiceApprovalLoop:
 
         An open question has no grammar for the answer, so the transcript is
         the answer and the speaker is the only check on it: it is read back
-        as a closed choice between `agree` and `again`, parsed with the same
-        helpers as any closed choice, so a yes records and a no re-asks.
+        as a closed choice between `agree` and `again`, hinted and offered as
+        every closed choice is and parsed with the same helpers, so a yes
+        records and a no re-asks. "repeat" says the read-back again without
+        spending a retry, up to `MAX_REPEATS`.
 
         One budget covers the whole dialog. Every turn the speaker has to be
         asked for a second time costs a retry -- nothing heard for the answer
@@ -240,16 +318,24 @@ class VoiceApprovalLoop:
         self.tts.speak(prompt)
         heard = ""
         answer: str | None = None
+        repeats = 0
         for reasks in range(self.max_retries + 1):
             while True:
-                heard, _ = self.stt.listen(duration=self.listen_duration)
                 if answer is None:
+                    heard, _ = self.stt.listen(duration=self.listen_duration)
                     if not heard.strip():
                         reask, reason = f"I didn't hear anything. {prompt}", "noinput"
                         break
                     answer = heard.strip()
                     readback = f"I heard: {_said(answer)}. {grammar}"
-                    self._announce("speaking", readback, reason="confirm")
+                    self._announce("speaking", readback, reason="confirm", options=_CONFIRM)
+                    self.tts.speak(readback)
+                    continue
+                heard, _ = listen_for(self.stt, self.listen_duration, hint=_CONFIRM)
+                # Asked to say it again: the read-back again, and no retry spent.
+                if asks_repeat(heard) and repeats < MAX_REPEATS:
+                    repeats += 1
+                    self._announce("speaking", readback, reason="repeat", options=_CONFIRM)
                     self.tts.speak(readback)
                     continue
                 decision = parse_yes_no(heard)
@@ -267,7 +353,10 @@ class VoiceApprovalLoop:
                     reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
                 break
             if reasks < self.max_retries:
-                self._announce("speaking", reask, reason=reason)
+                # A re-ask of the read-back offers its options; a re-ask of
+                # the question has none to offer.
+                self._announce("speaking", reask, reason=reason,
+                               options=_CONFIRM if answer is not None else None)
                 self.tts.speak(reask)
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
@@ -296,21 +385,15 @@ class VoiceApprovalLoop:
         self.tts.speak(f"Recorded: {answer}")
         return response
 
-    def _announce(self, state: str, text: str = "", reason: str | None = None) -> None:
+    def _announce(self, state: str, text: str = "", reason: str | None = None,
+                  options: list[str] | None = None) -> None:
         """Tell whatever shows the exchange what the dialog is doing.
 
-        The dialog's own states -- `speaking` (with the reason on a re-ask),
-        `recorded`, `gave_up` -- go to the STT backend's `announce`, which
-        vox's `HttpSTT` has for an engine that names a conversation route.
-        A backend without one, or one that fails, costs the dialog nothing.
+        The dialog's own states -- `speaking` (with the reason on a re-ask,
+        and the question's options), `recorded`, `gave_up` -- go to the STT
+        backend's `announce` (`announce_to`).
         """
-        announce = getattr(self.stt, "announce", None)
-        if announce is None:
-            return
-        try:
-            announce(state, text, reason=reason)
-        except Exception:
-            pass
+        announce_to(self.stt, state, text, reason, options)
 
     def run_forever(self, poll_interval: float = 2.0, max_iterations: int | None = None) -> int:
         """Keep answering pending requests as they appear.

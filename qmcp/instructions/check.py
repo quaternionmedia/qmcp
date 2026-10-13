@@ -32,7 +32,7 @@ from pathlib import Path
 
 from qmcp.instructions import RULE_ONE, RULE_STATED
 from qmcp.instructions.dialog import CONFIRM, PAUSE_MS, PROMPT, WHICH_PROJECT, InstructionDialog
-from qmcp.integrations.voice.adapter import UnclearResponse, say_options
+from qmcp.integrations.voice.adapter import UnclearResponse, listen_for, say_options
 from qmcp.integrations.voice.check import _Recorded, throwaway_server
 
 # Two names the organisation's own roster carries. The check reads the real
@@ -98,16 +98,16 @@ class _Scripted:
         self.takes = 0
         self.log = log
 
-    def listen(self, duration: float = 5.0, *, pause_ms: int | None = None):
+    def listen(self, duration: float = 5.0, *, pause_ms: int | None = None, hint=None):
         self.state.heard = self.script[min(self.takes, len(self.script) - 1)]
         self.takes += 1
-        text, path = self.stt.listen(duration=duration, pause_ms=pause_ms)
+        text, path = listen_for(self.stt, duration, pause_ms=pause_ms, hint=hint)
         if self.log is not None:
             self.log.append(("heard", text))
         return text, path
 
-    def announce(self, state: str, text: str = "", reason: str | None = None):
-        return self.stt.announce(state, text, reason=reason)
+    def announce(self, state: str, text: str = "", reason: str | None = None, options=None):
+        return self.stt.announce(state, text, reason=reason, options=options)
 
 
 def run_offline(echo: Callable[[str], None] = print, cases=OFFLINE_CASES) -> bool:
@@ -483,10 +483,11 @@ WAITING_QUESTION = "Ship the build?"
 
 def conversation_script(project: str) -> tuple[str, ...]:
     """Every take of one spoken session, in order: the waiting question answered,
-    a silence, two instructions each recorded and approved, a yes and a no to
-    "Anything else?", the words that end it, and silence."""
+    a silence, two instructions each recorded and approved -- the first read
+    back twice, on being asked to repeat it -- a yes and a no to "Anything
+    else?", the words that end it, and silence."""
     return ("approve", "",
-            FIRST_ASK.format(project=project), "record", "approve",
+            FIRST_ASK.format(project=project), "repeat", "record", "approve",
             "yes",
             SECOND_ASK.format(project=project), "record", "approve",
             "no",
@@ -580,6 +581,19 @@ def run_conversation(echo: Callable[[str], None] = print, runtime=None,
                 problems.append("the second instruction was not told what the first found")
         if ended.reason != "told to stop" or tts.spoken[-1:] != [STOPPING]:
             problems.append(f"the session ended {ended.reason!r}, not on being told to stop")
+        first_ask = FIRST_ASK.format(project=project)[:20]
+        readbacks = [t for t in tts.spoken if t.startswith("I heard: ") and first_ask in t]
+        if len(readbacks) != 2:
+            problems.append(f"the first read-back was said {len(readbacks)} time(s), not again on 'repeat'")
+        # What reached the engine over the wire: each closed question's
+        # options as the hint, and as the options a display can offer.
+        for hint in ("approve, hold", "record, again", "yes, no"):
+            if hint not in state.hints:
+                problems.append(f"no listen was hinted {hint!r}")
+        offered = [tuple(a.get("options") or ()) for a in state.announced if a.get("state") == "speaking"]
+        for options in (("approve", "hold"), ("record", "again"), ("yes", "no")):
+            if options not in offered:
+                problems.append(f"no question offered {options}")
 
         for kind, line in log:
             echo(f"    {kind:<6} {line}" if kind else f"    {'':<6} {line}")

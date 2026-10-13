@@ -219,7 +219,9 @@ qmcp:   Stopping. Start the server again to talk.
 ```
 
 joe's page shows each turn live: the question, the open microphone, the person
-speaking, the pause, the reading. While the conversation runs it listens take
+speaking, the pause, the reading. joe plays two rising notes when it is the
+person's turn to speak and one lower note when it has heard them, so the turns
+can be followed without looking. While the conversation runs it listens take
 after take, and joe keeps every take as a file in its checkout's `Data/Voice`;
 nothing deletes them. Onboarding is done when this tier has run once.
 
@@ -237,7 +239,8 @@ say it once more. The consent says what will run: the instruction, the project,
 the clone, the runtime, a budget of one run, and how many earlier instructions
 it carries. Say "approve". *Approved. Running in qmcp.* -- and when the model
 has read what it needs, the first sentence of what it found, said back. The
-whole answer is on the record: `uv run qmcp instructions show <id>`.
+whole answer is on the record: `uv run qmcp instructions show <id>`. Missed a
+question? Say "repeat", or press `R`.
 
 ### Pick up where the last session left off
 
@@ -282,6 +285,29 @@ anyone: `uv run qmcp human list`, `uv run qmcp human voice`, or joe's page.
 microphone stays open, and the next instruction can come at any time; "yes"
 asks for it now. "stop listening" or "goodbye" ends the conversation, and so
 does stopping the server; *Start the server again to talk.*
+
+### Answer without speaking, and follow by ear
+
+Every question's answers are on joe's page as numbered buttons, and with the
+page focused the keys answer the same way, without looking:
+
+| Key | Does |
+|---|---|
+| `1`–`9` | answers with the question's options in the order it says them: *"Say approve or hold."* makes `1` approve and `2` hold |
+| `R` | says the question again, as saying "repeat" or "what?" does; neither spends one of its retries |
+| `Shift`+`Esc` | stops listening |
+| `~`, held | keeps the turn open through pauses -- an instruction with a long thought in it; releasing it ends the turn |
+
+A key or button counts as having said the word: the take in progress ends at
+once, and with `--wake` no wake word is needed. Two tones carry what the page
+shows: two rising notes just before the microphone opens for an answer, and
+one lower note once the turn has been heard; `JOE_CUES=0` in joe's environment
+turns them off. With the keys, the tones and qmcp's own voice, the loop runs
+with nobody looking at a screen.
+
+Each closed question also tells the speech engine the words its answer is
+expected to be, which joe hands its transcriber as a prompt: a clipped
+"approve" is far likelier to come back as that word.
 
 ### A room where people talk
 

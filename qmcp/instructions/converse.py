@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Any
 
 from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, InstructionDialog
+from qmcp.integrations.voice.adapter import REPEAT
 
 READY = "Ready. What should be done?"
 ANYTHING_ELSE = "Anything else?"
@@ -68,6 +69,8 @@ STOP = ("stop", "stop listening", "goodbye", "good bye", "stop the conversation"
 DONE = ("no", "nope", "nothing", "no thanks", "no thank you", "thats all", "that is all",
         "nothing else", "not now")
 MORE = ("yes", "yeah", "yep", "sure", "yes please", "please")
+# The answers "Anything else?" offers as keys and buttons, and hints to the engine.
+MORE_OPTIONS = ("yes", "no")
 
 # Request ids this conversation puts on the queue itself, asked inside the act
 # that created them rather than as a waiting question.
@@ -75,8 +78,12 @@ OWN = ("instruction-",)
 
 
 def plain(text: str) -> str:
-    """An utterance as words alone: lower case, no punctuation, single spaces."""
-    return " ".join(re.sub(r"[^\w\s]", "", (text or "").lower().replace("'", "")).split())
+    """An utterance as words alone: lower case, no punctuation, single spaces,
+    and a word said over and over read once ("No. No. No." is "no")."""
+    words = re.sub(r"[^\w\s]", "", (text or "").lower().replace("'", "")).split()
+    if len(words) > 1 and len(set(words)) == 1:
+        words = words[:1]
+    return " ".join(words)
 
 
 def sibling_clones() -> Path:
@@ -133,6 +140,9 @@ class Conversation:
         self.poll_interval = poll_interval
         self.echo = echo or (lambda line: None)
         self._asked: set[str] = set()
+        # The question the next take answers, and the options it offered, so
+        # "repeat" can say it again and the engine can be hinted.
+        self._question: tuple[str, tuple[str, ...]] = (READY, ())
 
     # --- speaking ---------------------------------------------------------------
 
@@ -141,6 +151,18 @@ class Conversation:
 
         self.echo(f"said: {text}")
         say(text, self.tts, self.stt)
+
+    def ask(self, text: str, options: tuple[str, ...] = ()) -> None:
+        """Say a question and leave the turn to the person: announced as
+        `speaking`, with its options, and not closed with `idle`, so the
+        engine knows the next take answers it -- joe cues the person to
+        speak -- and the page can offer the options."""
+        from qmcp.instructions.spoken import announce
+
+        self._question = (text, tuple(options))
+        self.echo(f"said: {text}")
+        announce(self.stt, "speaking", text, options=list(options) or None)
+        self.tts.speak(text)
 
     def _announce(self, state: str, text: str) -> None:
         from qmcp.instructions.spoken import announce
@@ -151,12 +173,18 @@ class Conversation:
 
     def run(self) -> Ended:
         """Talk until told to stop, or until `idle_limit` silent takes in a row."""
+        from qmcp.integrations.voice.adapter import listen_for
+
         ended = Ended()
-        self.say(READY)
+        self.ask(READY)
         idle = 0
         while True:
             self._ask_waiting(ended)
-            heard, _ = self.stt.listen(duration=self.listen_duration, pause_ms=self.pause_ms)
+            heard, recording = listen_for(self.stt, self.listen_duration, pause_ms=self.pause_ms,
+                                          hint=self._question[1])
+            # An answer with no recording behind it came from a key or a button
+            # on the engine's page: it was meant for this conversation.
+            keyed = not recording
             words = plain(heard)
             if not words:
                 idle += 1
@@ -168,7 +196,7 @@ class Conversation:
                 continue
             idle = 0
             self.echo(f"heard: {heard.strip()}")
-            if self.wake:
+            if self.wake and not keyed:
                 if not words.startswith(self.wake):
                     continue
                 heard = _after(heard, self.wake)
@@ -180,19 +208,22 @@ class Conversation:
                 self.say(STOPPING)
                 ended.reason = "told to stop"
                 return ended
+            if words in REPEAT:
+                self.ask(*self._question)
+                continue
             if words in DONE:
-                self.say(OKAY)
+                self.ask(OKAY)
                 continue
             if words in MORE:
-                self.say(PROMPT)
+                self.ask(PROMPT)
                 continue
             try:
                 ended.turns.append(self._take(heard))
             except Exception as exc:  # noqa: BLE001 -- a standing conversation outlives a turn
                 self.echo(f"turn failed: {type(exc).__name__}: {exc}")
-                self.say(FAILED)
+                self.ask(FAILED)
                 continue
-            self.say(ANYTHING_ELSE)
+            self.ask(ANYTHING_ELSE, MORE_OPTIONS)
 
     def _take(self, heard: str) -> Turn:
         """One instruction: read back and recorded, then acted on with consent, then said."""

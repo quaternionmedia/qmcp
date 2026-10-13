@@ -117,19 +117,16 @@ def starting(project: str | None) -> str:
     return f"Approved. Running in {project}." if project else "Approved. Running."
 
 
-def announce(stt: Any, state: str, text: str) -> None:
+def announce(stt: Any, state: str, text: str, options: Any = None) -> None:
     """Post one state to the engine's conversation route, if it has one.
 
-    The same contract as the approval loop's: a backend without `announce`,
-    or one that fails, is dropped rather than stopping the sentence.
+    The same contract as the approval loop's (`announce_to`): a backend
+    without `announce`, or one that fails, is dropped rather than stopping
+    the sentence.
     """
-    post = getattr(stt, "announce", None)
-    if post is None:
-        return
-    try:
-        post(state, text)
-    except Exception:
-        pass
+    from qmcp.integrations.voice.adapter import announce_to
+
+    announce_to(stt, state, text, options=options)
 
 
 def say(text: str, tts: Any, stt: Any = None) -> None:

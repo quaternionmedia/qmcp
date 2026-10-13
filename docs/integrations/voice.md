@@ -175,6 +175,16 @@ An answer that is neither yes nor no is matched against the options by name
 (`match_option`), so "hold" answers `["approve", "hold"]` and "wait" answers
 `["ship it", "wait"]`. Naming none, or more than one, is no match.
 
+Each closed question tells the speech engine the words its answer is expected
+to be (`listen(hint=...)`; joe hands them to its transcriber as a prompt) and
+announces them as the `speaking` state's `options`, which joe's page offers as
+numbered buttons and keys. A prompt echoed back on unclear audio names every
+option, which is no match and is asked again. "repeat" -- or "what?",
+"pardon", "say that again", or the page's `R` -- says the question again
+without spending a retry, up to `MAX_REPEATS`. A transcript repeating one word
+("No. No. No.") is read as that word. A backend written before `hint` or
+`options` existed is asked without them (`listen_for`, `announce_to`).
+
 The re-ask says which of two things went wrong, up to `max_retries` (default
 2): *"I didn't hear anything."* when the transcript is empty (VoiceXML's
 noinput), or *"I heard: banana."* when something was heard and was unusable
@@ -185,13 +195,15 @@ submits nothing: an ambiguous answer is never guessed at.
 A request with no `options` is an open question, and the transcript is the
 answer: *"What should the branch be called?"* is spoken as it is, and what is
 heard is read back once as a closed choice — *"I heard: release candidate. Say
-agree or again."* The read-back goes through the same helpers, so a yes
-records and a no listens again; `again` re-speaks the question; silence and a
-confirmation that matches neither are re-asked as noinput and nomatch. One
-budget covers the dialog: each turn the speaker has to be asked a second time,
-whether for the answer or for the confirmation, costs a retry, and exhausting
-it raises and submits nothing. An `input` request answered "yes" therefore
-records `yes`, not `approve`; a request with options is unaffected.
+agree or again."* — hinted, offered and said again on "repeat" as every closed
+question is; the answer itself is not hinted. The read-back goes through the
+same helpers, so a yes records and a no listens again; `again` re-speaks the
+question; silence and a confirmation that matches neither are re-asked as
+noinput and nomatch. One budget covers the dialog: each turn the speaker has
+to be asked a second time, whether for the answer or for the confirmation,
+costs a retry, and exhausting it raises and submits nothing. An `input`
+request answered "yes" therefore records `yes`, not `approve`; a request with
+options is unaffected.
 
 ## Watching the exchange
 
@@ -390,9 +402,13 @@ done?"*, and from then on is spoken:
 | -- | the runtime carries it out, *"Approved. Running in qmcp."*, and the answer is said back |
 | `yes` / `no` | to *"Anything else?"*: asks for the next instruction, or goes back to waiting |
 | `stop listening` / `goodbye` | ends the conversation |
+| `repeat` / `what?` | the last question again |
 
-Silence is waited through: the microphone stays open, take after take, and the
-page shows it listening. Before each instruction, questions agents have put on
+joe's page offers each question's answers as buttons and number keys, `R` to
+repeat, `Shift`+`Esc` to stop and `~` held to keep a turn open, and plays a
+tone when it is the person's turn and another once heard; an answer by key
+needs no wake word. Silence is waited through: the microphone stays open, take
+after take, and the page shows it listening. Before each instruction, questions agents have put on
 the human queue are asked aloud, oldest first, and answered by voice; one
 nobody answers stays pending for anyone. A project acted on for the first time
 runs in a clone named for it beside this checkout, or in `--clones`, and after
