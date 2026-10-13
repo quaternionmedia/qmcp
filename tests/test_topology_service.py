@@ -1,9 +1,8 @@
 """The topology over HTTP, and the line the readings must not cross.
 
-THE TEST WORTH READING IS THE FIRST. The topology *shapes* are this harness's
-own vocabulary and name nobody. The *readings* are derived from a person's
-conversations. They are two classes of route and one of them is loopback-only,
-which is a decision that has to be enforced rather than remembered.
+The topology *shapes* are this harness's own vocabulary and name nobody. The
+*readings* are derived from a person's conversations and are served only on
+loopback.
 """
 
 from __future__ import annotations
@@ -37,12 +36,9 @@ def everything(tmp_path) -> TestClient:
 
 
 def test_readings_are_absent_rather_than_refused_when_only_shapes_are_served():
-    """THE ONE THAT MATTERS.
-
-    Off loopback the readings route must not exist. A 403 would be a refusal,
-    and a refusal tells a caller the archive is on this machine -- which is
-    itself the fact being protected. `qmcp.threads.service` is registered the
-    same way and for the same reason.
+    """Off loopback the readings route does not exist. A 403 would tell a
+    caller an archive is on this machine. `qmcp.threads.service` is
+    registered the same way.
 
     Mutation: register the readings unconditionally and this fails.
     """
@@ -74,11 +70,9 @@ def test_the_server_registers_readings_only_on_loopback():
     """The wiring, not just the module. `create_app` is read because the
     decision lives there and this module must not second-guess it.
 
-    **THE STRUCTURE, NOT THE TEXT.** The first version split the file on the
-    first occurrence of the name and asserted `is_loopback` came before it --
-    which the *import* line always precedes, so the test failed on correct
-    code. Text order is not nesting. This walks the tree and asks whether the
-    call sits inside an `if is_loopback(...)` body, which is the actual claim.
+    It walks the syntax tree and asks whether the call sits inside an
+    `if is_loopback(...)` body; the order of lines in the file does not show
+    nesting.
 
     Mutation: move the call out of the guard and this fails.
     """
@@ -160,9 +154,8 @@ def test_the_shape_route_cannot_be_confused_for_the_readings_route(shapes_only):
 
 
 def test_an_absent_archive_is_an_absent_answer_rather_than_no_relations(everything):
-    """**NOT AN EMPTY LIST.** A subject with no relations and an archive that
-    could not be read are opposite facts, and a 200 with `[]` states the first
-    while meaning the second.
+    """An archive that could not be read is a 404, not a 200 with `[]`: a
+    subject with no relations and an unreadable archive are different facts.
 
     Mutation: return an empty payload instead of 404 and this fails.
     """

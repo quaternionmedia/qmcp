@@ -1,13 +1,10 @@
 """Saved topology designs over HTTP, and the line between designing and running.
 
-THE TEST WORTH READING IS THE COUNCIL ONE. The plane refuses to run a council
-because its arbiter decides. Saving one is allowed, and the response carries the
-refusal and says the design is kept: a store that refused the save would hide
-the rule at the moment somebody was choosing a shape.
+A shape the plane refuses to run can be saved; the response carries the
+refusal and says the design is kept.
 
-Every test here runs against its own SQLite file. The configured database
-holds somebody's human-in-the-loop queue, and `AGENTS.md` records what a test
-that writes into it does to another session's work.
+Every test runs against its own SQLite file, never the configured database,
+which holds a person's human-in-the-loop queue.
 """
 
 from __future__ import annotations
@@ -71,8 +68,8 @@ def test_the_stored_config_is_the_effective_one(served):
 
 
 def test_an_invalid_config_is_refused_with_the_field_named(served):
-    """THE RED CASE. 422, and the detail says which field and why, so a
-    window can put the message beside the input.
+    """422, and the detail says which field and why, so a window can put the
+    message beside the input.
 
     Mutation: skip `validated_config` on save and this fails.
     """
@@ -138,10 +135,8 @@ def test_a_name_collision_is_a_409_pointing_at_put(served):
 
 
 def test_a_refused_shape_saves_and_the_response_says_the_run_is_what_is_refused(served):
-    """THE ONE THAT MATTERS.
-
-    Designing is not an act; running is. The council saves, the plane's
-    refusal comes back beside it, and a sentence says the design is kept.
+    """The council saves, the plane's refusal comes back beside it, and a
+    sentence says the design is kept: the refusal applies to running it.
 
     Mutation: return 4xx for a `REFUSED` capability and this fails.
     """

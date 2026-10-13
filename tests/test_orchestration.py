@@ -1,9 +1,7 @@
 """What each topology would do, and which pairings this organisation refuses.
 
-THE TEST WORTH READING IS THE REFUSAL ONE. A machine reaching a verdict on
-whether to ratify is not a machine doing a person's job badly -- it is a verdict
-that asserts something nobody asserted, and it is indistinguishable afterwards
-from one somebody made.
+A topology that decides is refused when pointed at an act the constitution
+reserves for a person; one that reports is not.
 """
 
 from __future__ import annotations
@@ -37,10 +35,7 @@ from qmcp.orchestration import (
 
 
 def test_a_deciding_topology_is_refused_an_attested_act():
-    """THE ONE THAT MATTERS.
-
-    `debate` is a perfectly good shape and it ends in something choosing.
-    Pointed at ratification it would produce a verdict nobody made.
+    """`debate` ends in something choosing, so it is refused ratification.
 
     Mutation: drop the `decides` condition and this fails.
     """
