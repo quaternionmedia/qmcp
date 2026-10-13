@@ -201,12 +201,16 @@ def consent_prompt(row: Instruction, clone: Clone, runtime: str, budget: Budget,
         from qmcp.integrations.voice.adapter import counted
 
         how = {"local": "The local model", "scripted": "A script",
-               "check": "A declared check"}.get(runtime, f"Runtime {runtime}")
+               "check": "A declared check",
+               "topology-crosscheck": "The local cross-check topology"}.get(
+                   runtime, f"Runtime {runtime}")
         remembers = ", with what came before" if carried else ""
         asked = row.text.strip()
         asked += "" if asked.endswith((".", "?", "!")) else "."
+        command_note = f" The command is {command}." if command else ""
         return (f"Run in {row.project or 'no project'}: {asked} "
-                f"{how}, {counted(budget.authorised, 'run')}{remembers}.")
+                f"{how}, {counted(budget.authorised, 'run')}{remembers}."
+                f"{command_note}")
     history_note = (f", carrying {carried} earlier instruction(s) from qmcp's record"
                     if carried else "")
     command_note = f", command `{command}`" if command else ""
@@ -319,7 +323,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
                          "cwd": str(clone.cwd), "runtime": runtime_name,
                          "carried": list(carried), "spend": declared,
                          "spoken": consent_prompt(row, clone, runtime_name, budget,
-                                                  carried=told, spoken=True)})
+                                                  carried=told, spoken=True, command=command)})
             break
         except HumanRequestConflictError:
             # Acted on before: the earlier consent stands as its own record,

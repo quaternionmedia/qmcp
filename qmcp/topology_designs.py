@@ -62,8 +62,8 @@ within it. A composed design may reference another project's as
 WHAT THIS CANNOT DO. Delete. There is no `DELETE` route: a design or a
 component somebody saved is a record, and removing one is a decision this
 module has no way to know was somebody's. Nor run: nothing here executes a
-topology, and a saved design with every need met is still a drawing until a
-command runs it.
+topology. `qmcp.integrations.agents.topology_design` runs a saved design, by
+voice and behind a consent, and the block's `voice_*` fields are what it reads.
 """
 
 from __future__ import annotations
@@ -147,6 +147,10 @@ def capability_block(kind: TopologyType, act: str = "",
         "spends": capability.spends if capability else None,
         "writes": capability.writes if capability else None,
         "decides": capability.decides if capability else None,
+        "voice_runnable": capability.voice_runnable if capability else False,
+        "voice_spends": capability.voice_spends if capability else None,
+        "voice_writes": capability.voice_writes if capability else None,
+        "voice_decides": capability.voice_decides if capability else None,
         "why": capability.why if capability else None,
         "needs": ([need_payload(n) for n in capability.needs]
                   if capability else None),

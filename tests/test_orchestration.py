@@ -128,6 +128,29 @@ def test_the_option_does_not_reach_another_kind():
     assert capability_for(TopologyType.COUNCIL, ADVISORY) is ADVISORY_COUNCIL
 
 
+def test_the_voice_runner_takes_the_advisory_council_and_not_the_deciding_one():
+    """Mutation: mark the deciding council row voice-runnable, or leave the
+    advisory one unmarked, and this fails."""
+    assert by_type()[TopologyType.COUNCIL].voice_runnable is False
+    assert ADVISORY_COUNCIL.voice_runnable is True
+
+
+def test_no_voice_run_is_declared_to_spend_write_or_decide():
+    """The runner refuses a shape whose voice run would; declaring one here
+    would make the declaration and the runner disagree."""
+    for entry in (*PLANE, *(o.capability for o in OPTIONS)):
+        if entry.voice_runnable:
+            assert entry.status != REFUSED, entry.topology
+            assert not (entry.voice_spends or entry.voice_writes or entry.voice_decides)
+
+
+def test_the_printed_plane_marks_what_the_voice_runner_takes():
+    printed = render()
+    assert "[spends, decides, saved-design voice runner]" in printed
+    refused = next(line for line in printed.splitlines() if line.startswith("REFUSED"))
+    assert "voice runner" not in refused
+
+
 def test_an_undeclared_topology_is_refused_rather_than_allowed():
     """Default closed. A topology nobody declared is one nothing knows the
     cost or the authority of, and letting it through because no rule matched
