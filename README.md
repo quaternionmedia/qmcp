@@ -95,7 +95,9 @@ uv run qmcp instructions say <id>      # what an instruction came to, again
 Nothing runs on any answer but `approve`, and every runtime is asked. The
 `local` runtime reads the clone with tools that cannot write and spends
 nothing; other runtimes sit behind the same contract and are handed the same
-brief. The clone is passed once with `--cwd` and remembered for the project.
+brief. `docs/voice-loop-demo.md` runs the whole loop in three tiers, the first
+two without a microphone, and `uv run qmcp cookbook instruct --runtime local`
+shows continuity on the local model in one command. The clone is passed once with `--cwd` and remembered for the project.
 `--budget` counts runs and defaults to zero, which declares what would be
 asked and stops; `--runtime` has no default, and `scripted` runs nothing.
 Recording, acting and the summary each have a section in

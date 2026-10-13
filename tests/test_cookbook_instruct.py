@@ -249,3 +249,116 @@ def test_a_loop_case_expecting_a_run_fails_when_nothing_ran():
 
     assert check.run_loop(echo=lines.append, cases=(case,)) is False
     assert any("the runtime ran 0 time(s), expected 1" in line for line in lines)
+
+
+# --- the continuity, on a runtime ------------------------------------------------------
+#
+# Run on `scripted`, which spends nothing, so the path qmcp owns -- the clone
+# remembered, the history carried, the summary said -- is checked without a
+# model. The same command with `--runtime local` runs it on the model.
+
+
+def test_continuity_on_a_runtime_is_shown_end_to_end():
+    result = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "scripted"])
+
+    assert result.exit_code == 0, result.output
+    assert "carrying 1 earlier instruction(s) from qmcp's record" in result.output
+    assert "carried   instruction 1 and what it found, from qmcp's record" in result.output
+    assert "ran in the remembered clone, told what the first found" in result.output
+    assert "The second instruction was carried out knowing what the first found." in result.output
+
+
+def test_continuity_fails_when_nothing_is_carried(monkeypatch):
+    """Mutation of the subject: the act hands the runtime no history."""
+    monkeypatch.setattr("qmcp.instructions.act.history", lambda *a, **k: ())
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "scripted"])
+
+    assert result.exit_code == 1, result.output
+    assert "carried (), expected the first instruction" in result.output
+
+
+def test_continuity_fails_when_the_clone_is_not_remembered(monkeypatch):
+    monkeypatch.setattr("qmcp.instructions.act.last_clone", lambda *a, **k: None)
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "scripted"])
+
+    assert result.exit_code == 1, result.output
+    assert "the runtime never ran: no clone for 'qmcp' in qmcp's record yet" in result.output
+
+
+def test_continuity_refuses_a_clone_that_is_no_rostered_project(tmp_path):
+    from qmcp.integrations.agents.scripted import ScriptedRuntime
+
+    lines: list[str] = []
+    clone = tmp_path / "not-a-project"
+    clone.mkdir()
+
+    assert check.run_continuity(echo=lines.append, runtime=ScriptedRuntime(), clone=clone) is False
+    assert "'not-a-project' is not on the roster" in lines[0]
+
+
+def test_a_runtime_that_is_not_ready_runs_nothing(monkeypatch):
+    """Mutation: skip `ready()` -- red, the demonstration would start and fail
+    one timeout later."""
+    from qmcp.integrations.agents.scripted import ScriptedRuntime
+
+    class Unready(ScriptedRuntime):
+        def ready(self):
+            return "the model is not served"
+
+    monkeypatch.setattr("qmcp.integrations.agents.runtime_named", lambda name, **kw: Unready())
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "local"])
+
+    assert result.exit_code != 0
+    assert "Nothing ran: the model is not served." in result.output
+    assert "instruction 1" not in result.output
+
+
+def test_the_demonstration_options_are_refused_without_a_runtime(tmp_path):
+    clone = CliRunner().invoke(cli, ["cookbook", "instruct", "--clone", str(tmp_path)])
+    unknown = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "nobody"])
+
+    assert clone.exit_code != 0 and "read only with --runtime" in clone.output
+    assert unknown.exit_code != 0 and "'nobody' is not a runtime" in unknown.output
+
+
+@pytest.mark.parametrize(("rule", "message"), [
+    ("passed as --cwd", "not remembered"),
+    ("the clone the project's last act ran in, from qmcp's record", "not the one passed"),
+])
+def test_continuity_fails_when_a_clone_was_chosen_by_the_wrong_rule(monkeypatch, rule, message):
+    """The first instruction's clone must be the one passed and the second's
+    the remembered one; a run in the right directory for the wrong reason is
+    not continuity."""
+    from pathlib import Path
+
+    from qmcp.instructions import act as act_module
+
+    monkeypatch.setattr(act_module, "clone_for",
+                        lambda rows, instruction_id, project, cwd: act_module.Clone(
+                            cwd=Path(__file__).resolve().parent.parent, rule=rule))
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "scripted"])
+
+    assert result.exit_code == 1, result.output
+    assert message in result.output
+
+
+def test_continuity_fails_when_something_is_said_after_the_summary(monkeypatch):
+    from qmcp.instructions import spoken
+
+    real = spoken.say
+
+    def chatty(text, tts, stt=None):
+        real(text, tts, stt)
+        if text.startswith("Done"):
+            tts.speak("Anything else?")
+
+    monkeypatch.setattr(spoken, "say", chatty)
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "scripted"])
+
+    assert result.exit_code == 1, result.output
+    assert "the summary was not the last thing said" in result.output

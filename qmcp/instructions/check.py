@@ -351,3 +351,125 @@ def run_loop(echo: Callable[[str], None] = print, cases=LOOP_CASES) -> bool:
 
         echo(f"{passed} of {len(cases)} loops ended as scripted.")
         return passed == len(cases)
+
+
+# --- the continuity, on a real runtime ------------------------------------------------
+
+
+FIRST_ASK = "Which file in {project} says what {project} is? Name the file and quote what it says."
+SECOND_ASK = "In one sentence, what did that file say {project} is for?"
+
+
+def run_continuity(echo: Callable[[str], None] = print, runtime=None,
+                   clone: Path | None = None, project: str | None = None) -> bool:
+    """Two spoken instructions in one project, on a real runtime: the second told what the first found.
+
+    The first names the clone; the second names none and refers back ("that
+    file"), so it can be carried out only if the clone is remembered and the
+    first one's outcome reaches the runtime -- both read from this server's
+    record. Speech goes through vox's deterministic engine, so each consent is
+    answered `approve` by a script standing in for the person; the runtime is
+    whatever is passed, and with `local` it is the model on this machine
+    reading `clone`. Returns True when both instructions ran, the second
+    carried the first, and each summary was the last thing said.
+    """
+    from vox import HttpSTT
+    from vox.adapters.joe import JOE
+    from vox.engine import EngineState
+    from vox.engine import serve as serve_engine
+    from vox.tts import RecordingTTS
+
+    from qmcp.client import MCPClient
+    from qmcp.instructions import roster_names
+    from qmcp.instructions.act import RULE_CWD, RULE_RECORD, act
+    from qmcp.instructions.spoken import say, summarise
+    from qmcp.spend import Budget
+
+    clone = Path(clone).resolve()
+    project = project or clone.name
+    names = roster_names()
+    if project not in names:
+        echo(f"  [FAIL] {project!r} is not on the roster, so no instruction can resolve to it;"
+             " pass a clone named for a rostered project")
+        return False
+    with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as stack:
+        root = Path(tmp)
+        database = root / "inbox.db"
+        qmcp_url = stack.enter_context(throwaway_server(database))
+        client = stack.enter_context(MCPClient(base_url=qmcp_url))
+        from sqlmodel import Session, create_engine
+
+        engine = create_engine(f"sqlite:///{database.as_posix()}")
+        stack.callback(engine.dispose)
+        rows = lambda: Session(engine)  # noqa: E731 -- the shape `act` takes
+        echo(f"qmcp:    {qmcp_url} (a database made for this run)")
+        echo(f"runtime: {runtime.name}, reading {clone}; each consent is answered by a script")
+
+        ok = True
+        first_id = None
+        for number, ask in enumerate((FIRST_ASK, SECOND_ASK)):
+            text = ask.format(project=project)
+            log: list[tuple[str, str]] = []
+            state = EngineState(audio_dirs=[root], microphone="deterministic engine",
+                                contract=JOE)
+            tts = _Said(RecordingTTS(out_dir=str(root / "spoken")), log)
+            done = recorded = summary = None
+            with serve_engine(state) as (engine_url, _), HttpSTT(engine_url, contract=JOE) as stt:
+                scripted = _Scripted(stt, state, (text, "record", "approve"), log=log)
+                dialog = InstructionDialog(stt=scripted, tts=tts, client=client, names=names,
+                                           max_retries=1, listen_duration=2.0,
+                                           answer_duration=1.0)
+                row = None
+                with contextlib.suppress(UnclearResponse):
+                    row = dialog.run_once()
+                if row is not None:
+                    log.append(("recorded", f"for {row['project'] or 'nobody'}"))
+
+                    def event(kind: str, detail: str) -> None:
+                        if kind == "output":
+                            log.append(("read", detail))
+
+                    done = act(row["id"], runtime, Budget(authorised=1), client=client,
+                               rows=rows, cwd=clone if number == 0 else None, stt=scripted,
+                               tts=tts, on_event=event, poll_interval=0.05,
+                               consent_seconds=120)
+                    if done.carried:
+                        log.append(("carried", "instruction 1 and what it found, from qmcp's record"
+                                    if done.carried == (first_id,) else ", ".join(done.carried)))
+                    recorded = client.get_instruction(row["id"])
+                    summary = summarise(recorded, why=done.why)
+                    say(summary, tts, scripted)
+
+            problems = []
+            if done is None:
+                problems.append("nothing recorded")
+            else:
+                if not done.ran:
+                    problems.append(f"the runtime never ran: {done.why or done.status}")
+                elif recorded["status"] != "done":
+                    problems.append(f"the run ended {recorded['status']}: "
+                                    f"{(recorded.get('outcome_text') or '').strip()[:200]}")
+                rule = (recorded.get("detail") or {}).get("clone", {}).get("rule")
+                if number == 0:
+                    first_id = done.instruction_id
+                    if rule != RULE_CWD:
+                        problems.append(f"the clone was chosen by {rule!r}, not the one passed")
+                else:
+                    if done.carried != (first_id,):
+                        problems.append(f"carried {done.carried!r}, expected the first instruction")
+                    if rule != RULE_RECORD:
+                        problems.append(f"the clone was chosen by {rule!r}, not remembered")
+                if tts.spoken[-1:] != [summary]:
+                    problems.append("the summary was not the last thing said")
+
+            echo(f"  instruction {number + 1}: {text}")
+            for kind, line in log:
+                echo(f"    {kind:<9} {line}")
+            if problems:
+                ok = False
+                echo(f"  [FAIL] {'; '.join(problems)}")
+            else:
+                echo(f"  [ok]   {'ran with the clone passed' if number == 0 else 'ran in the remembered clone, told what the first found'}")
+        echo("The second instruction was carried out knowing what the first found."
+             if ok else "Continuity was not shown.")
+        return ok

@@ -360,6 +360,10 @@ heard in order, and `tests/test_cookbook_instruct.py` makes sure it can fail.
 
 ## Testing the integration
 
+`docs/voice-loop-demo.md` is the whole loop in the order to run it -- the
+offline checks, continuity on the local model, and a person at the microphone.
+This section is the voice-answer check on its own.
+
 `qmcp cookbook voice` is the check, in two forms that answer different
 questions:
 

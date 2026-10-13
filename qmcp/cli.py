@@ -452,8 +452,25 @@ def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: st
 
 
 @cookbook.command("instruct")
-def cookbook_instruct() -> None:
+@click.option("--runtime", "runtime_name", default=None,
+              help="show continuity on this runtime instead of the offline check:"
+                   " `local` is the model `qmcp localmodel` stands up")
+@click.option("--clone", type=click.Path(path_type=Path, exists=True, file_okay=False),
+              default=None,
+              help="the clone the runtime reads, with --runtime (default: this repository)")
+@click.option("--project", default=None,
+              help="the rostered project the clone is, with --runtime (default: the clone's"
+                   " directory name, or qmcp for this repository)")
+def cookbook_instruct(runtime_name: str | None, clone: Path | None,
+                      project: str | None) -> None:
     """The spoken-instruction loop, end to end: asked, recorded, consented, run, said back.
+
+    With --runtime, the continuity demonstration instead: two spoken
+    instructions in one project on that runtime, the second giving no clone
+    and referring back to the first, carried out only because qmcp remembers
+    the clone and hands the runtime what the first one found. Each consent is
+    answered by a script standing in for the person; nothing is written to the
+    clone, and the configured inbox is not touched.
 
     Offline, and only offline: a qmcp server on an ephemeral port over a
     database made for the run, and vox's deterministic engine in place of a
@@ -466,9 +483,27 @@ def cookbook_instruct() -> None:
     model or agent are needed, nothing is spent, and the configured inbox is
     not touched.
     """
-    from qmcp.instructions.check import run_loop, run_offline
+    from qmcp.instructions.check import run_continuity, run_loop, run_offline
 
     _load_vox("joe", "cookbook instruct")
+    if runtime_name is not None:
+        from qmcp.integrations.agents import runtime_named
+
+        try:
+            runtime = runtime_named(runtime_name)
+        except KeyError as exc:
+            raise click.UsageError(str(exc.args[0]))
+        ready = getattr(runtime, "ready", None)
+        missing = ready() if ready else None
+        if missing:
+            raise SystemExit(f"Nothing ran: {missing}.")
+        if clone is None:
+            clone, project = Path(__file__).resolve().parent.parent, project or "qmcp"
+        if not run_continuity(echo=click.echo, runtime=runtime, clone=clone, project=project):
+            raise SystemExit(1)
+        return
+    if clone is not None or project is not None:
+        raise click.UsageError("--clone and --project are read only with --runtime.")
     inbox = run_offline(echo=click.echo)
     click.echo("")
     loop = run_loop(echo=click.echo)

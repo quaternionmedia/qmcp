@@ -267,6 +267,27 @@ class Runtime:
         self.clock = clock
         self.max_steps = max_steps
 
+    def ready(self) -> str | None:
+        """None when the service answers and serves the pinned model; otherwise
+        what is missing, in words a person can act on. Asked before a run that
+        would otherwise discover it one timeout later."""
+        client = self.client or httpx.Client()
+        try:
+            response = client.get(f"{self.endpoint}/api/tags", timeout=5.0)
+            response.raise_for_status()
+            served = {m.get("name") for m in response.json().get("models") or []}
+        except (httpx.HTTPError, ValueError) as exc:
+            return (f"the local model service does not answer at {self.endpoint}"
+                    f" ({type(exc).__name__}); `uv run qmcp localmodel check` says whether it"
+                    " is installed and served")
+        finally:
+            if self.client is None:
+                client.close()
+        if self.model not in served:
+            return (f"the service at {self.endpoint} does not serve {self.model};"
+                    " `uv run qmcp localmodel plan` gives the commands that pull it")
+        return None
+
     def _chat(self, client: httpx.Client, messages: list[dict[str, Any]]) -> dict[str, Any]:
         response = client.post(f"{self.endpoint}/api/chat", json={
             "model": self.model, "messages": messages, "stream": False,
