@@ -42,6 +42,14 @@ a failed run with the endpoint named, never a hang: the service finishes a
 request it has started even after its caller gives up, so an uncapped request
 can occupy it long after anyone is waiting.
 
+**A STALLED CALL IS RECOVERED ONCE.** On the workstation this was built on, the
+service's runner was seen to stop producing tokens partway through a reply,
+with every later call queued behind it, until the model was unloaded. So a
+call that times out unloads the model through the service's own keep-alive --
+what its `stop` command does -- and is made once more against a fresh load. A
+second timeout is a failed run. A standing conversation would otherwise fail
+every instruction after the first stall until somebody intervened by hand.
+
 WHAT THIS CANNOT DO. Know that the answer is right. A seven-billion-parameter
 model reading a few files is a quick reader, not a reviewer; the person who
 said approve hears what it found and judges it.
@@ -266,6 +274,8 @@ class Runtime:
         self.client = client
         self.clock = clock
         self.max_steps = max_steps
+        # Stalled calls recovered in the current run; reported in its detail.
+        self.recovered = 0
 
     def ready(self) -> str | None:
         """None when the service answers and serves the pinned model; otherwise
@@ -289,9 +299,17 @@ class Runtime:
         return None
 
     def _chat(self, client: httpx.Client, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        response = client.post(f"{self.endpoint}/api/chat", json={
-            "model": self.model, "messages": messages, "stream": False,
-            "options": {"temperature": 0, "num_predict": MAX_TOKENS}}, timeout=TIMEOUT)
+        body = {"model": self.model, "messages": messages, "stream": False,
+                "options": {"temperature": 0, "num_predict": MAX_TOKENS}}
+        try:
+            response = client.post(f"{self.endpoint}/api/chat", json=body, timeout=TIMEOUT)
+        except httpx.ReadTimeout:
+            # The runner stalled: unload it, as the service's `stop` does, and
+            # ask once more of a fresh load. A second timeout propagates.
+            self.recovered += 1
+            client.post(f"{self.endpoint}/api/generate",
+                        json={"model": self.model, "keep_alive": 0}, timeout=30.0)
+            response = client.post(f"{self.endpoint}/api/chat", json=body, timeout=TIMEOUT)
         response.raise_for_status()
         return response.json().get("message") or {}
 
@@ -304,6 +322,7 @@ class Runtime:
         read: list[str] = []
         calls = 0
         nudged = False
+        self.recovered = 0
         asked: set[str] = set()
         repeats = 0
         started = self.clock()
@@ -352,4 +371,4 @@ class Runtime:
         return AgentOutcome(text=text, exit_code=code, elapsed_seconds=elapsed, spent=0,
                             detail={"model": self.model, "endpoint": self.endpoint,
                                     "model_calls": calls, "read": read, "nudged": nudged,
-                                    "repeats": repeats})
+                                    "repeats": repeats, "recovered": self.recovered})

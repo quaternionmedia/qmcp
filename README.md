@@ -82,13 +82,25 @@ joe, the speech engine, which owns the microphone and runs from its own
 checkout (`uv run joe dev`); and vox, vendored at `vendor/vox`, which carries
 the contract a speech engine answers and the local synthesizer.
 
+Two commands, and then only speech:
+
 ```bash
-uv run qmcp cookbook instruct          # the whole loop offline: no hardware, no agent, nothing spent
-uv run qmcp instruct --voice           # speak an instruction; prints the row and its id
-uv run qmcp instructions list          # the inbox
+uv run joe dev                                  # in joe's checkout: the speech engine
+uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
+```
+
+qmcp says it is ready and asks what should be done. An instruction is read
+back and recorded on "record", consent is asked aloud and given with
+"approve", the local model reads the project, the answer is said back, and it
+asks whether there is anything else; questions agents have queued are asked in
+between, and "stop listening" ends it. Each step also has a command, for
+checking and debugging:
+
+```bash
+uv run qmcp cookbook converse          # one whole spoken session offline, every take scripted
+uv run qmcp cookbook instruct          # the inbox and the loop offline: nothing spent
+uv run qmcp instruct --voice           # one instruction, spoken; prints the row
 uv run qmcp instructions act <id> --runtime local --budget 1 --voice
-                                       # consent asked aloud; the local model reads the clone only
-                                       # on approve; the answer said back
 uv run qmcp instructions say <id>      # what an instruction came to, again
 ```
 
@@ -97,7 +109,9 @@ Nothing runs on any answer but `approve`, and every runtime is asked. The
 nothing; other runtimes sit behind the same contract and are handed the same
 brief. `docs/voice-loop-demo.md` runs the whole loop in three tiers, the first
 two without a microphone, and `uv run qmcp cookbook instruct --runtime local`
-shows continuity on the local model in one command. The clone is passed once with `--cwd` and remembered for the project.
+shows continuity on the local model in one command. A project's clone is
+found beside this checkout the first time, or passed once with `--cwd`, and
+remembered for the project.
 `--budget` counts runs and defaults to zero, which declares what would be
 asked and stops; `--runtime` has no default, and `scripted` runs nothing.
 Recording, acting and the summary each have a section in

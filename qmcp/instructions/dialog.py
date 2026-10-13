@@ -89,8 +89,12 @@ class InstructionDialog:
         # Every transcript taken, in order; recorded with the row.
         self.heard: list[str] = []
 
-    def run_once(self) -> dict[str, Any]:
+    def run_once(self, heard: str | None = None) -> dict[str, Any]:
         """Ask, confirm, resolve, record. Returns the row as the server recorded it.
+
+        `heard` is a transcript already taken -- the standing conversation
+        listens before it knows an instruction is coming -- and starts the
+        dialog at the read-back rather than at the prompt.
 
         Raises `UnclearResponse` when the instruction itself was never
         confirmed within the budget; a project that cannot be settled is
@@ -98,7 +102,7 @@ class InstructionDialog:
         has said what they want done.
         """
         self.heard = []
-        text = self._ask_instruction()
+        text = self._ask_instruction(first=heard)
         found = resolve(text, self.names)
         # None when the text itself named the project: the server reads it
         # again and the row carries that match, not a statement.
@@ -125,7 +129,7 @@ class InstructionDialog:
         self.heard.append(heard)
         return heard
 
-    def _ask_instruction(self) -> str:
+    def _ask_instruction(self, first: str | None = None) -> str:
         """Speak the prompt, listen long, read the transcript back, return it once confirmed.
 
         One budget covers the whole exchange, as the approval dialog's open
@@ -135,10 +139,17 @@ class InstructionDialog:
         the turns that move the dialog forward cost nothing.
         """
         grammar = say_options(CONFIRM)
-        self._announce("speaking", PROMPT)
-        self.tts.speak(PROMPT)
         heard = ""
         answer: str | None = None
+        if first is not None and first.strip():
+            self.heard.append(first)
+            heard, answer = first, first.strip()
+            readback = f"I heard: {_said(answer)}. {grammar}"
+            self._announce("speaking", readback, reason="confirm")
+            self.tts.speak(readback)
+        else:
+            self._announce("speaking", PROMPT)
+            self.tts.speak(PROMPT)
         for reasks in range(self.max_retries + 1):
             while True:
                 if answer is None:
