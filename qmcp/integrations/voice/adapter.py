@@ -350,7 +350,7 @@ class VoiceApprovalLoop:
         # Requests `run_forever` asked and got no usable answer to, oldest first.
         self.unanswered: list[str] = []
 
-    def _say(self, text: str, options: list[str]) -> None:
+    def _say(self, text: str, options: list[str] | None) -> None:
         """Say a question the person may answer before it ends (`ask_over`)."""
         ask_over(self.stt, self.tts, text, duration=self.listen_duration, hint=options)
 
@@ -407,7 +407,9 @@ class VoiceApprovalLoop:
         as a closed choice between `agree` and `again`, hinted and offered as
         every closed choice is and parsed with the same helpers, so a yes
         records and a no re-asks. "repeat" says the read-back again without
-        spending a retry, up to `MAX_REPEATS`.
+        spending a retry, up to `MAX_REPEATS`. The question, the read-back
+        and every re-ask can be answered before they end (`ask_over`), each
+        watched for the take that follows it.
 
         One budget covers the whole dialog. Every turn the speaker has to be
         asked for a second time costs a retry -- nothing heard for the answer
@@ -417,7 +419,7 @@ class VoiceApprovalLoop:
         """
         grammar = say_options(_CONFIRM)
         self._announce("speaking", prompt)
-        self.tts.speak(prompt)
+        self._say(prompt, None)
         heard = ""
         answer: str | None = None
         repeats = 0
@@ -431,14 +433,14 @@ class VoiceApprovalLoop:
                     answer = heard.strip()
                     readback = f"I heard: {_said(answer)}. {grammar}"
                     self._announce("speaking", readback, reason="confirm", options=_CONFIRM)
-                    self.tts.speak(readback)
+                    self._say(readback, _CONFIRM)
                     continue
                 heard, _ = listen_for(self.stt, self.listen_duration, hint=_CONFIRM)
                 # Asked to say it again: the read-back again, and no retry spent.
                 if asks_repeat(heard) and repeats < MAX_REPEATS:
                     repeats += 1
                     self._announce("speaking", readback, reason="repeat", options=_CONFIRM)
-                    self.tts.speak(readback)
+                    self._say(readback, _CONFIRM)
                     continue
                 decision = parse_yes_no(heard)
                 named = match_option(heard, _CONFIRM) or (
@@ -457,9 +459,9 @@ class VoiceApprovalLoop:
             if reasks < self.max_retries:
                 # A re-ask of the read-back offers its options; a re-ask of
                 # the question has none to offer.
-                self._announce("speaking", reask, reason=reason,
-                               options=_CONFIRM if answer is not None else None)
-                self.tts.speak(reask)
+                offered = _CONFIRM if answer is not None else None
+                self._announce("speaking", reask, reason=reason, options=offered)
+                self._say(reask, offered)
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
             f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
