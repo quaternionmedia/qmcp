@@ -161,6 +161,44 @@ def test_an_allowed_shape_carries_no_refusal_and_no_saved_anyway(served):
     assert body["capability"]["status"] == plane.RUNS
 
 
+ADVISORY = {"setting": "arbiter_can_override", "value": False}
+
+
+def test_an_advisory_council_reads_its_own_declaration(served):
+    """The option is read off the saved config, not off the kind.
+
+    Mutation: drop `row.config` from the `capability_block` call in
+    `row_payload` and this fails -- the advisory council comes back refused.
+    """
+    body = saved(served, name="advisors", kind="council",
+                 arbiter_can_override=False)
+    capability = body["capability"]
+    assert capability["option"] == ADVISORY
+    assert capability["status"] == plane.BRAINSTORM
+    assert capability["why"] == plane.ADVISORY_COUNCIL.why
+    assert capability["refusal"] is None
+    assert "saved_anyway" not in capability
+
+
+def test_an_advisory_council_is_still_refused_an_attested_act(served):
+    saved(served, name="advisors", kind="council", arbiter_can_override=False)
+    capability = served.get("/v1/topologies/advisors",
+                            params={"act": "ratify a record"}).json()["capability"]
+    assert "arbiter_can_override=False" in capability["refusal"]
+    assert "designing a shape is not an act" in capability["saved_anyway"]
+
+
+def test_changing_the_setting_changes_the_declaration(served):
+    """One council, two declarations, chosen by its config as it stands."""
+    assert saved(served, name="the-council", kind="council"
+                 )["capability"]["option"] is None
+    changed = served.put("/v1/topologies/the-council",
+                         json={"config": {"arbiter_can_override": False}})
+    assert changed.status_code == 200, changed.json()
+    assert changed.json()["capability"]["option"] == ADVISORY
+    assert changed.json()["capability"]["refusal"] is None
+
+
 def test_the_capability_block_is_the_planes_declaration(served):
     """Nothing here invents a verdict. Every field is read off the plane.
 

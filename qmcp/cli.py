@@ -1175,7 +1175,7 @@ def council() -> None:
     "--max-rounds",
     default=5,
     type=int,
-    help="Maximum deliberation rounds before arbiter decides.",
+    help="Maximum deliberation rounds before the arbiter decides, or summarizes when advisory.",
 )
 @click.option(
     "--consensus-threshold",
@@ -1186,7 +1186,7 @@ def council() -> None:
 @click.option(
     "--arbiter-override/--no-arbiter-override",
     default=True,
-    help="Allow arbiter to make final decision if no consensus.",
+    help="Allow arbiter to make final decision if no consensus; --no-arbiter-override makes the council advisory.",
 )
 @click.option(
     "--output",
@@ -1206,7 +1206,8 @@ def council_create(
     """Create a new council topology configuration.
 
     Creates a council with 9 specialized agent roles:
-    - Council Manager (Arbiter): Facilitates and decides
+    - Council Manager (Arbiter): Facilitates and decides, or synthesizes
+      advice with --no-arbiter-override
     - Relatable Storyteller: Frames issues narratively
     - Infinite Dreamer: Explores possibilities
     - Pragmatic Strategist: Focuses on implementation
@@ -1253,11 +1254,15 @@ def council_create(
         click.echo(f"\n  {click.style('Configuration:', bold=True)}")
         click.echo(f"    Max Rounds:        {config.max_rounds}")
         click.echo(f"    Consensus:         {config.consensus_threshold:.0%}")
-        click.echo(f"    Arbiter Override:  {config.arbiter_can_override}")
+        click.echo(f"    Arbiter Override:  {config.arbiter_can_override}"
+                   f"{'' if config.arbiter_can_override else ' (advisory)'}")
         click.echo(f"    Deliberation:      {config.deliberation_style}")
         click.echo(f"\n  {click.style('Council Members:', bold=True)}")
+        arbiter_role = ("Facilitates, synthesizes, decides"
+                        if config.arbiter_can_override
+                        else "Facilitates and synthesizes advice")
         members = [
-            ("arbiter", "Council Manager", "Facilitates, synthesizes, decides"),
+            ("arbiter", "Council Manager", arbiter_role),
             ("storyteller", "Relatable Storyteller", "Frames in narrative form"),
             ("dreamer", "Infinite Dreamer", "Explores possibilities"),
             ("strategist", "Pragmatic Strategist", "Implementation focus"),
