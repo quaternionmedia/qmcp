@@ -158,6 +158,60 @@ def test_repeats_are_bounded():
     assert len(stt.hints) == MAX_REPEATS + 1
 
 
+# --- the approval dialog's open question ---------------------------------------------
+
+BRANCH = "What should the branch be called?"
+
+
+def test_an_open_question_s_read_back_hints_and_offers_agree_or_again():
+    """The answer itself is anything at all and is not hinted. Mutation: drop
+    the hint on the confirmation -- red; drop the options on the read-back --
+    red."""
+    stt, tts = _STT("release candidate", "agree"), _TTS()
+
+    assert VoiceApprovalLoop(stt, tts)._ask_open(BRANCH) == "release candidate"
+
+    assert stt.hints == [None, ["agree", "again"]]
+    confirm = [a for a in stt.announced if a["reason"] == "confirm"]
+    assert confirm and confirm[0]["options"] == ["agree", "again"]
+
+
+def test_repeat_on_an_open_question_s_read_back_says_it_again_and_spends_no_retry():
+    """No retries at all, and still recorded after a repeat. Mutation: drop the
+    repeat from the read-back -- red, "repeat" is a mismatch and the budget is
+    spent."""
+    stt, tts = _STT("release candidate", "repeat", "agree"), _TTS()
+
+    assert VoiceApprovalLoop(stt, tts, max_retries=0)._ask_open(BRANCH) == "release candidate"
+
+    assert [t for t in tts.spoken if t.startswith("I heard: ")] == [
+        "I heard: release candidate. Say agree or again."] * 2
+    assert [a["reason"] for a in stt.announced] == [None, "confirm", "repeat"]
+    assert stt.announced[2]["options"] == ["agree", "again"]
+
+
+def test_repeats_on_an_open_question_s_read_back_are_bounded():
+    """Mutation: drop the bound -- red, every "what" is a repeat."""
+    stt = _STT("release candidate", *["what"] * (MAX_REPEATS + 5))
+
+    with pytest.raises(UnclearResponse):
+        VoiceApprovalLoop(stt, _TTS(), max_retries=0)._ask_open(BRANCH)
+    assert len(stt.hints) == 1 + MAX_REPEATS + 1
+
+
+def test_a_reask_of_the_read_back_offers_its_options_and_a_reask_of_the_question_none():
+    """Mutation: offer nothing on any re-ask -- red; offer the read-back's
+    options on every re-ask -- red."""
+    stt, tts = _STT("release candidate", "mumble", "again", "rc one", "agree"), _TTS()
+
+    assert VoiceApprovalLoop(stt, tts, max_retries=2)._ask_open(BRANCH) == "rc one"
+
+    reasks = {a["reason"]: a["options"] for a in stt.announced
+              if a["reason"] in ("nomatch", "again")}
+    assert reasks == {"nomatch": ["agree", "again"], "again": None}
+    assert stt.hints == [None, ["agree", "again"], ["agree", "again"], None, ["agree", "again"]]
+
+
 # --- the instruction dialog ----------------------------------------------------------
 
 
