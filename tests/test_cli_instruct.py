@@ -431,3 +431,15 @@ def test_instructions_show_prints_the_evidence(fake_client):
 
     missing = CliRunner().invoke(cli.cli, ["instructions", "show", "nobody"])
     assert missing.exit_code != 0 and "not found" in missing.output
+
+
+def test_silence_when_asked_which_project_is_re_asked_with_the_choices(fake_client, monkeypatch):
+    """Mutation: re-ask silence as a mishearing -- red, the person hears
+    "I heard: ." for nothing at all."""
+    result, stt, tts = _spoken(monkeypatch, [
+        "Move the vectors from vox into qmcp.", "record", "", "vox"])
+
+    assert result.exit_code == 0, result.output
+    assert tts.spoken[2] == "Which project? Say qmcp or vox."
+    assert tts.spoken[3] == "I didn't hear anything. Say qmcp or vox."
+    assert fake_client.recorded[0]["project"] == "vox"

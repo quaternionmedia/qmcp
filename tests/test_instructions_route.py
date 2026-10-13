@@ -323,3 +323,35 @@ def test_the_routes_are_not_served_off_loopback(monkeypatch):
     app = qmcp.server.create_app()
 
     assert not [r for r in app.routes if "instructions" in getattr(r, "path", "")]
+
+
+def test_both_spoken_routes_hand_the_engine_url_on_when_one_is_configured(client, tmp_path):
+    """The routes as `qmcp serve` registers them with `QMCP_VOICE_ENGINE_URL`
+    set, over the fixture's database. Mutation: drop either `--engine-url`
+    branch -- red, that child talks to the adapter's default port rather than
+    the engine the server was told about."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from qmcp.instructions.service import register
+    from qmcp.integrations.voice.service import VoiceRuns
+
+    started: list[_Process] = []
+
+    def popen(argv, stdout, stderr, env):
+        started.append(_Process(argv, stdout, []))
+        started[-1].code = 0  # finished at once, so the second route may start
+        return started[-1]
+
+    app = FastAPI()
+    register(app, VoiceRuns(log_dir=tmp_path, popen=popen), engine="joe",
+             engine_url="http://127.0.0.1:8001", names=lambda: NAMES)
+    served = TestClient(app)
+    row = _record(served, f"Deploy {NAMED}.")
+
+    assert served.post("/v1/instructions/voice").status_code == 202
+    assert served.post(f"/v1/instructions/{row['id']}/act",
+                       json={"runtime": "scripted", "voice": True}).status_code == 202
+
+    told = [run.argv[run.argv.index("--engine-url") + 1] for run in started]
+    assert told == ["http://127.0.0.1:8001", "http://127.0.0.1:8001"]

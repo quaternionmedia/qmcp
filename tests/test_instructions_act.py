@@ -602,3 +602,39 @@ def test_an_unclear_spoken_answer_leaves_the_request_for_anyone(inbox, clone):
     done, runtime = _act(inbox, instruction_id, queue, cwd=clone, stt=_STT("banana"), tts=_TTS())
 
     assert done.status == "unanswered" and runtime.calls == []
+
+
+# --- the configured inbox -----------------------------------------------------------------
+
+
+def test_the_configured_database_is_the_inbox_the_command_acts_on(tmp_path, monkeypatch):
+    """`instructions act` and the server's conversation read the database the
+    settings name, which is an async driver's URL. Mutation: build the engine
+    from the URL as it is -- red, a synchronous engine does not open it."""
+    from types import SimpleNamespace
+
+    database = tmp_path / "inbox.db"
+    rows_at(database)
+    monkeypatch.setattr("qmcp.config.get_settings", lambda: SimpleNamespace(
+        database_url=f"sqlite+aiosqlite:///{database.as_posix()}"))
+
+    rows = act_module.configured_rows()
+    with rows() as session:
+        session.add(Instruction(id="from-settings", text="x", project=PROJECT,
+                                source=InstructionSource.TYPED))
+        session.commit()
+
+    with rows_at(database)() as session:
+        assert session.get(Instruction, "from-settings") is not None
+
+
+def test_a_database_url_naming_no_file_is_refused(monkeypatch):
+    """Mutation: fall back to an in-memory engine -- red; an act would record
+    into a database nobody reads."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("qmcp.config.get_settings", lambda: SimpleNamespace(
+        database_url="sqlite+aiosqlite:///:memory:"))
+
+    with pytest.raises(RuntimeError, match="names no file"):
+        act_module.configured_rows()
