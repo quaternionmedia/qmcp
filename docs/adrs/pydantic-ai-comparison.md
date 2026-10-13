@@ -470,7 +470,7 @@ print(result.output)
 | Model Registry (metadata) | MCP client |
 | Topologies | Tool definitions |
 | Mixins (Memory, Reasoning) | Structured output |
-| HITL REST API | Usage limits |
+| Human request REST API | Usage limits |
 | Audit/Metrics | Message history |
 
 The hybrid approach leverages PydanticAI's mature agent framework while preserving

@@ -1,12 +1,12 @@
 """The thread-source contract, exercised by a source that actually implements it.
 
-The two shipped sources are stubs, so a suite that only tested them would be
-testing `NotImplementedError`. `FakeThreads` below is a real implementation over
-a dict, which is what lets the contract be exercised: the budget being spent,
-the perspective being carried, a decision citing its turns.
+`FakeThreads` below is an implementation over a dict that spends, so the
+contract's spending paths can be exercised: the budget being spent, the
+perspective being carried, a decision citing its turns. The local sources,
+which never spend, are tested below it.
 
-The tests worth reading are the refusals. Every one of them is a convenience
-this could have offered, and each is a place it would start lying.
+The refusals are tested as carefully as the successes: each is a convenience
+the contract declines to offer.
 """
 
 from __future__ import annotations
@@ -262,7 +262,7 @@ def test_a_thread_produces_far_fewer_deltas_than_turns():
     assert len(source.deltas(many, Budget())) < len(many.turns)
 
 
-# --- the stubs are honest ---------------------------------------------------
+# --- refusals of the base classes ----------------------------------------------
 
 
 def test_a_source_without_a_parse_refuses_rather_than_returning_nothing(tmp_path):
@@ -348,10 +348,7 @@ def test_an_absent_export_is_zero_threads_and_not_a_failure(tmp_path):
 
 
 def test_a_file_that_will_not_parse_is_named_and_not_counted(tmp_path):
-    """THE ONE THIS MODULE'S DOCSTRING WARNS ABOUT, AND THE FIRST VERSION DID.
-
-    `survey` counted files, so a directory of two with one malformed reported
-    two and fetched one. It reads them now.
+    """`survey` parses every file, so a malformed one is named and not counted.
 
     Mutation: count `files()` instead of reading and this fails.
     """

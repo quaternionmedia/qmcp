@@ -158,18 +158,14 @@ def create_app() -> FastAPI:
     # Add request tracing middleware
     app.add_middleware(RequestTracingMiddleware)
 
-    # The thread archive, read-only, and ONLY WHEN THIS IS BOUND TO LOOPBACK.
+    # The thread archive, only when this is bound to loopback: it publishes a
+    # person's own conversation history, where every other route publishes
+    # what this server produced.
     #
-    # The archive holds somebody's conversations. Every other route here
-    # publishes tools or invocations this server itself produced; these publish
-    # a person's own conversation history, which is a different thing to put on
-    # a socket.
-    #
-    # `qmcp cookbook serve` exists and offers `--host 0.0.0.0` so a Docker
-    # container can reach the server. That is the case this guard is for: the
-    # routes are not registered at all off loopback, so there is nothing to
-    # reach rather than something that refuses. A 403 would still have told a
-    # caller the archive is there.
+    # `qmcp cookbook serve` offers `--host 0.0.0.0` so a Docker container can
+    # reach the server. Off loopback the routes are not registered at all, so
+    # there is nothing to reach; a 403 would still tell a caller the archive
+    # is there.
     # The topology *shapes* name nobody and are served wherever this is bound.
     # The *readings* are derived from the archive and follow it exactly.
     # The orchestration plane is a shape too and is served beside the shapes.

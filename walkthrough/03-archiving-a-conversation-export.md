@@ -5,9 +5,6 @@ be anything else.
 
 ## The API is not a route to this data
 
-Worth stating before anything else, because it is the reasonable assumption and
-it is wrong.
-
 **Anthropic's API and OpenAI's API do not expose the conversation history of
 `claude.ai` or `chatgpt.com`.** They are products for making new model calls,
 against different storage, with no endpoint that lists your threads. A

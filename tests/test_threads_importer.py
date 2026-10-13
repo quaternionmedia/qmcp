@@ -1,7 +1,7 @@
 """Unpacking a data export, and what it refuses to guess.
 
-The tests worth reading are the ones about names. An export's ids are somebody
-else's strings, and this writes files from them.
+An export's ids are somebody else's strings, and the importer writes files
+from them, so several tests are about names.
 """
 
 from __future__ import annotations
@@ -216,9 +216,8 @@ def test_both_services_land_in_their_own_folders(tmp_path):
 def test_what_was_imported_is_readable_by_the_source_that_reads_the_cache(tmp_path):
     """The end of the path: import writes what the reader reads.
 
-    Two halves written from two guesses at a format would agree with each other
-    and with nothing else -- which is a shape this organisation has already been
-    caught by once, at a different seam.
+    Two halves written from two guesses at a format could agree with each
+    other and with nothing else; this runs one into the other.
     """
     from qmcp.spend import Budget
     from qmcp.threads.chatgpt import ChatGPTThreads

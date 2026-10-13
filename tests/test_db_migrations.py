@@ -1,17 +1,13 @@
 """The migration chain, and the claim a stamped baseline has to earn.
 
-STAMPING IS AN ASSERTION. `alembic stamp` writes a revision into a database
-without running anything -- it says "this database already has that shape". The
-existing database was stamped that way, and the only thing that makes it true is
-this: a database built from nothing by `alembic upgrade head` has the same shape
-as the one the models describe. If those two ever differ, the stamp was a lie
-and every later migration is being applied to a shape nobody verified.
+`alembic stamp` writes a revision into a database without running anything:
+it asserts the database already has that shape. A stamped baseline is true
+only if a database built from nothing by `alembic upgrade head` has the shape
+the models describe, which `test_a_fresh_upgrade_reproduces_the_models_schema`
+checks.
 
-That is what `test_a_fresh_upgrade_reproduces_the_models_schema` checks, and it
-is the reason this file exists rather than a note in a handoff.
-
-NOTHING HERE TOUCHES THE CONFIGURED DATABASE. Every test migrates a fresh file
-in a temporary directory.
+Nothing here touches the configured database: every test migrates a fresh
+file in a temporary directory.
 """
 
 from __future__ import annotations
@@ -183,7 +179,7 @@ def test_scoping_names_to_a_project_keeps_the_rows_already_saved(tmp_path):
             db.execute(design, ("default", stamp, stamp))
 
 
-# --- the failure that actually happened --------------------------------------
+# --- named constraints ----------------------------------------------------------
 
 
 def test_every_foreign_key_in_a_revision_is_named():
@@ -191,14 +187,12 @@ def test_every_foreign_key_in_a_revision_is_named():
     the change, and to rebuild a constraint it must be able to name it.
 
     `create_foreign_key(None, ...)` raises `ValueError: Constraint must have a
-    name` *after* earlier statements in the same migration have committed --
-    leaving a half-migrated database with its revision unchanged. That happened
-    here, and the recovery was a restore from backup.
+    name` after earlier statements in the same migration have committed,
+    leaving a half-migrated database with its revision unchanged.
     """
     for path in sorted(VERSIONS.glob("*.py")):
-        # Code lines only. The first version of this scanned the whole file and
-        # matched the comment in the migration that explains the rule -- the
-        # documented trap of a check finding the text that forbids the thing.
+        # Code lines only, so the comment in a migration that explains the
+        # rule is not matched as a violation of it.
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if stripped.startswith("#"):

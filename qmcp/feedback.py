@@ -2,33 +2,25 @@
 
     uv run qmcp feedback run
 
-**THIS IS A PIPELINE TOPOLOGY, AND IT IS THE FIRST ONE IN THE REGISTRY THAT
-RUNS.** `BaseTopology.run` raises `NotImplementedError("Topology runtime is not
-implemented yet")` and every registered topology inherits it, so the manager has
-so far been a vocabulary and a schema rather than a runtime. Nothing here
-changes that for the other seven: this subclass implements `run` for one shape,
-which is what the base class being abstract is for.
+That command is claimed and not routed: `qmcp.cli` has no `feedback` group
+(`tests/test_declared_commands.py`, `ONLY_CLAIMED`). Call `once` directly.
 
-**THE STAGES ARE THE TWO SELF-CHECKS, AND THEY LOOK DIFFERENT WAYS.**
-`qmcp.selfcheck` runs the gates -- the suite, the tag claims, the walkthroughs
--- and answers "does this pass". `dossier.diagnostics` reads the pair for the
-defect classes a green suite does not see, and answers "is a passing gate
-enforcing anything". Its own docstring is where that question is asked, and
-running the two together is the answer.
+`FeedbackTopology` is a pipeline topology that implements `run`, for this one
+shape; `BaseTopology.run` raises `NotImplementedError`.
 
-**THE RATCHET IS THE POINT, AND IT IS THE ONLY PART THAT IMPROVES ANYTHING.**
-Running checks repeatedly finds recurrences, which is worth something and is not
-improvement. What makes the next run better than this one is that a defect
-nobody could have caught becomes a check that would have caught it. So a run
-reports `unratcheted`: failures with no corresponding check, which is the queue
-of work that would make the loop stronger rather than merely busier.
+The two stages look different ways. `gates` runs the harness's suite and
+answers "does this pass". `diagnostics` runs `dossier.diagnostics` in the
+panel's environment and answers "is a passing gate enforcing anything".
 
-**IT DOES NOT SPEND, SCHEDULE ITSELF, OR CLOSE ANYTHING.** No agent is
-dispatched: the two stages are subprocesses this project already runs, and the
-model on this machine is local. Nothing here writes a cron entry --
-`governance/qm/records/DRAFT-no-unattended-spending.md`, and a loop that ran
-itself would be exactly the unattended thing that record is about. A failure
-becomes a delta at `brainstorm` and stops; convergence is a person's.
+`unratcheted` lists failures that no check covers: the queue of checks to
+write, as distinct from recurrences a check already catches.
+
+It does not spend, schedule itself or close anything. The stages are
+subprocesses this project already runs, nothing writes a cron entry
+(`governance/qm/records/DRAFT-no-unattended-spending.md`), and a failure
+becomes a delta at `brainstorm` and stops there.
+
+`docs/self-checks.md` describes the loop and `intake`.
 """
 
 from __future__ import annotations
@@ -42,9 +34,8 @@ from typing import Any
 from qmcp.agentframework.models.enums import TopologyType
 from qmcp.agentframework.topologies import BaseTopology, topology
 
-# The two stages, and which question each answers. Named here rather than
-# configured, because a feedback loop whose stages are a setting is one that can
-# be quietly reduced to the stage that always passes.
+# The two stages, and which question each answers. Fixed here rather than
+# configured, so the loop cannot be reduced to the stage that always passes.
 STAGES = (
     ("gates", "does this pass"),
     ("diagnostics", "is a passing gate enforcing anything"),
@@ -97,8 +88,8 @@ class Run:
     def deltas(self, project: str) -> list[dict[str, Any]]:
         """Failures as units of work. Passing checks are not work.
 
-        `brainstorm` and no further, for the same reason `qmcp.selfcheck` stops
-        there: running a check again cannot establish that anybody acted on it.
+        `brainstorm` and no further, as in `qmcp.selfcheck`: running a check
+        again cannot establish that anybody acted on it.
         """
         return [
             {
@@ -137,11 +128,8 @@ class Run:
 def unratcheted(run: Run, known_classes: set[str]) -> list[Finding]:
     """Failures that no check was written for.
 
-    **THIS IS THE IMPROVEMENT, AND EVERYTHING ELSE IS OBSERVATION.** A failure
-    that a check already covers is a recurrence: unwelcome, and the loop is
-    working. A failure that nothing covers is a hole -- somebody found it by
-    hand, or a person hit it -- and closing it means writing the check, not
-    just the fix. That queue is what makes the next run stronger than this one.
+    A failure a check already covers is a recurrence. A failure nothing
+    covers is a hole, closed by writing the check as well as the fix.
 
     `known_classes` is the set of check names, so this is the failures whose
     name nothing recognises.
@@ -162,10 +150,9 @@ def _read(argv: list[str], cwd: Path, timeout: float = 900.0) -> tuple[int, str]
 def diagnostics_findings(panel: Path) -> list[Finding]:
     """The panel's inward checks, read as findings.
 
-    Run as a subprocess in the panel's own environment rather than imported.
-    The harness does not depend on the panel and must not start: importing
-    across would make the seam a requirement, and the panel's virtualenv is
-    where its dependencies are.
+    Run as a subprocess in the panel's own environment rather than imported:
+    the harness does not depend on the panel, and the panel's virtualenv holds
+    its dependencies.
     """
     script = ("import json;"
               "from dossier.diagnostics import run;"
@@ -201,23 +188,17 @@ def gate_findings(harness: Path) -> list[Finding]:
 class FeedbackTopology(BaseTopology):
     """The improvement loop, as a pipeline the manager knows about.
 
-    **DELIBERATELY NOT REGISTERED, AND THAT IS A FINDING RATHER THAN A
-    PREFERENCE.** `TopologyRegistry` is keyed by `TopologyType` and `register`
-    replaces silently, so a second class claiming `PIPELINE` does not collide --
-    it wins or loses by import order. This class did claim it, and
-    `TopologyRegistry.get(PIPELINE)` then returned the stub or this depending on
-    whether anything had imported `qmcp.feedback` yet. A test asking whether the
-    registered pipeline actually overrides `run` is what found it.
-
-    So this is a concrete pipeline that runs, and it does not pretend to be the
-    generic one. `qmcp.orchestration` says the same thing in the plane.
+    Not registered. `TopologyRegistry` is keyed by `TopologyType` and
+    `register` replaces silently, so a second class claiming `PIPELINE` would
+    win or lose by import order. This is a concrete pipeline that runs, not
+    the generic one; `qmcp.orchestration` says the same in the plane.
     """
 
     topology_type = TopologyType.PIPELINE
 
     def __init__(self, *args, **kwargs) -> None:  # noqa: D107
-        # Constructed directly in the plain case, and through the registry in
-        # the configured one. Both are allowed; only the first is used today.
+        # Constructed directly with no arguments, or with a topology's
+        # arguments; the first is the one in use.
         if args or kwargs:
             super().__init__(*args, **kwargs)
 
@@ -237,8 +218,7 @@ class FeedbackTopology(BaseTopology):
 def once(harness: Path, panel: Path) -> Run:
     """Run both stages. A stage that cannot run is absent, never assumed green.
 
-    The stages are independent on purpose: the diagnostics are worth having
-    when the suite is red, and that is exactly when somebody wants them.
+    The stages are independent, so the diagnostics run when the suite is red.
     """
     found = Run()
 
@@ -253,14 +233,11 @@ def once(harness: Path, panel: Path) -> Run:
 
 # --- intake: an export becoming threads, then deltas --------------------------
 #
-# **NAMED `intake` BECAUSE IT IS ONE PIPELINE AND NOT FOUR COMMANDS.** Unpack,
-# index, read, relate. Each stage's output is the next one's input and no stage
-# can be usefully run alone -- which is what makes it a pipeline in the
-# manager's vocabulary rather than a set of tools somebody sequences by hand.
+# One pipeline of four stages: unpack, index, read, relate. Each stage's output
+# is the next one's input.
 #
-# THE FIRST STAGE IS A PERSON'S AND IS NOT HERE. Somebody asks the service for
-# an export, waits for the mail, and downloads it. That is a human step by
-# construction; `intake` begins at a path on disk.
+# The step before it is a person's: requesting the export from the service and
+# downloading it. `intake` begins at a path on disk.
 
 INTAKE_STAGES = (
     ("unpack", "an export archive becomes one file per conversation"),

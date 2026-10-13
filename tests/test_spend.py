@@ -1,9 +1,8 @@
 """What a command may spend, and the distinction that makes zero meaningful.
 
 `governance/qm/records/DRAFT-no-unattended-spending.md` is the decision. The
-tests worth reading are the ones asserting a refusal, and the pair that keeps
-`0` from collapsing into `unknown` -- which is the same substitution the harness
-payload refuses one seam over.
+tests assert the refusals, and a pair keeps `0` from collapsing into
+`unknown`, as the harness payload does one seam over.
 """
 
 from __future__ import annotations

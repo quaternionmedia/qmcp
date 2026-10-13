@@ -5,27 +5,19 @@
 The first three segments are owner, repo and kind. **Everything after is the
 id, verbatim, slashes included.** A bare `<owner>/<repo>` denotes the repository.
 
-WHY qmcp IMPLEMENTS THIS RATHER THAN IMPORTING IT. The corpus holds a reference
-implementation and, more importantly, a set of conformance vectors. Importing
-the corpus's Python would couple this server to the governance repository, so
-neither could ship without the other -- the same trade `qmcp/cookbook/delta.py`
-refuses for the delta schema. What is shared is the *cases*, not the code:
-`governance/qm/project-seed/address-vectors.json` reaches every fork through the
-submodule, and both implementations are held to it.
+qmcp implements the grammar rather than importing the corpus's reference
+implementation, so this server and the governance repository can ship
+separately, as `qmcp/cookbook/delta.py` does for the delta schema. What is
+shared is the cases: `governance/qm/project-seed/address-vectors.json`
+reaches every fork through the submodule, and `tests/test_addresses.py` holds
+this implementation to it.
 
-THOSE VECTORS ARE NOT REACHABLE YET. The submodule pins corpus `d4479cd`, which
-predates them -- they are on an unmerged corpus branch. Until the pin moves,
-this implementation is verified by its own tests and *not* against the shared
-contract, and `tests/test_addresses.py` says so out loud rather than passing
-quietly.
+qmcp records tool invocations with bare UUIDs. Addressed as
+`<owner>/<repo>/invocation/<id>`, the same row can be pointed at from dossier,
+from a delta and from this server's dashboard.
 
-WHAT THIS IS FOR HERE. qmcp records tool invocations with bare UUIDs, which no
-other system can name. Addressed as
-`quaternionmedia/qmcp/invocation/<id>`, the same row can be pointed at from
-dossier, from a delta, and from this server's own dashboard.
-
-WHAT IT CANNOT DO. Say whether the thing addressed exists -- it is a grammar,
-and resolution belongs to whichever system holds the row.
+What this cannot do: say whether the thing addressed exists. It is a grammar;
+resolution belongs to whichever system holds the row.
 """
 
 from __future__ import annotations

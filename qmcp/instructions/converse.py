@@ -3,47 +3,19 @@
     uv run qmcp serve --converse --runtime local    # the server, and the conversation beside it
     uv run qmcp converse --runtime local            # the conversation, against a running server
 
-**ONCE THE SERVERS ARE UP, NOTHING IS TYPED.** With the speech engine running
-and `qmcp serve --converse`, this says it is ready and asks what should be
-done. An instruction is spoken, read back and recorded -- tacitly when the
-engine heard it confidently, otherwise on `agree`
-(`qmcp.instructions.dialog`); consent is asked aloud and given with `approve`
-(`qmcp.instructions.act`); the runtime carries it out in the project's clone;
-the outcome is said back (`qmcp.instructions.spoken`); and it asks whether
-there is anything else. No id is read off a screen, no flag is typed, no
-button is pressed.
+It asks what should be done, reads each instruction back and records it, asks
+consent aloud, runs the instruction in the project's clone, says the outcome,
+and asks whether there is anything else. Questions agents have put on the human
+queue are asked before each instruction. Nothing runs without a spoken
+`approve`.
 
-**WHAT IS WAITING IS ASKED FIRST.** Before each instruction is taken, questions
-an agent has put on the human queue are asked aloud, oldest first, through the
-same loop `qmcp human voice` runs -- closed choices by their options, open
-questions read back. A question nobody answers stays pending for anyone, and
-is not asked again in this conversation.
+`docs/integrations/voice.md`, *Talking to qmcp*, gives what can be said and what the conversation
+keeps.
 
-**NOTHING RUNS WITHOUT A SPOKEN APPROVE.** The instruction is agreed to once it
-is read back -- with `agree`, or, heard confidently, by a moment's uninterrupted
-silence -- and consent is given with `approve`, after it says what will run
-where. Every
-runtime is asked, the local model included. Continuity comes from qmcp, not
-the model: each run is handed the project's earlier instructions and what
-they found, from this server's record.
-
-**THE CLONE IS FOUND WITHOUT A PATH.** A project acted on before runs in the
-clone its last act ran in, from the record. A project acted on for the first
-time runs in a clone named for it beside this checkout -- the workspace keeps
-its repositories as siblings -- or in `--clones`. With neither, the act refuses
-before it asks, and the refusal is said.
-
-**SILENCE IS WAITED THROUGH, AND IT ENDS WHEN TOLD.** Nobody speaking is not an
-error: the microphone stays open, take after take, until somebody does. "No"
-or "that's all" after "Anything else?" goes back to waiting; "yes" asks for the
-instruction; "stop listening" or "goodbye" ends the conversation. A turn that
-fails is said to have failed and the conversation goes on.
-
-WHAT THIS CANNOT DO. Tell speech meant for it from speech in the room. Every
-utterance is read back before it is recorded, and nothing runs without
-`approve`; `wake` requires a word to begin an instruction, for a room where
-people talk. Nor can it interrupt itself: the microphone is closed while it
-speaks, so a person waits for it to finish.
+What this cannot do: tell speech meant for it from speech in the room -- every
+utterance is read back before it is recorded, and `wake` requires a word to
+begin an instruction -- or interrupt itself: the microphone is closed while it
+speaks.
 """
 
 from __future__ import annotations

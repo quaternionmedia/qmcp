@@ -69,7 +69,7 @@ When to use what:
 | Define typed tools for agents | PydanticAI `@agent.tool` |
 | Expose tools via HTTP | QMCP `tool_registry` |
 | Audit all tool calls | QMCP MCP Server |
-| Human approval workflow | QMCP HITL API |
+| Human approval workflow | QMCP human request API |
 | Answer an approval by speaking | QMCP `integrations.voice` over vox |
 | Model pricing/limits | QMCP `Models` registry |
 | Multi-agent patterns | QMCP Topologies |

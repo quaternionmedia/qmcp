@@ -2,64 +2,18 @@
 
     uv run qmcp instructions act <id> --runtime <name> [--budget N] [--cwd PATH] [--voice]
 
-**NOTHING RUNS BEFORE A PERSON SAYS APPROVE, AND NOTHING RUNS ON ANY OTHER
-ANSWER.** The inbox records an instruction and stops (`qmcp.instructions`).
-This is the step after it, and it is shaped by `qmcp.governed`: a fixed
-sequence of stages with exactly one that has no halting guarantee -- the
-runtime -- budgeted before it and recorded after it, with the human gate in
-front of it rather than behind. `governance/qm/records/DRAFT-no-unattended-spending.md`
-is the rule. The command is issued by a person (clause 1), it states the number
-of runs it may make before it asks (clause 2), zero is its default and a real
-count (clause 3), and the consent it asks for is for this run and does not
-carry (clause 5). Every runtime is asked, the local model included: a run that
-spends nothing still acts in somebody's clone, and growing a habit of approval
-into an automatic one is a later phase, decided by the person, not by this.
+Nothing runs before a person says approve. The runtime is budgeted before it
+runs and recorded after, with the consent in front of it, and every runtime is
+asked. The budget counts runs and defaults to zero, which declares and stops;
+`qmcp.spend.declare`'s declaration is written on every path. The consent
+expires after `CONSENT_SECONDS`, and the row then reads `unanswered`.
 
-**CONTINUITY COMES FROM QMCP, NOT THE MODEL.** The runtime is handed a `Brief`:
-the instruction, the project, the clone, and the project's earlier
-instructions and outcomes, read from this server's own record by
-`qmcp.instructions.continuity`. No runtime resumes a conversation of its own,
-so any runtime can carry out the next instruction and still know what the last
-one found. The ids of the turns handed over are written into the row's
-`detail`, so the record says what the runtime was told.
+`docs/integrations/voice.md`, *Acting on an instruction*, explains the brief, the clone, the consent
+and how the act waits.
 
-**THE CLONE COMES FROM THE PERSON, THEN FROM THE RECORD.** `--cwd` names it
-outright. Without it, the clone is the one the project's last act ran in, so a
-path given once serves every later instruction in that project. With neither
--- a project never acted on here, or an instruction whose project is
-unresolved -- the act refuses, leaves the row as it was, and says what to pass.
-
-**THE CONSENT IS THE EXISTING VOICE APPROVAL.** The request put on the human
-queue is an ordinary approval with the options `approve` and `hold`, so it is
-answered wherever approvals are: `qmcp human voice`, `qmcp human respond`, a
-page, or by voice in this process when the command is given `--voice`. Its
-prompt says the instruction, the project, the clone, the runtime, the declared
-budget and how much history is carried, because the person answering may not
-be the person who recorded it, and it expires after `CONSENT_SECONDS`: a
-consent nobody gave within that is `unanswered`, and the row says so.
-
-**THE WAIT READS THE PENDING LISTING AND NOTHING ELSE.** `AGENTS.md` records
-that reading one request expires it when its time has passed, and the listing
-applies no expiry. So the wait watches the listing until the request leaves
-it -- answered, or past its expiry -- and reads the request itself exactly
-once, afterwards, to learn which. Polling the single route would be a wait
-that expires the gate it is waiting on. Behind the listing is a deadline on
-the act's own clock, two polls past the expiry, for a server whose listing
-never drops the request: the act then records `unanswered` and runs nothing,
-while the request may still sit pending there, answerable by anyone.
-
-**THE DECLARATION IS WRITTEN ON EVERY PATH**, as `qmcp.governed.Outcome`
-carries one on every path: a refusal before anything was asked, a hold, an
-expiry and a run all leave `qmcp.spend.declare` on the row, so a reader can
-tell which happened without inferring it from which fields are empty. The
-budget counts runs; what a run cost in calls is the runtime's own report and
-is kept beside it, never folded into it.
-
-WHAT THIS CANNOT DO. Stop a runtime once it is running, or know what it will
-spend before it does -- `would_need` is unknown until the runtime reports, and
-a count it does not report stays unknown rather than becoming zero. Nor can it
-tell that the clone is the one the person meant: the prompt says which, and
-the person at the gate is the check.
+What this cannot do: stop a runtime once it is running, know what it will
+spend before it reports, or tell that the clone is the one the person meant --
+the prompt names it, and the person at the gate is the check.
 """
 
 from __future__ import annotations
@@ -88,9 +42,9 @@ STAGES: tuple[str, ...] = ("instruction", "clone", "budget", "ask", "answer", "r
 OPTIONS = ["approve", "hold"]
 APPROVE, HOLD = OPTIONS
 
-# How long a consent waits before nobody is taken to have answered. Ten
-# minutes: long enough to walk to the machine, short enough that a request
-# nobody saw does not sit answerable for a day.
+# How long a consent waits before nobody is taken to have answered: long
+# enough to walk to the machine, short enough that a request nobody saw does
+# not sit answerable for a day.
 CONSENT_SECONDS = 600
 
 # The rules that can choose a clone, reported as data beside it.
@@ -118,10 +72,10 @@ class Clone:
 class Acted:
     """What one act did, whether or not it ran anything.
 
-    **EVERY FIELD THAT CAN BE POPULATED IS, ON EVERY PATH.** A refused act
-    reports the stages it reached and the spend it declared exactly as a run
-    does; `status` is the row's status afterwards, which a refusal before the
-    ask leaves as it found it.
+    Every field that can be populated is, on every path: a refused act
+    reports the stages it reached and the spend it declared as a run does.
+    `status` is the row's status afterwards, which a refusal before the ask
+    leaves as it found it.
     """
 
     instruction_id: str

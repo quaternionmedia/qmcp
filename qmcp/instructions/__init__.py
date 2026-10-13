@@ -5,47 +5,13 @@
     uv run qmcp instructions list        what has been recorded
     uv run qmcp cookbook instruct        the spoken path, offline
 
-**RECORDING EXECUTES NOTHING.** The voice loop answers questions an agent asks:
-a closed choice, spoken and recorded on the human queue. This runs the other
-direction -- a person speaks or types an instruction and it is kept, in their
-words, with the project it is for -- and it stops there. Recording reaches two
-statuses, `recorded` and `unresolved`, and neither says anything is running:
-acting on an instruction is a command a person issues (`qmcp.instructions.act`),
-behind consent on the human queue, and the statuses it walks are its own.
-Keeping the two apart is what lets a person speak freely into the inbox:
-nothing said here spends, writes or runs.
+Recording executes nothing: a row is `recorded` or `unresolved`, and acting on
+it is `qmcp.instructions.act`. `resolve` matches project names as whole words
+against the roster in the governance submodule beside this package; exactly
+one match resolves.
 
-**THE PROJECT IS READ, AND THE READING IS KEPT BESIDE THE CLAIM.** Which project
-an instruction is for is decided by `resolve`, by the same whole-word match
-`qmcp.threads.consolidate` uses on the thread archive, against the same roster
-(`governance/qm`'s own workspace). `rad` is three letters inside `gradient`, so a
-substring is not a match; casing is ignored because a transcript capitalises as
-it pleases; a name followed by punctuation is still the name. Exactly one match
-resolves. None, or several, leaves the instruction `unresolved` with the
-candidates in `detail`, where the rule that read them is written beside them --
-a project assigned without its evidence would be a guess that looks like a
-finding. A caller may state the project outright, which skips the matching and
-is recorded as `stated`; a blank is not a statement, and is read as nothing
-stated.
-
-**A HYPHENATED NAME IS ALSO MATCHED AS A TRANSCRIPT CARRIES IT.** The roster has
-names like `rad-godot`, and a transcript does not carry hyphens: it says
-`rad godot`. So a hyphenated name is matched with its hyphens as whitespace as
-well as written, and the boundary that keeps `rad` out of `rad-godot` still
-holds -- `rad godot` names both `rad`, as a whole word, and `rad-godot`, in its
-spoken form, so a text saying it is `unresolved` with both as candidates rather
-than recorded against the shorter one.
-
-**AN AMBIGUOUS NAME IS ASKED BACK, NEVER GUESSED.** Spoken, an unresolved
-instruction becomes a closed choice over the candidates by name, through the
-helpers the approval dialog uses and with the same grammar. Whether a project
-name transcribes reliably is unmeasured, so the dialog confirms rather than
-trusts: the transcript is read back and recorded only on a yes.
-
-**ONE ROSTER, FROM THE CHECKOUT.** The names come from the governance submodule
-beside this package rather than from the working directory, because the server
-and the subprocess it starts for a spoken instruction must read the same list
-whatever directory either was started in.
+`docs/integrations/voice.md`, *An instruction is recorded, not run*, describes the commands, the
+routes and the matching rule.
 """
 
 from __future__ import annotations
@@ -76,8 +42,8 @@ RULE_NO_ROSTER = "no roster to match against"
 class Resolution:
     """Which project an instruction is for, the names that matched, and the rule.
 
-    Carried together, as `consolidate.Reading` carries its evidence: a project
-    without the rule that chose it is a verdict nobody can argue with.
+    Carried together, as `consolidate.Reading` carries its evidence, so a
+    project always comes with the rule that chose it.
     """
 
     project: str | None
@@ -131,8 +97,8 @@ def roster_names(corpus: Path = CORPUS) -> tuple[str, ...]:
     """The repository names the corpus's workspace declares, in its order.
 
     Empty when the submodule is not checked out: an instruction is then
-    recorded `unresolved` with `RULE_NO_ROSTER`, which is a different answer
-    from "no project named" and is kept distinct on purpose.
+    recorded `unresolved` with `RULE_NO_ROSTER`, distinct from "no project
+    named".
     """
     if not (corpus / "ci" / "workspace.yaml").is_file():
         return ()

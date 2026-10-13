@@ -2,29 +2,23 @@
 
     uv run qmcp sweep run <plan.json>
 
-**THE TOPOLOGY IS NOT A SETTING.** Nothing here picks "one agent per repository"
-or "one agent for all of them" in advance. Each share of the work arrives
-carrying its shape, a worker is registered for each shape, and the topology is
-whatever falls out -- nine parsers and six questions today, a different mix
-tomorrow, without a line changing. A dispatcher that chose the topology first
-would be deciding the answer before reading the question.
+That command is claimed and not routed: `qmcp.cli` has no `sweep` group
+(`tests/test_declared_commands.py`, `ONLY_CLAIMED`). Call `run` directly.
 
-**A MODEL IS THE WRONG TOOL FOR A KNOWN EDIT.** Rewriting `>=0.115.0` to
-`>=0.116.0` is a thing a parser does correctly every time; a model does it
-slower, sometimes wrong, and -- on a paid endpoint -- for money. So `mechanical`
-gets a parser. The GPU is for the shares a parser genuinely cannot read, and
-those are the minority: measured on this organisation's real archive, nine of
-twenty-four.
+The topology is not a setting. Each share of the work arrives carrying its
+shape, a worker is registered for each shape, and the topology is whatever the
+mix of shapes makes it, without a line changing.
 
-**A WORKER THAT IS NOT THERE IS REPORTED, NEVER SKIPPED.** With no model served,
-`judgement` shares come back `needs a worker` and wait for a person. They do not
-silently vanish from the sweep, which would leave fifteen of twenty-four
-repositories looking finished because nothing tried them.
+A known edit gets a parser, not a model: rewriting `>=0.115.0` to `>=0.116.0`
+is done correctly every time by `mechanical`'s parser. A model is for the
+shares a parser cannot read.
 
-**NOTHING HERE MERGES OR DEPLOYS.** A worker prepares a change on a branch. The
-approval and the tag are a person's by constitution --
-`governance/qm/ci/attested-registry.yaml` -- and a dispatcher that could do them
-would make the registry a description of what it chose not to do.
+A worker that is not there is reported, never skipped: with no model served,
+`judgement` shares come back `needs a worker` and wait for a person.
+
+Nothing here merges or deploys. A worker prepares a change on a branch; the
+approval and the tag are a person's
+(`governance/qm/ci/attested-registry.yaml`).
 """
 
 from __future__ import annotations
@@ -116,11 +110,10 @@ def mechanical_worker(share: dict[str, Any], to_version: str) -> Outcome:
 def judgement_worker(share: dict[str, Any], to_version: str) -> Outcome:
     """The share a parser cannot read.
 
-    **THIS IS DELIBERATELY NOT A MODEL CALL.** Whether a model runs here is a
-    deployment decision: register a different worker for `JUDGEMENT` and the
-    dispatcher does not change. With none registered, the honest answer is that
-    nobody looked -- which is what this returns, and it is why these shares
-    appear in a person's queue rather than in a total.
+    Not a model call: whether a model runs here is a deployment decision,
+    made by registering a different worker for `JUDGEMENT`. This returns
+    `NEEDS_WORKER`, so the share appears in a person's queue rather than in a
+    total.
     """
     return Outcome(share.get("project", "?"), NEEDS_WORKER,
                    share.get("why") or "needs judgement")

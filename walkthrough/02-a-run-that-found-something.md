@@ -113,9 +113,8 @@ Then, in the control panel:
 
 **Name a database.** Both sides open one relative to the working directory
 otherwise, and a demo that forgets writes into whatever the operator was using.
-That happened while this page was being written.
 
-## What the run finds here, today
+## What the run finds here
 
 `tag-claims` does not pass. This project's suite skips tests needing optional
 dependencies, and `governance/qm/records/DRAFT-version-tags-are-claims.md` 3 says

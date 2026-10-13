@@ -335,7 +335,7 @@ def test_a_request_s_spoken_form_is_what_is_said_and_its_prompt_otherwise():
 
 
 def test_an_instruction_s_take_is_hinted_with_recent_projects_then_the_roster():
-    """Measured on a real take: "camcp" without the names, "qmcp" with them.
+    """A transcriber spells a hinted project name as given.
     Mutation: hint the conversation's takes with the question's options only -- red."""
 
     class Client:

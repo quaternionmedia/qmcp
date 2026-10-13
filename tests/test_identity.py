@@ -1,18 +1,9 @@
-"""Which repository this is, and why four modules used to answer separately.
+"""Which repository this is, decided in one place.
 
-**THE DEFECT THIS CLOSES.** `quaternionmedia/qmcp` was typed into the dashboard,
-the cookbook and both thread sources. `qmcp.addresses` already had the
-vocabulary — `Address`, `owner`, `parse` — and nothing decided what the owner
-*was*, so every caller decided for itself. A fork of this harness emitted deltas
-and invocations claiming to belong to this organisation.
-
-`records/DRAFT-a-route-is-an-address.md` is why that is a defect rather than
-untidiness: an address is what says two readings are about one thing. A wrong
-owner joins a fork's work to this org's, in the one field whose whole job is
-identity.
-
-THE TEST WORTH READING IS THE LAST SECTION: no module may hold the literal any
-more, which is what stops the fifth one appearing.
+An address is what says two readings are about one thing
+(`records/DRAFT-a-route-is-an-address.md`), so a fork's deltas and invocations
+must carry the fork's owner. The last section checks that no module names the
+organisation in code.
 """
 
 from __future__ import annotations
@@ -71,11 +62,8 @@ def test_the_environment_wins_over_the_checkout(monkeypatch):
 
 
 def test_a_checkout_with_no_remote_says_it_does_not_know(monkeypatch):
-    """THE ONE THAT MATTERS.
-
-    A fresh `git init`, or a tarball, is a real state. An address built on a
-    guessed owner would be worse than one that says it does not know, because a
-    guess is indistinguishable from a fact once it is written down.
+    """A fresh `git init`, or a tarball, is a real state, and its identity is
+    `UNKNOWN` rather than a guessed owner.
 
     Mutation: fall back to a literal owner and this fails.
     """
@@ -128,17 +116,15 @@ def test_the_answer_is_cached(monkeypatch):
     assert len(calls) == 1, f"asked git {len(calls)} times"
 
 
-# --- and nothing names the organisation itself any more -----------------------
+# --- nothing names the organisation itself ------------------------------------
 
 
 def test_no_module_hardcodes_the_organisation():
-    """**THE GUARD THAT STOPS THE FIFTH ONE.**
+    """No module outside `identity.py` names the organisation in code.
+    Docstrings and comments may name it as an example.
 
-    Four modules held this literal. Each was reasonable alone; together they
-    meant a fork could not change its own identity. Docstrings may name it as
-    an example — code may not.
-
-    Mutation: put any of the four literals back and this fails, naming the file.
+    Mutation: put the literal back in any module and this fails, naming the
+    file.
     """
     offenders = []
     for path in sorted(PACKAGE.rglob("*.py")):
@@ -161,13 +147,9 @@ def test_no_module_hardcodes_the_organisation():
 def test_the_modules_that_used_to_hardcode_it_now_agree_with_identity(monkeypatch):
     """One decision, several readers. If they disagreed the addresses would too.
 
-    **RELOADED BACK, AND THAT IS THE WHOLE CARE HERE.** `project` is evaluated
-    at import, so reading it under a different identity means re-importing the
-    module -- and `monkeypatch` restores the environment while leaving the
-    reloaded module carrying `acme/other` for everything that runs afterwards.
-    The first version of this test did exactly that and turned an unrelated test
-    red in the full run while passing on its own, which is the hardest shape of
-    failure to read.
+    Each module is reloaded back afterwards: `project` is evaluated at import,
+    and `monkeypatch` restores the environment while leaving a reloaded module
+    carrying `acme/other` for every test that runs after it.
 
     Mutation: give any reader its own default and this fails.
     """

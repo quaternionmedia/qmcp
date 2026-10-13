@@ -217,8 +217,9 @@ def test_a_project_the_person_settled_is_stated(fake_client, monkeypatch):
 
 
 def test_the_instruction_take_is_long_and_the_confirmation_is_not(fake_client, monkeypatch):
-    """THE REASON THE STACK EXISTS. Mutation: pass `pause_ms` on every listen
-    -- red on the second take; drop it from the first -- red on the first."""
+    """The first take carries the long pause and the confirmation does not.
+    Mutation: pass `pause_ms` on every listen -- red on the second take; drop
+    it from the first -- red on the first."""
     result, stt, tts = _spoken(monkeypatch, ["Deploy qmcp.", "yes"],
                                "--duration", "20", "--pause-ms", "1200")
 

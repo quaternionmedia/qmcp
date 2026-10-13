@@ -57,7 +57,7 @@ class QMCPToolset:
     - Async context manager for connection lifecycle
     - Tool prefix to avoid naming conflicts
     - Correlation ID for distributed tracing
-    - Human-in-the-loop via the QMCP HITL API
+    - Human-in-the-loop via the qmcp human request API
 
     Attributes:
         base_url: The QMCP server URL

@@ -4,39 +4,29 @@
     qmcp threads index --write    # write it
     qmcp threads index --check    # re-derive and report drift
 
-WHY AN INDEX AT ALL. `survey` reads every file to answer how many threads are
-there, which is correct and does not scale: it is right for forty and wrong for
-four thousand. The index answers from one file, and the files stay the truth --
-`--check` re-derives from them and says where the two differ.
-
-TWO LAYERS, THE SAME SPLIT THE REST OF THIS ORGANISATION USES.
+The index answers from one file what `survey` answers by reading every file.
+The files stay the source: `--check` re-derives from them and reports where
+the two differ.
 
     cache layer     id, title, turn count, digest. A pure function of the files
-                    on disk: same files, same answer, forever, offline.
-    archive layer   what previous versions of a thread were, and how each
-                    changed. A function of every index that came before, which
-                    is a thing the files cannot tell you.
+                    on disk.
+    archive layer   what earlier versions of a thread were, and how each
+                    changed. A function of every index before this one.
 
-THE ARCHIVE NEVER OVERWRITES, AND THAT IS THE WHOLE DESIGN. An export is a
-snapshot, so a second export of a conversation somebody kept talking in is not
-a correction of the first -- it is a later state of the same strand. Two things
-can have happened and they are not the same finding:
+The archive never overwrites. A later export of a conversation is a later
+state of it, classified as one of:
 
-    grew        every turn the old version had is still there, in order, and
-                there are more. The ordinary case, and not interesting.
-    diverged    a turn that was there is gone or changed. **That is a finding.**
-                An export is supposed to be a record; one that disagrees with an
-                earlier record of itself is either a tool changing its format,
+    grew        every earlier turn is still there, in order, and there are
+                more. The ordinary case.
+    diverged    an earlier turn is gone or changed: a tool changing its format,
                 somebody editing history, or an id being reused.
 
-Neither is repaired. The prior digest and the change are kept, because a
-divergence somebody deletes to make the index tidy is the one fact nobody can
-recover -- the same reasoning `governance/qm/records/DRAFT-deltas-compose.md` 7
-gives for keeping a tangle.
+Neither is repaired: the prior digest and the change are kept
+(`governance/qm/records/DRAFT-deltas-compose.md` 7 keeps a tangle the same
+way).
 
-WHAT THIS CANNOT SEE. Whether an export is complete. A conversation the
-operator never exported is absent, and absent is not empty -- the index counts
-what is cached, and says so rather than implying it counted what exists.
+What this cannot see: whether an export is complete. The index counts what is
+cached, not what exists.
 """
 
 from __future__ import annotations
@@ -52,13 +42,11 @@ from qmcp.threads.base import Thread
 
 SCHEMA = 1
 
-# The index sits with what it indexes, outside any repository. It describes one
-# machine's cache -- local paths, local timestamps -- and a copy of it in a
-# repository would be a second, wrong answer for everybody else.
+# The index sits with what it indexes, outside any repository: it describes one
+# machine's cache, with local paths and timestamps.
 INDEX_NAME = "index.json"
 
-# Long, because the thing it describes changes only when somebody exports. A
-# short budget here would report stale on a cache that is perfectly current.
+# Long, because the cache changes only when somebody exports.
 STALENESS_BUDGET_HOURS = 720
 
 GREW = "grew"
@@ -72,11 +60,8 @@ def now() -> str:
 def digest_of(thread: Thread) -> str:
     """A content digest over what a thread *says*, not over its file.
 
-    Turn ids and text, in order. Deliberately not the file bytes: an exporter
-    that reformats its JSON, reorders keys or changes indentation would
-    otherwise register as every conversation diverging at once, which is a
-    finding nobody could act on and would teach its reader to ignore the real
-    ones.
+    Turn ids and text, in order, and not the file bytes, so an exporter that
+    reformats its JSON does not register as every conversation diverging.
     """
     body = hashlib.sha256()
     for turn in thread.turns:
@@ -128,9 +113,8 @@ class Entry:
     def key(self) -> str:
         """What identifies a thread across sources.
 
-        Two assistants may use the same conversation id and mean different
-        conversations, so the source is part of the identity rather than
-        assumed unique.
+        Two assistants may use the same conversation id for different
+        conversations, so the source is part of the identity.
         """
         return f"{self.source}/{self.id}"
 
@@ -174,19 +158,14 @@ def entry_for(thread: Thread, source: str, at: str) -> Entry:
 def classify(previous: Entry, current: Entry) -> tuple[str, str]:
     """How this thread changed, and why that reading.
 
-    Growth is the old turn ids being a prefix of the new ones. A prefix rather
-    than a subset: an export that kept every old turn but reordered them has
-    not grown, it has rewritten, and calling that growth would hide the
-    interesting half of what this detects.
+    Growth is the old turn ids being a proper prefix of the new ones. A
+    prefix rather than a subset: an export that kept every old turn but
+    reordered them has diverged.
     """
     old, new = previous.turn_ids, current.turn_ids
 
-    # Growth needs the old ids to be a prefix AND something after them.
-    # Identical ids with a different digest is not growth: the ids did not
-    # move and the text did, which is a turn edited after the fact. The first
-    # version of this checked the prefix alone, so an edited conversation
-    # reported as having grown by zero turns -- a divergence classified as the
-    # ordinary case, which is the one direction this must not fail in.
+    # Growth needs the old ids as a prefix and something after them. The same
+    # ids with a different digest is a turn edited after the fact: diverged.
     if len(new) > len(old) and new[:len(old)] == old:
         return GREW, f"{len(new) - len(old)} turn(s) added"
 
@@ -208,10 +187,8 @@ def merge(previous: dict[str, Entry], current: list[Entry],
           at: str | None = None) -> tuple[list[Entry], list[Entry]]:
     """Fold what is on disk into what was known. Returns (entries, changed).
 
-    NOTHING IS OVERWRITTEN AND NOTHING IS DROPPED. A thread the cache no longer
-    holds keeps its entry: an export the operator deleted or replaced with a
-    narrower one has not un-happened, and removing the row would make the index
-    agree with the cache by forgetting.
+    Nothing is overwritten and nothing is dropped: a thread the cache no
+    longer holds keeps its entry.
     """
     stamped = at or now()
     merged: dict[str, Entry] = dict(previous)
@@ -247,18 +224,16 @@ def merge(previous: dict[str, Entry], current: list[Entry],
 def build(sources: Iterable[Any], at: str | None = None) -> list[Entry]:
     """Read every source's cache and describe what is there.
 
-    The sources are read, not asked -- a source's own `survey` is a count, and
-    this needs the threads themselves to digest them.
+    The sources are read through `fetch`, because a digest needs the threads
+    themselves, not `survey`'s count.
     """
     from qmcp.spend import Budget
 
     stamped = at or now()
     entries: list[Entry] = []
     for source in sources:
-        # A budget of zero, because indexing must never be the thing that
-        # spends. A source that would need a paid call to be indexed is one
-        # this cannot index, and it will say so by refusing rather than by
-        # quietly billing somebody.
+        # A budget of zero: indexing never spends, so a source that would need
+        # a paid call refuses.
         for thread in source.fetch([], Budget()):
             entries.append(entry_for(thread, source.name, stamped))
     return entries
@@ -353,8 +328,8 @@ def render(doc: dict[str, Any], changed: list[Entry] | None = None) -> str:
 def drift(doc: dict[str, Any], entries: list[Entry]) -> list[str]:
     """Where the committed index and the files disagree, for `--check`.
 
-    Only the cache layer is compared. The archive layer is history and cannot
-    be re-derived from the files -- that is what makes it worth keeping.
+    Only the cache layer is compared; the archive layer cannot be re-derived
+    from the files.
     """
     known = {row["source"] + "/" + row["id"]: row for row in doc["threads"]}
     problems: list[str] = []
@@ -376,7 +351,6 @@ def drift(doc: dict[str, Any], entries: list[Entry]) -> list[str]:
     on_disk = {entry.key for entry in entries}
     for key in known:
         if key not in on_disk:
-            # Not a problem. The archive keeps what the cache no longer holds,
-            # and saying so here stops a reader reading absence as drift.
+            # Not drift: the archive keeps what the cache no longer holds.
             continue
     return problems

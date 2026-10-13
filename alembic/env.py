@@ -1,23 +1,19 @@
 """Alembic environment for qmcp.
 
-THE URL IS DERIVED, NEVER CONFIGURED TWICE. `alembic.ini` deliberately sets no
-`sqlalchemy.url`. It comes from `qmcp.config.get_settings()` -- the same setting
-the application reads -- so a migration cannot be run against one database while
-the server talks to another because somebody edited one file and not the other.
+The URL is derived, never configured twice: `alembic.ini` sets no
+`sqlalchemy.url`, and it comes from `qmcp.config.get_settings()`, the setting
+the application reads, so a migration runs against the database the server
+uses.
 
-THE DRIVER IS STRIPPED. The application uses `sqlite+aiosqlite`, which is an
-async driver; alembic's migration context is synchronous. The `+aiosqlite` is
-removed to give a plain `sqlite://` URL over the *same file*. Doing this by
-string replacement on the whole URL would be fragile, so the path is resolved by
-`qmcp.db.paths.database_file` -- the one place that knows a SQLAlchemy URL is
-not a filename.
+The driver is stripped. The application uses the async `sqlite+aiosqlite`;
+alembic's migration context is synchronous, so it gets a plain `sqlite://` URL
+over the same file, resolved by `qmcp.db.paths.database_file` rather than by
+string replacement.
 
-EVERY MODEL MODULE IS IMPORTED BEFORE `target_metadata` IS READ. Autogenerate
-compares the database against `SQLModel.metadata`, which is populated as a side
-effect of importing model modules. Importing only some of them produces a
-migration that silently drops every table it did not see -- so the imports below
-are load-bearing, not tidy-up, and `--autogenerate` is only as complete as they
-are.
+Every model module is imported before `target_metadata` is read. Autogenerate
+compares the database against `SQLModel.metadata`, which importing the model
+modules populates; a migration generated without one of them drops every table
+it did not see. `--autogenerate` is only as complete as the imports below.
 """
 
 from __future__ import annotations
@@ -84,16 +80,15 @@ def _baseline_metadata():
 
 target_metadata = _baseline_metadata() or server_metadata()
 
-# A NAMING CONVENTION, BECAUSE SQLITE MIGRATIONS RUN IN BATCH MODE. SQLite
-# cannot ALTER a constraint, so alembic rebuilds the table around the change --
-# and to rebuild a constraint it has to be able to name it. Without a
-# convention, autogenerate emits `create_foreign_key(None, ...)`, which raises
-# `ValueError: Constraint must have a name` *after* earlier statements in the
+# A naming convention, because SQLite migrations run in batch mode. SQLite
+# cannot ALTER a constraint, so alembic rebuilds the table around the change,
+# and must be able to name the constraint to rebuild it. Without a convention,
+# autogenerate emits `create_foreign_key(None, ...)`, which raises
+# `ValueError: Constraint must have a name` after earlier statements in the
 # same migration have committed, leaving a half-migrated database with its
-# revision unchanged. That happened here, and the recovery was a restore.
+# revision unchanged.
 #
-# Existing unnamed constraints are unaffected; this governs what is emitted
-# from now on.
+# Existing unnamed constraints are unaffected; this governs what is emitted.
 target_metadata.naming_convention = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",

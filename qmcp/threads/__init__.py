@@ -1,10 +1,10 @@
 """Pulling threads from an assistant, as units of work rather than transcripts.
 
-`base` holds the contract every source implements. The sources themselves are
-stubs: they declare what they would cost and refuse to pretend they can do it.
+`base` holds the contract every source implements. The sources read local
+exports and the local session store; `docs/threads.md` describes the archive.
 
-**No module here calls a paid service today.** When one does, it goes through
-`qmcp.spend`, and `governance/qm/records/DRAFT-no-unattended-spending.md` is why.
+No module here calls a paid service. A source that does spends through
+`qmcp.spend`, under `governance/qm/records/DRAFT-no-unattended-spending.md`.
 """
 
 from qmcp.threads.base import (

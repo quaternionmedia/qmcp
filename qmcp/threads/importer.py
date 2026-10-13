@@ -3,33 +3,20 @@
     qmcp threads import <export.zip>
     qmcp threads import <conversations.json> --source claude
 
-**THE API IS NOT A ROUTE TO THIS DATA, AND THAT IS THE THING TO KNOW FIRST.**
+A model API does not expose the conversation history of `claude.ai` or
+`chatgpt.com`. The route to it is each service's data export, requested by the
+account holder in the web interface.
 
-Anthropic's API and OpenAI's API are products for making new model calls. Neither
-exposes the conversation history of `claude.ai` or `chatgpt.com`: those are
-different products with different storage, and no endpoint lists them. A
-credential for the API would not help, and building something that reached
-around that -- driving a browser session, replaying cookies -- would be
-scraping a service against its terms, on top of being fragile in a way that
-fails silently.
+An export is a ZIP holding, among other files, one `conversations.json`: an
+array of conversations. The cache reads a file per conversation, so this
+splits the array into `<root>/<source>/<id>.json`.
 
-The sanctioned route is each service's **data export**, requested by the account
-holder in the web interface. That is a human step by construction, and it is one
-this organisation would want to be a human step anyway: it is somebody deciding
-to take a copy of their own conversations.
+Which service wrote a conversation is detected by structure rather than by
+filename. Every conversation that cannot be read is counted and named, and a
+run that recognised nothing says so.
 
-WHAT AN EXPORT ACTUALLY IS. A ZIP holding, among other files, one large
-`conversations.json` -- an array of conversations rather than a file each. The
-cache reads a file per conversation, so this splits them. That is the whole job.
-
-**THE ARRAY'S SHAPE IS A BEST READING, NOT A VERIFIED ONE.** No export was
-available on the machine this was written on. Detection is by structure rather
-than by filename, every conversation that cannot be read is counted and named,
-and a run that recognised nothing says so rather than reporting zero
-conversations imported.
-
-NOTHING HERE SPENDS AND NOTHING HERE REACHES THE NETWORK. It reads a file the
-operator downloaded. A test asserts the module imports no HTTP client.
+Nothing here spends and nothing reaches the network: it reads a file the
+operator downloaded, and a test asserts the module imports no HTTP client.
 """
 
 from __future__ import annotations
@@ -40,8 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-# The member of the archive that holds the conversations. Both services use the
-# same name today; the search is by suffix so a nested layout still resolves.
+# The member of the archive that holds the conversations, in both services'
+# exports; the search is by suffix so a nested layout still resolves.
 CONVERSATIONS = "conversations.json"
 
 
@@ -63,10 +50,8 @@ class Imported:
 def detect(conversation: dict) -> str | None:
     """Which service this conversation came from, by shape rather than filename.
 
-    A filename is what somebody renamed; the structure is what the exporter
-    wrote. `mapping` is ChatGPT's node tree; `chat_messages` is Claude's list.
-    Anything carrying neither is not recognised, and this returns None rather
-    than guessing at the more likely one.
+    `mapping` is ChatGPT's node tree; `chat_messages` is Claude's list.
+    Anything carrying neither returns None.
     """
     if not isinstance(conversation, dict):
         return None
@@ -81,10 +66,9 @@ def identity(conversation: dict, source: str, index: int) -> str:
     """A filename for one conversation.
 
     Falls back to the position in the array when the export carries no id.
-    Positional is weak -- a later export with one conversation deleted shifts
-    every id after it, and the index would read that as many threads diverging
-    at once. It is still better than dropping the conversation, and the run
-    reports how many needed it.
+    A positional name shifts when an earlier conversation is deleted from a
+    later export, which the index reads as divergence; `positional` lists the
+    names that needed it.
     """
     for key in ("uuid", "conversation_id", "id"):
         found = conversation.get(key)
@@ -96,9 +80,8 @@ def identity(conversation: dict, source: str, index: int) -> str:
 def safe(identifier: str) -> str:
     """A filename that cannot escape the cache directory.
 
-    An id is somebody else's string. One containing a separator would write
-    outside the folder it was meant for, and this is the sort of thing that is
-    obvious once written down and absent until then.
+    Every character other than a letter, digit, `-` or `_` becomes `-`, so an
+    id containing a separator cannot write outside the folder.
     """
     keep = [c if (c.isalnum() or c in "-_") else "-" for c in identifier]
     return "".join(keep).strip("-")[:120] or "unnamed"
@@ -107,8 +90,7 @@ def safe(identifier: str) -> str:
 def conversations_in(path: Path) -> tuple[list[Any], str]:
     """Every conversation in an export, and where they were read from.
 
-    Accepts the downloaded ZIP or a `conversations.json` somebody already
-    unpacked, because both are things a person plausibly has.
+    Accepts the downloaded ZIP or an unpacked `conversations.json`.
     """
     if path.suffix.lower() == ".zip":
         with zipfile.ZipFile(path) as archive:
@@ -131,12 +113,9 @@ def unpack(export: Path, root: Path, source: str | None = None,
            dry_run: bool = False) -> Imported:
     """Split an export into one file per conversation under `root/<source>`.
 
-    Overwrites a conversation already cached, and **reports which ones it
-    replaced with something different**. It does not refuse: re-importing a
-    later export is the ordinary way this is used, and a conversation somebody
-    kept talking in is supposed to change. What must not happen is the change
-    passing unremarked -- so the count is on the run, and
-    `qmcp threads index` records how it changed.
+    Overwrites a conversation already cached and reports, in `replaced`,
+    each one that changed. Re-importing a later export is the ordinary use;
+    `qmcp threads index` records how each changed conversation changed.
     """
     found, where = conversations_in(export)
     if not isinstance(found, list):

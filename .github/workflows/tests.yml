@@ -1,14 +1,11 @@
 name: Tests
 
-# WHY THIS EXISTS. Until it did, nothing ran this repository's test suite on a
-# runner. Five checks reported on every pull request -- record lint, submodule
-# refs, the slot, a secret scan -- and not one of them executed a test. A green
-# pull request meant "the governance checks passed", and a reader reasonably
-# took it to mean the code worked.
+# Runs this repository's test suite on a runner. The other checks on a pull
+# request -- record lint, submodule refs, the slot, a secret scan -- execute no
+# test.
 #
 # The suite covers the server, the agent framework, the cookbook, the database
-# backup and migration mechanisms, and the local demos. All of it ran on one
-# machine and nowhere else.
+# backup and migration mechanisms, and the local demos.
 
 on:
   push:
@@ -33,9 +30,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # The governance submodule carries the shared conformance vectors
-          # that tests/test_addresses.py is held to. Without it that test skips
-          # and says why, which is a weaker result than this workflow should
-          # settle for.
+          # that tests/test_addresses.py is held to; without it that test
+          # fails.
           submodules: recursive
 
       - name: Install uv

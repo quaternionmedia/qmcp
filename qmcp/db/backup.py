@@ -5,31 +5,26 @@
     qmcp db verify <path>     # is this file a readable, intact database?
     qmcp db restore <path>    # put one back, after backing up what is there
 
-WHY NOT `shutil.copy`. A running server holds the database open. Copying the
-file byte-for-byte while a writer is mid-transaction produces a file that opens
-cleanly and is wrong -- and with WAL journalling the `-wal` sidecar carries
-committed data the `.db` file does not, so a copy of one file without the other
-loses whatever had not been checkpointed. `sqlite3.Connection.backup()` is the
-online backup API: it reads through the same locking the writer uses and yields
-a consistent snapshot of committed state with the server still running.
+Not `shutil.copy`: a running server holds the database open, a byte copy taken
+mid-transaction opens cleanly and is wrong, and with WAL journalling the `-wal`
+sidecar carries committed data the `.db` file does not.
+`sqlite3.Connection.backup()` is the online backup API: it reads through the
+writer's locking and yields a consistent snapshot of committed state with the
+server still running.
 
-WHY IT VERIFIES BEFORE REPORTING SUCCESS. A backup nobody has read is a belief.
-Every copy is reopened, `PRAGMA integrity_check` is run against it, and its
-per-table row counts are compared with the source. A backup mechanism that
-reported success on a truncated file would be worse than none, because it is
-relied on precisely when the original is already gone.
+Every copy is verified before success is reported: it is reopened,
+`PRAGMA integrity_check` is run against it, and its per-table row counts are
+compared with the source.
 
-WHAT IT CANNOT DO.
+What this cannot do:
 
-  * Capture a transaction that has not committed. The snapshot is of committed
-    state, which is the only state with a defined answer.
-  * Notice that the source itself is already corrupt in a way `integrity_check`
-    passes -- a schema that drifted from the code reads as a perfectly intact
-    database, which is exactly the condition this repository is in.
-  * Make a backup a migration. Restoring an old file restores an old schema.
-  * Protect against the disk it is written to. Backups land beside the database
-    by default, and a second copy on the same volume is one failure away from
-    the first.
+  * capture a transaction that has not committed;
+  * notice a source already wrong in a way `integrity_check` passes -- a schema
+    that drifted from the code reads as an intact database (`qmcp.db.schema`
+    checks that);
+  * make a backup a migration: restoring an old file restores an old schema;
+  * protect against the disk it is written to. Backups land beside the
+    database by default, on the same volume.
 """
 
 from __future__ import annotations
@@ -198,9 +193,8 @@ def restore(backup: Path, destination: Path,
     Returns the safety copy's path -- or None when there was nothing to
     displace -- and the verification of the restored file.
 
-    THE SAFETY COPY IS NOT OPTIONAL. Restore is the one operation here that
-    destroys data, and the state it destroys is the state somebody is about to
-    discover they needed. There is no flag to skip it.
+    The safety copy is not optional: restore is the one operation here that
+    destroys data, and there is no flag to skip it.
     """
     checked = verify(backup)
     if not checked.ok:

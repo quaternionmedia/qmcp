@@ -1,9 +1,8 @@
 """Claude Code sessions, and the joins a web export does not have.
 
-The tests worth reading are the ones about `project_of`. A conversation belongs
-to no repository, which is why a web export's deltas go to a project somebody
-chose -- and a Claude Code session does not have that problem, because it says
-which repository it was working in.
+A web export's deltas go to the source's own project, because a conversation
+belongs to no repository. A Claude Code session names the repository it was
+working in, and `project_of` reads it.
 """
 
 from __future__ import annotations
@@ -126,13 +125,9 @@ def test_the_title_comes_from_the_session_when_it_has_one(tmp_path):
 
 
 def test_the_project_comes_from_the_session_not_a_default(tmp_path):
-    """THE ONE THAT MATTERS.
+    """A session's deltas go to the repository its `pr-link` names.
 
-    A conversation belongs to no repository, so a web export's deltas go to a
-    project somebody chose. A session says which repository it was working in.
-
-    Mutation: return `self.project` unconditionally and this fails, which is
-    every session's work filed under one repository.
+    Mutation: return `self.project` unconditionally and this fails.
     """
     session(tmp_path, [turn(),
                        {"type": "pr-link", "sessionId": "s-1",
@@ -226,17 +221,12 @@ def test_this_source_writes_nothing_into_the_store_it_reads(tmp_path):
         assert writer not in text.replace('errors="replace"', ""), writer
 
 
-# --- sidechains, and the collision that made seven false divergences ---------
+# --- sidechains ---------------------------------------------------------------
 
 
 def test_a_subagent_file_is_its_own_thread(tmp_path):
-    """A SUBAGENT FILE CARRIES ITS PARENT'S sessionId, AND THAT WAS THE TRAP.
-
-    Keying on `sessionId` alone collapsed many files into one id, each
-    overwriting the last, and the index read every overwrite as the thread
-    diverging. Seven "divergences" on a first index of a real machine, none of
-    them real -- and a false divergence is worse than a missed one, because a
-    reader who finds the first seven are noise stops looking at the eighth.
+    """A subagent file carries its parent's `sessionId`, and is still its own
+    thread, so the index does not read sidechains as one thread diverging.
 
     Mutation: drop the agentId from the identity and this fails.
     """
@@ -250,7 +240,7 @@ def test_a_subagent_file_is_its_own_thread(tmp_path):
 
 
 def test_two_subagents_of_one_session_do_not_collide(tmp_path):
-    """Forty-six files shared one sessionId on the machine this was found on."""
+    """Many sidechain files may share one sessionId; each is its own thread."""
     session(tmp_path, [turn(uuid="u-1", session_id="s-1")], name="main.jsonl")
     for agent in ("a-1", "a-2", "a-3"):
         session(tmp_path, [dict(turn(uuid=f"u-{agent}", session_id="s-1"),

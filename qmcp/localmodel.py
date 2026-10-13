@@ -3,32 +3,22 @@
     uv run qmcp localmodel check
     uv run qmcp localmodel plan --models-dir D:\\ollama
 
-**A JUDGEMENT WORKER IS A DEPLOYMENT DECISION, SO THIS IS NOT GOVERNANCE.**
-`qmcp.sweep` dispatches by the shape of the work and names no tool;
-`governance/qm` says state the invariant and name no vendor. This module is
-where the vendor is allowed to appear, because it is a project's own operational
-tooling rather than a rule anybody adopts by reference. Nothing in `sweep.py`
-imports it and nothing has to.
+A judgement worker is a deployment decision, so this is a project's own
+operational tooling, not governance: `qmcp.sweep` names no tool, and this
+module is where the vendor may appear. Nothing in `sweep.py` imports it.
 
-**IT CHECKS BEFORE IT PROPOSES, AND IT PROPOSES BEFORE IT RUNS.** Installing
-software and pulling several gigabytes are not things to discover halfway
-through. `check` measures; `plan` turns a measurement into the exact commands;
-running them is a person's, and the commands are printed so they can be read
-first and re-run later. That last part is the point of the module existing at
-all -- a machine somebody rebuilds should get the same model in the same place
-without anybody remembering how.
+It checks before it proposes, and proposes before it runs. `check` measures;
+`plan` turns a measurement into the exact commands; running them is a
+person's. The commands are printed so they can be read first and re-run, and a
+rebuilt machine gets the same model in the same place.
 
-**A RUNNING SERVICE DOES NOT SEE A VARIABLE SET AFTER IT STARTED.** This is
-the step that is easy to leave out and impossible to notice: `ollama pull` is a
-client, the service chooses the directory, and it read its environment once at
-start. Setting `OLLAMA_MODELS` and pulling without restarting puts several
-gigabytes exactly where the variable said not to. It is in the plan because it
-was left out of the first one and 4.4 GB went to the system drive.
+A running service does not see a variable set after it started: `ollama pull`
+is a client, and the service read its environment, including `OLLAMA_MODELS`,
+once at start. The plan therefore restarts the service before it pulls.
 
-**THE MODEL AND ITS DIGEST ARE PINNED.** `qwen2.5-coder:7b` is a tag that moves.
-A rebuild that silently got a different model would be a different judgement
-worker wearing the same name, and the sweep it reviewed would be reviewed by
-something nobody chose.
+The model and its digest are pinned, because `qwen2.5-coder:7b` is a tag that
+moves, and a rebuild must not silently get a different model under the same
+name.
 """
 
 from __future__ import annotations
@@ -39,8 +29,8 @@ from pathlib import Path
 from typing import Any
 
 # What is being installed, pinned. `q4_K_M` is the quantisation that fits the
-# card this was written for; a bigger one does not, and a smaller one is a
-# different model in every way that matters to a judgement.
+# target card; a bigger one does not, and a smaller one is a different model
+# for judgement purposes.
 MODEL = "qwen2.5-coder:7b"
 MODEL_BYTES = 4_700_000_000
 """About 4.7 GB. Measured from the registry rather than guessed at, and used
@@ -201,9 +191,8 @@ def look(runner: Any = None) -> Check:
 def plan(check: Check, models_dir: str | None = None) -> Plan:
     """Turn a measurement into commands.
 
-    `models_dir` decides where several gigabytes land. It is required in
-    substance and defaulted only to the roomiest drive -- silently filling the
-    system drive is the failure this whole module is arranged around.
+    `models_dir` decides where several gigabytes land. It defaults to the
+    roomiest drive, so the system drive is never filled silently.
     """
     made = Plan(blocked_by=list(check.blockers))
     if made.blocked_by:

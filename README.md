@@ -58,8 +58,8 @@ uv run qmcp human voice                        # answer the oldest of them by sp
 uv run qmcp cookbook voice                     # the voice path checked end to end, no hardware
 ```
 
-The first is the one to read. Model output reaches the human queue through one
-door, and `docs/human_in_loop.md` says what that door does and does not enforce.
+The first draws the one door model output reaches the human queue through;
+`docs/human_in_loop.md` says what that door does and does not enforce.
 `human voice` needs the `vox` submodule and a running speech engine;
 `cookbook voice` needs neither, and `cookbook voice --live` asks one question
 aloud through both. `docs/integrations/voice.md` is the page, and
@@ -339,6 +339,8 @@ The system follows a three-plane architecture:
 - [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
 - [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
 - [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
+- [Thread Archive](docs/threads.md) - Conversations read as units of work
+- [Self-Checks](docs/self-checks.md) - Dashboard, audit, self-check and the feedback loop
 - [Deployment](docs/deployment.md) - Production deployment guide
 - [Contributing](docs/contributing.md) - Development guidelines
 - [Roadmap](docs/ROADMAP.md) - Development phases
