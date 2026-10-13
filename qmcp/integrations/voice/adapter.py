@@ -1,4 +1,8 @@
-"""The voice-approval loop: speak a prompt, listen, parse yes/no, submit.
+"""The voice-approval loop: speak a prompt, listen, parse the answer, submit.
+
+A request carrying `options` is a closed choice and the options are its
+grammar. A request carrying none is an open question: the transcript itself is
+the answer, read back once and recorded when the speaker says so.
 
 Structurally typed against vox's `SpeechToText`/`TextToSpeech` shape rather
 than importing vox at module load — this module only needs objects with a
@@ -23,6 +27,14 @@ _NO_WORDS = set(vocabulary.words("answer.no"))
 _YES_PHRASES = vocabulary.phrases("answer.yes")
 _NO_PHRASES = vocabulary.phrases("answer.no")
 _UNCLEAR_PHRASES = vocabulary.phrases("answer.unclear")
+
+# The grammar of an open question's read-back, in the order it is spoken.
+# `_ask_open` parses the confirmation with `parse_yes_no` and `match_option`:
+# a yes or `agree` records the answer, a no or `again` asks the question
+# again. Neither word is in the yes/no vocabulary.
+_CONFIRM = ["agree", "again"]
+# Accepted as `agree` and never offered.
+_AGREE_ALIASES = ["record"]
 
 # Asks for the question again rather than answering it, matched on the whole
 # utterance -- what a key on joe's page sends as well. "again" alone is not
@@ -188,6 +200,12 @@ def match_option(text: str, options: list[str]) -> str | None:
     return covering[0] if len(covering) == 1 else None
 
 
+def _said(text: str, chars: int | None = None) -> str:
+    """What was heard, to be said back inside a sentence. A transcript carries
+    its own closing stop, which the sentence around it would double."""
+    return text.strip()[:chars].rstrip(".!?")
+
+
 def say_options(options: list[str]) -> str:
     """The spoken grammar, in as few words as it takes: "Approve or hold?" /
     "Red, green, or blue?"."""
@@ -282,7 +300,7 @@ class TextToSpeech(Protocol):
 
 
 class UnclearResponse(Exception):
-    """Raised when a spoken answer never parsed as yes/no within the retry budget."""
+    """Raised when no spoken answer was usable within the retry budget."""
 
 
 class VoiceApprovalLoop:
@@ -311,7 +329,7 @@ class VoiceApprovalLoop:
         # Requests `run_forever` asked and got no usable answer to, oldest first.
         self.unanswered: list[str] = []
 
-    def _say(self, text: str, options: list[str]) -> None:
+    def _say(self, text: str, options: list[str] | None) -> None:
         """Say a question the person may answer before it ends (`ask_over`)."""
         ask_over(self.stt, self.tts, text, duration=self.listen_duration, hint=options)
 
@@ -351,10 +369,78 @@ class VoiceApprovalLoop:
                 if not heard.strip():
                     reask, reason = f"Didn't catch that. {grammar}", "noinput"
                 else:
-                    reask, reason = f"Heard {heard.strip()[:80].rstrip('.!?')}. {grammar}", "nomatch"
+                    reask, reason = f"Heard {_said(heard, 80)}. {grammar}", "nomatch"
                 self._announce("speaking", reask, reason=reason, options=options)
                 self._say(reask, options)
             attempt += 1
+        self._announce("gave_up", heard.strip())
+        raise UnclearResponse(
+            f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
+        )
+
+    def _ask_open(self, prompt: str) -> str:
+        """Speak the prompt, listen, read the transcript back, and return it once confirmed.
+
+        An open question has no grammar for the answer, so the transcript is
+        the answer and the speaker is the only check on it: it is read back
+        as a closed choice between `agree` and `again`, hinted and offered as
+        every closed choice is and parsed with the same helpers, so a yes
+        records and a no re-asks. "repeat" says the read-back again without
+        spending a retry, up to `MAX_REPEATS`. The question, the read-back
+        and every re-ask can be answered before they end (`ask_over`), each
+        watched for the take that follows it.
+
+        One budget covers the whole dialog. Every turn the speaker has to be
+        asked for a second time costs a retry -- nothing heard for the answer
+        (noinput), nothing usable for the confirmation (noinput or nomatch),
+        or `again` -- and the turns that move the dialog forward cost nothing.
+        Exhausting it raises, and nothing is guessed or recorded.
+        """
+        grammar = say_options(_CONFIRM)
+        self._announce("speaking", prompt)
+        self._say(prompt, None)
+        heard = ""
+        answer: str | None = None
+        repeats = 0
+        for reasks in range(self.max_retries + 1):
+            while True:
+                if answer is None:
+                    heard, _ = self.stt.listen(duration=self.listen_duration)
+                    if not heard.strip():
+                        reask, reason = f"I didn't hear anything. {prompt}", "noinput"
+                        break
+                    answer = heard.strip()
+                    readback = f"I heard: {_said(answer)}. {grammar}"
+                    self._announce("speaking", readback, reason="confirm", options=_CONFIRM)
+                    self._say(readback, _CONFIRM)
+                    continue
+                heard, _ = listen_for(self.stt, self.listen_duration, hint=_CONFIRM)
+                # Asked to say it again: the read-back again, and no retry spent.
+                if asks_repeat(heard) and repeats < MAX_REPEATS:
+                    repeats += 1
+                    self._announce("speaking", readback, reason="repeat", options=_CONFIRM)
+                    self._say(readback, _CONFIRM)
+                    continue
+                decision = parse_yes_no(heard)
+                named = match_option(heard, _CONFIRM) or (
+                    "agree" if match_option(heard, _AGREE_ALIASES) else None)
+                # The decision is consulted before the option named, as `_ask`
+                # does: "don't agree" names agree and is a no.
+                if decision is True or (decision is None and named == "agree"):
+                    return answer
+                if decision is False or named == "again":
+                    reask, reason, answer = prompt, "again", None
+                elif not heard.strip():
+                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
+                else:
+                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                break
+            if reasks < self.max_retries:
+                # A re-ask of the read-back offers its options; a re-ask of
+                # the question has none to offer.
+                offered = _CONFIRM if answer is not None else None
+                self._announce("speaking", reask, reason=reason, options=offered)
+                self._say(reask, offered)
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
             f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"
@@ -364,18 +450,20 @@ class VoiceApprovalLoop:
         """Answer one pending request by voice.
 
         If the request already has a response, returns it without asking
-        again. Raises `UnclearResponse` if the spoken answer never parses.
+        again. Raises `UnclearResponse` if no spoken answer was usable.
         """
         request, existing = self.client.get_human_request(request_id)
         if existing is not None:
             return existing
 
-        options = request.options or ["approve", "reject"]
         # A request may carry a shorter form for the ear (`context.spoken`):
         # what a page shows in full can be too long to listen to.
         spoken = (request.context or {}).get("spoken")
-        answer = self._ask(spoken if isinstance(spoken, str) and spoken.strip() else request.prompt,
-                           options)
+        prompt = spoken if isinstance(spoken, str) and spoken.strip() else request.prompt
+        if request.options:
+            answer = self._ask(prompt, request.options)
+        else:
+            answer = self._ask_open(prompt)
 
         response = self.client.submit_human_response(
             request_id=request_id, response=answer, responded_by="vox"
