@@ -531,10 +531,10 @@ def cookbook_voice(live: bool, base_url: str | None, engine: str, engine_url: st
 
     Offline by default: a qmcp server on an ephemeral port over a database
     made for the run, and vox's deterministic engine in place of a speech
-    engine. Four scripted answers go through the real path (a yes, an option
-    by name, a mismatch, and silence), and each ending is checked. No
-    microphone, speakers or model are needed, and the configured queue is not
-    touched.
+    engine. Scripted answers go through the real path (a yes, an option by
+    name, a mismatch, silence, and an open question read back and recorded),
+    and each ending is checked. No microphone, speakers or model are needed,
+    and the configured queue is not touched.
 
     `--live` asks one question aloud ("Voice check. Approve or hold?")
     through the configured server and a running engine, and reports what was
@@ -1175,7 +1175,7 @@ def council() -> None:
     "--max-rounds",
     default=5,
     type=int,
-    help="Maximum deliberation rounds before arbiter decides.",
+    help="Maximum deliberation rounds before the arbiter decides, or summarizes when advisory.",
 )
 @click.option(
     "--consensus-threshold",
@@ -1186,7 +1186,7 @@ def council() -> None:
 @click.option(
     "--arbiter-override/--no-arbiter-override",
     default=True,
-    help="Allow arbiter to make final decision if no consensus.",
+    help="Allow arbiter to make final decision if no consensus; --no-arbiter-override makes the council advisory.",
 )
 @click.option(
     "--output",
@@ -1206,7 +1206,8 @@ def council_create(
     """Create a new council topology configuration.
 
     Creates a council with 9 specialized agent roles:
-    - Council Manager (Arbiter): Facilitates and decides
+    - Council Manager (Arbiter): Facilitates and decides, or synthesizes
+      advice with --no-arbiter-override
     - Relatable Storyteller: Frames issues narratively
     - Infinite Dreamer: Explores possibilities
     - Pragmatic Strategist: Focuses on implementation
@@ -1253,11 +1254,15 @@ def council_create(
         click.echo(f"\n  {click.style('Configuration:', bold=True)}")
         click.echo(f"    Max Rounds:        {config.max_rounds}")
         click.echo(f"    Consensus:         {config.consensus_threshold:.0%}")
-        click.echo(f"    Arbiter Override:  {config.arbiter_can_override}")
+        click.echo(f"    Arbiter Override:  {config.arbiter_can_override}"
+                   f"{'' if config.arbiter_can_override else ' (advisory)'}")
         click.echo(f"    Deliberation:      {config.deliberation_style}")
         click.echo(f"\n  {click.style('Council Members:', bold=True)}")
+        arbiter_role = ("Facilitates, synthesizes, decides"
+                        if config.arbiter_can_override
+                        else "Facilitates and synthesizes advice")
         members = [
-            ("arbiter", "Council Manager", "Facilitates, synthesizes, decides"),
+            ("arbiter", "Council Manager", arbiter_role),
             ("storyteller", "Relatable Storyteller", "Frames in narrative form"),
             ("dreamer", "Infinite Dreamer", "Explores possibilities"),
             ("strategist", "Pragmatic Strategist", "Implementation focus"),
@@ -1851,10 +1856,11 @@ def human_voice(request_id: str | None, base_url: str | None, engine: str,
     """Answer one (or, with --forever, every) pending request by voice.
 
     Speaks the prompt through a synthesizer, listens via a running speech
-    engine, and submits the parsed yes/no. Unlike `human list` and
-    `human respond`, this goes over HTTP rather than straight to the
-    database: recognition only exists behind a running `qmcp serve` and a
-    running engine, so there is no offline path here to preserve.
+    engine, and submits the answer: one of the request's options, or for a
+    request with none, the transcript read back and confirmed. Unlike
+    `human list` and `human respond`, this goes over HTTP rather than straight
+    to the database: recognition only exists behind a running `qmcp serve` and
+    a running engine, so there is no offline path here to preserve.
 
     --engine names a module in `vox.adapters`; vox states the contract and
     names no engine of its own.
@@ -2570,7 +2576,7 @@ def selfcheck(database: Path | None, project: str | None, as_deltas: bool,
     from qmcp.db.models import HumanRequest, HumanResponse
     from qmcp.selfcheck import checks, render, run_check, to_delta
 
-    repo = Path(__file__).resolve().parent.parent
+    repo = _package_repo_root()
     owner_repo = project or DEFAULT_PROJECT
     target = database or _configured_database()
 
@@ -2627,6 +2633,74 @@ def selfcheck(database: Path | None, project: str | None, as_deltas: bool,
         return
 
     click.echo(render(findings, owner_repo))
+
+
+# The seed runner is reached through the governance submodule rather than copied
+# into this repository, so a change to how a workflow is simulated lands there
+# once and every fork picks it up on its next pin.
+_PREFLIGHT_RUNNER = Path("governance", "qm", "project-seed", "ci", "run_workflows_locally.py")
+
+
+def _package_repo_root() -> Path:
+    """The checkout this package was imported from, independent of the cwd.
+
+    `_find_repo_root` walks up from the working directory, which is right for a
+    command run inside a project and wrong for one that must act on this
+    repository whatever directory it was started in.
+    """
+    return Path(__file__).resolve().parent.parent
+
+
+# `help_option_names=[]` removes click's own `--help` from this command, so it
+# reaches the runner like every other argument: the runner's options are this
+# command's options, and its help page is the one that describes them.
+@cli.command("preflight", context_settings={
+    "ignore_unknown_options": True,
+    "help_option_names": [],
+})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.pass_context
+def preflight(ctx: click.Context, args: tuple[str, ...]) -> None:
+    """Run this repository's workflows locally, as the runner would.
+
+    A thin route to `governance/qm/project-seed/ci/run_workflows_locally.py`:
+    every argument is passed through unchanged (`--event`, `--ref`,
+    `--base-ref`, `--head-ref`, `--workflows`, and `--help`, which is the
+    runner's), the script runs under this interpreter from the repository
+    root, and its exit status is this command's. The first `--` is the
+    argument separator and is consumed before the runner sees it, wherever it
+    stands. Nothing is decided here, and the only line printed here is the one
+    saying the runner is not in the tree.
+
+        uv run qmcp preflight                              # a PR into main
+        uv run qmcp preflight --event push --ref main
+        uv run qmcp preflight --base-ref origin/main
+
+    The script's own docstring lists what it cannot reproduce -- `uses:` steps
+    and the runner image above all -- which is why a pass is evidence and not
+    proof.
+    """
+    repo = _package_repo_root()
+    script = repo / _PREFLIGHT_RUNNER
+    if not script.is_file():
+        # `is_file`, not `exists`: a directory at the runner's path would pass
+        # an existence check and leave the interpreter to report that it found
+        # no module there. The check cannot tell an unchecked-out submodule
+        # from one pinned before the runner existed; the message names both,
+        # and the command it gives is right for the first and harmless for the
+        # second.
+        click.echo(
+            f"the runner is not at {_PREFLIGHT_RUNNER.as_posix()}: the governance "
+            "submodule is not checked out, or is pinned before the runner "
+            "existed. Run `git submodule update --init governance/qm`.",
+            err=True,
+        )
+        ctx.exit(2)
+    # Run from the repository root rather than the cwd: the runner's
+    # `--workflows` default is a relative path, and the repository is the
+    # thing being checked whatever directory the command was started in.
+    result = subprocess.run([sys.executable, str(script), *args], cwd=repo)
+    ctx.exit(result.returncode)
 
 
 @cli.command("deltas")

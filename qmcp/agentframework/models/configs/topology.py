@@ -158,8 +158,14 @@ class CouncilConfig(ComposableTopologyConfig):
     on issues with each member contributing their unique viewpoint until
     consensus or majority is reached.
 
+    With `arbiter_can_override` false the council is advisory: the arbiter
+    synthesizes when consensus fails and nobody takes the final decision.
+    `qmcp.orchestration` refuses the default, deciding council outright and
+    refuses the advisory one only an attested act.
+
     Required Slots:
-        - arbiter: Council manager who facilitates and makes final decisions
+        - arbiter: Council manager who facilitates, and makes final decisions
+          unless the council is advisory
         - storyteller: Relatable storyteller who frames issues in narrative form
         - dreamer: Infinite dreamer who explores possibilities without constraint
         - strategist: Pragmatic strategist focused on practical implementation
@@ -196,7 +202,9 @@ class CouncilConfig(ComposableTopologyConfig):
     )
     arbiter_can_override: bool = Field(
         default=True,
-        description="Arbiter can make final decision if no consensus after max_rounds",
+        description=(
+            "Arbiter can make final decision if no consensus after max_rounds; "
+            "false makes the council advisory"),
     )
     deliberation_style: str = Field(
         default="round_robin",

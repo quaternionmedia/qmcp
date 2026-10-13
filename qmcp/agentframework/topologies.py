@@ -152,10 +152,12 @@ class CouncilTopology(BaseTopology):
     A deliberative topology where multiple specialized agents contribute
     unique viewpoints to reach consensus or majority agreement. The arbiter
     (council manager) facilitates discussion and can make final decisions
-    if consensus cannot be reached.
+    if consensus cannot be reached, unless `arbiter_can_override` is false,
+    which makes the council advisory.
 
     Required Slots:
-        - arbiter: Council manager who facilitates and makes final decisions
+        - arbiter: Council manager who facilitates, and makes final decisions
+          unless the council is advisory
         - storyteller: Frames issues in relatable narrative form
         - dreamer: Explores possibilities without practical constraints
         - strategist: Focuses on practical implementation paths

@@ -207,6 +207,28 @@ hide the rule at the moment somebody was choosing a shape:
     >>> [row["name"] for row in client.get("/v1/topologies").json()["topologies"]]
     ['two-checkers', 'the-council']
 
+## An advisory council is a second declaration
+
+The deciding council is one option, not the only one. With
+`arbiter_can_override` false the arbiter synthesizes rather than decides, and
+the plane reads that design against a declaration of its own:
+
+    >>> advisors = client.post("/v1/topologies", json={
+    ...     "name": "the-advisors", "description": "nine perspectives, no verdict",
+    ...     "topology_type": "council",
+    ...     "config": {"arbiter_can_override": False}}).json()
+    >>> advisors["capability"]["option"]
+    {'setting': 'arbiter_can_override', 'value': False}
+    >>> advisors["capability"]["status"], advisors["capability"]["refusal"]
+    ('brainstorm', None)
+
+A consensus is still a conclusion a machine reached, so pointed at an attested
+act the advisory council is refused like any deciding shape:
+
+    >>> client.get("/v1/topologies/the-advisors",
+    ...            params={"act": "ratify a record"}).json()["capability"]["refusal"]
+    "council with arbiter_can_override=False decides, and 'ratify a record' is a person's by constitution -- a machine performing it changes what it asserts"
+
 ## A refusal is a property of the pairing
 
 `debate` decides and is not refused as a shape. Point it at an attested act and

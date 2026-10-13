@@ -65,10 +65,16 @@ def plane_payload() -> dict[str, Any]:
     The drift reports ride along because a window showing the plane should
     show where the plane and the registry disagree -- a declaration for a
     shape nothing registers is a picture of something that is not there.
+
+    `options` are the second declarations one setting selects. A window
+    offering a council offers the advisory one from here, not from a copy.
     """
     return {
         "schema": 1,
         "capabilities": [capability_payload(c) for c in plane.PLANE],
+        "options": [{"setting": o.setting, "value": o.value,
+                     "capability": capability_payload(o.capability)}
+                    for o in plane.OPTIONS],
         "statuses": [plane.RUNS, plane.BRAINSTORM, plane.REFUSED],
         "needs": list(plane.NEEDS),
         "attested": list(plane.ATTESTED),
