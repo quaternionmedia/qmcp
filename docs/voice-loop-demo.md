@@ -348,6 +348,29 @@ Without a model, and without recording anything:
 | "which projects" | the projects it can act in |
 | "help" | what can be said |
 
+### Add phrases to the commands
+
+"Add vocabulary phrase farewell now to stop" asks *Add 'farewell now' to stop.
+Approve or hold?*, and only "approve" saves it: from the next utterance,
+"farewell now" ends the conversation. "Hold", or a no, leaves everything as it
+was. The commands that take a phrase are named as they are said: stop, repeat,
+done, more, try again, same in, never mind, and the diagnostics above as what
+heard, how did it go, whats waiting, test voice, which projects and help. A
+phrase for "same in" is the words before the project -- "add vocabulary phrase
+redo in to same in" makes "redo in vox" mean "same in vox".
+
+"Remove vocabulary phrase farewell now from stop" takes one away, and "undo
+vocabulary change" reverses the last change; both ask for approval the same
+way. The answers to a consent take no phrases, so what agreeing sounds like
+never changes, and the declared phrases cannot be removed.
+
+A phrase that already means something -- another command, an answer, a check,
+a project's name, or a phrase added before -- is refused and the reason said,
+as is an empty phrase or one longer than eight words. The phrases are kept for
+each user in `~/.qmcp/voice-vocabulary.json`, or the file
+`QMCP_VOICE_VOCABULARY_PATH` names, with every change journalled; `uv run qmcp
+vocabulary` and joe's page list them after the declared ones.
+
 ### Answer before the question ends
 
 Knowing the answer, give it: say "approve" over the consent, or press `1`, and

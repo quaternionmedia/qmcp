@@ -13,6 +13,15 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 
+@pytest.fixture(autouse=True)
+def _own_vocabulary_overlay(tmp_path, monkeypatch):
+    """Every test reads an empty per-user phrase file of its own. The real
+    one, `~/.qmcp/voice-vocabulary.json`, holds a person's added phrases, and
+    a test reading it would pass or fail by what somebody once said."""
+    monkeypatch.setenv("QMCP_VOICE_VOCABULARY_PATH",
+                       str(tmp_path / "voice-vocabulary.json"))
+
+
 @pytest.fixture
 def client(monkeypatch):
     """Create a test client for the server with isolated in-memory database."""

@@ -355,5 +355,5 @@ NEVER_MIND = vocabulary.phrases("iteration.never_mind")
 
 def _drop_if_asked(heard: str) -> None:
     """Raise `Abandoned` when the whole take says to drop the instruction."""
-    if plain_words(heard) in NEVER_MIND:
+    if plain_words(heard) in (*NEVER_MIND, *vocabulary.overrides("iteration.never_mind")):
         raise Abandoned(f"dropped on {heard.strip()!r}")
