@@ -690,3 +690,17 @@ def test_the_read_back_s_earlier_word_is_still_taken_as_agree():
                                client=client).run_once("name-13")
 
     assert result.response == "main"
+
+
+@pytest.mark.parametrize("confirmation", ["That's right.", "Exactly.", "Spot on."])
+def test_the_read_back_takes_every_agree_the_vocabulary_declares(confirmation):
+    """The open question reads its read-back's words from `vocabulary.toml`, as
+    the instruction dialog does. Mutation: keep the read-back's own list of
+    aliases, `["record"]` -- red, each of these is a mismatch."""
+    client = FakeClient()
+    client.add_pending("name-14", OPEN_PROMPT)
+
+    result = VoiceApprovalLoop(stt=ScriptedSTT(["main", confirmation]), tts=RecordingTTS(),
+                               client=client, max_retries=0).run_once("name-14")
+
+    assert result.response == "main"

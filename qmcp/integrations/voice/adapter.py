@@ -28,13 +28,15 @@ _YES_PHRASES = vocabulary.phrases("answer.yes")
 _NO_PHRASES = vocabulary.phrases("answer.no")
 _UNCLEAR_PHRASES = vocabulary.phrases("answer.unclear")
 
-# The grammar of an open question's read-back, in the order it is spoken.
-# `_ask_open` parses the confirmation with `parse_yes_no` and `match_option`:
-# a yes or `agree` records the answer, a no or `again` asks the question
-# again. Neither word is in the yes/no vocabulary.
-_CONFIRM = ["agree", "again"]
-# Accepted as `agree` and never offered.
-_AGREE_ALIASES = ["record"]
+# The grammar of an open question's read-back, in the order it is spoken, read
+# as the instruction dialog reads its own (`vocabulary.toml`, `answer.agree`
+# and `answer.again`). `_ask_open` parses the confirmation with
+# `parse_yes_no` and `match_option`: a yes or `agree` records the answer, a no
+# or `again` asks the question again. Neither word is in the yes/no
+# vocabulary. The rest of `answer.agree` is accepted as `agree` and never
+# offered.
+_AGREE, *_AGREE_ALIASES = vocabulary.phrases("answer.agree")
+_CONFIRM = [_AGREE, vocabulary.phrases("answer.again")[0]]
 
 # Asks for the question again rather than answering it, matched on the whole
 # utterance -- what a key on joe's page sends as well. "again" alone is not

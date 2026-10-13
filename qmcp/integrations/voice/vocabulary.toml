@@ -49,11 +49,11 @@ says = "Neither: the question is asked again"
 phrases = ["not sure", "not certain", "dont know", "maybe", "let me think"]
 
 [answer.agree]
-says = "Record the instruction read back; the first is the option offered"
+says = "Record what was read back; the first is the option offered"
 phrases = ["agree", "record", "thats right", "exactly", "spot on"]
 
 [answer.again]
-says = "Take the instruction read back again"
+says = "Take what was read back again"
 phrases = ["again", "start again", "redo"]
 
 # --- the core projects: the words their instructions carry ---------------------------
