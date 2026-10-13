@@ -187,13 +187,18 @@ def clone_for(rows: Rows, instruction_id: str, project: str | None,
 
 
 def consent_prompt(row: Instruction, clone: Clone, runtime: str, budget: Budget,
-                   carried: int = 0) -> str:
+                   carried: int = 0, spoken: bool = False) -> str:
     """What the person at the gate is asked, in full, because they may not be
-    the person who recorded the instruction."""
+    the person who recorded the instruction.
+
+    `spoken` names the clone by its folder, for the form said aloud: an
+    absolute path read character by character kept a consent talking for
+    half a minute. The written prompt keeps the whole path.
+    """
     history_note = (f", carrying {carried} earlier instruction(s) from qmcp's record"
                     if carried else "")
     return (f"Act on the instruction: {row.text} "
-            f"Project {row.project or 'unresolved'}, clone {clone.cwd}, "
+            f"Project {row.project or 'unresolved'}, clone {clone.cwd.name if spoken else clone.cwd}, "
             f"runtime {runtime}, budget {budget.authorised} run(s){history_note}.")
 
 
@@ -295,7 +300,9 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
                 options=list(OPTIONS), timeout_seconds=consent_seconds,
                 context={"instruction_id": instruction_id, "project": project,
                          "cwd": str(clone.cwd), "runtime": runtime_name,
-                         "carried": list(carried), "spend": declared})
+                         "carried": list(carried), "spend": declared,
+                         "spoken": consent_prompt(row, clone, runtime_name, budget,
+                                                  carried=len(carried), spoken=True)})
             break
         except HumanRequestConflictError:
             # Acted on before: the earlier consent stands as its own record,

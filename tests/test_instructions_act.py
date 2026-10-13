@@ -638,3 +638,20 @@ def test_a_database_url_naming_no_file_is_refused(monkeypatch):
 
     with pytest.raises(RuntimeError, match="names no file"):
         act_module.configured_rows()
+
+
+def test_the_consent_is_said_with_the_clone_s_folder_and_written_with_its_path():
+    """Said aloud, a path ran to half a minute. Mutation: name the clone by its
+    path in the spoken form -- red."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from qmcp.spend import Budget
+
+    clone = act_module.Clone(cwd=Path("C:/work/deep/clones/qmcp"), rule=act_module.RULE_CWD)
+    row = SimpleNamespace(text="Deploy qmcp.", project="qmcp")
+    written = act_module.consent_prompt(row, clone, "local", Budget(authorised=1))
+    spoken = act_module.consent_prompt(row, clone, "local", Budget(authorised=1), spoken=True)
+
+    assert str(clone.cwd) in written
+    assert "clone qmcp," in spoken and "deep" not in spoken

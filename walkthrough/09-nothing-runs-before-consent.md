@@ -87,8 +87,9 @@ act refuses before it asks, with the row unchanged:
 
 With one run authorised the consent goes on the queue. It is answered here by
 voice, through the same loop `qmcp human voice` runs, with a synthesizer and a
-transcriber stood in for so the page can show what is said. The person says
-hold:
+transcriber stood in for so the page can show what is said. The consent is
+said with the clone's folder, and the request written on the queue names its
+whole path. The person says hold:
 
     >>> class Hears:
     ...     def __init__(self, text): self.text = text
@@ -102,7 +103,7 @@ hold:
     ...            poll_interval=0.05)
     >>> Says.spoken[0] == (
     ...     "Act on the instruction: Pin rad godot to the vectors. "
-    ...     f"Project rad-godot, clone {clone}, runtime scripted, budget 1 run(s). "
+    ...     f"Project rad-godot, clone {clone.name}, runtime scripted, budget 1 run(s). "
     ...     "Say approve or hold.")
     True
     >>> held.status, held.answer, held.stages

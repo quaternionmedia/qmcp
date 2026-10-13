@@ -105,6 +105,19 @@ Python each repository pins, and Node.js with npm for joe's page.
    and named as on the roster. Nothing is written to them: the local runtime's
    tools read and cannot write.
 
+5. **Hear it.** qmcp's voice plays on the system's default output, which is
+   not always the one a person hears -- a second jack, a monitor, a capture
+   card:
+
+   ```bash
+   uv run vox say "Testing qmcp's voice."      # done when it is heard
+   uv run vox outputs                          # if not: the outputs, by name
+   uv run vox say "Testing." --output "<a fragment of one>"
+   ```
+
+   Once one is heard, set `VOX_OUTPUT_DEVICE` to that fragment in the terminal
+   that starts qmcp, and `JOE_OUTPUT_DEVICE` to it in joe's, for joe's tones.
+
 ### Prove it, tier by tier
 
 #### Tier 1 — nothing real: the wiring
@@ -371,6 +384,11 @@ and the runner image are not reproduced.
 
 ## When it does not work
 
+- **Nothing is heard, though the page shows the questions being asked.**
+  qmcp's voice plays on the default output: step 5 of "Set up, once" finds the
+  one that is heard and names it with `VOX_OUTPUT_DEVICE`. The conversation's
+  log (below) lists each sentence as `said:`, so a sentence that is logged and
+  not heard is on another output.
 - **`Error: No such option '--converse'`** -- or `instruct`, `instructions` or
   `converse` is not a command. This checkout predates the loop: see step 1 of
   "Set up, once". `uv run qmcp serve --help` lists what this checkout has.
