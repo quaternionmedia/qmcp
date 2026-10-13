@@ -5,6 +5,7 @@
     GET  /v1/instructions/{id}         one row
     POST /v1/instructions/voice        take one by voice on this machine; 202 or 409
     GET  /v1/instructions/voice        whether that is running, and how the last ended
+    GET  /v1/voice/vocabulary          what can be said to the spoken loop, by group
     POST /v1/instructions/{id}/act     act on one, behind consent; 202, 404, 409 or 422
 
 **LOOPBACK ONLY, LIKE THE VOICE ROUTES.** An instruction is a person's own
@@ -170,6 +171,15 @@ def register(app: Any, runs: VoiceRuns, engine: str = "joe",
         """Whether a conversation is running on this machine, and how the last
         one ended: its kind, its exit code and the last lines it printed."""
         return runs.status()
+
+    @app.get("/v1/voice/vocabulary")
+    async def voice_vocabulary() -> dict[str, Any]:
+        """What can be said to the spoken loop: each group with what it does and
+        its phrases, and the core projects with their terms, as `qmcp
+        vocabulary --json` prints them -- for a page that shows what to say."""
+        from qmcp.integrations.voice import vocabulary
+
+        return {"phrases": vocabulary.entries(), "projects": vocabulary.projects()}
 
     @app.post("/v1/instructions", status_code=201)
     async def record_instruction(body: InstructionCreate) -> Instruction:

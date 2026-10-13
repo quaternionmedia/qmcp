@@ -304,6 +304,14 @@ microphone stays open, and the next instruction can come at any time; "yes"
 asks for it now. "stop listening" or "goodbye" ends the conversation, and so
 does stopping the server: *Stopping.*
 
+### Know what can be said
+
+`uv run qmcp vocabulary` lists every phrase the loop acts on, with what it does:
+the ways to stop, to ask for a question again, to say there is nothing more or
+that there is, the yes and no answers, and the words for agreeing to a read-back
+or taking it again. Anything else said to *What should be done?* is an
+instruction.
+
 ### Answer before the question ends
 
 Knowing the answer, give it: say "approve" over the consent, or press `1`, and

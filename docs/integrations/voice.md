@@ -205,6 +205,24 @@ costs a retry, and exhausting it raises and submits nothing. An `input`
 request answered "yes" therefore records `yes`, not `approve`; a request with
 options is unaffected.
 
+## What can be said
+
+Every phrase the loop acts on without a model is declared once, in
+`qmcp/integrations/voice/vocabulary.toml`: the conversation's controls (stop,
+repeat, done, more), the answers to a closed question (yes and no, agree and
+again, and the phrases that are neither), and the core projects with the terms
+their instructions carry. The code reads its lists from there, so `uv run qmcp
+vocabulary` -- and `GET /v1/voice/vocabulary`, which joe's page reads -- shows
+exactly what is acted on. A phrase is compared lower-case with punctuation and
+apostrophes gone; a phrase heard as a whole utterance means one thing, and no
+word is both a yes and a no.
+
+The projects' terms are shown, and reach the transcriber with an instruction's
+take only when `QMCP_VOICE_HINT_TERMS` is set. On synthesized speech they helped
+the jargon be heard; on the first real takes they lowered whisper's confidence --
+which decides whether an instruction is agreed tacitly -- and lost one take's
+words, so names alone stay the default until more real takes say otherwise.
+
 ## What is said
 
 Every sentence is said through `speakable`, whoever wrote it: a "(s)" is
