@@ -362,6 +362,9 @@ What it composes already exists: joe records until the speaker stops and
 transcribes; vox carries the engine contract and the synthesizer; the human
 queue holds consent; `qmcp.spend` and `qmcp.governed` refuse unconsented
 spending; and `qmcp.localmodel` pins the local model and plans its install.
+The cleanup sequence and proposed follow-on capabilities for the voice loop
+are documented in
+[Voice loop: cleanup before new capabilities](voice-loop-next-phases.md).
 
 ### Deliverables
 
