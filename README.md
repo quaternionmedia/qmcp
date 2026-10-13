@@ -5,6 +5,15 @@ server that does the exposing: it publishes your tools, runs them when an
 assistant asks, records every invocation, and stops for a human when a step
 needs one.
 
+It is also the local model backend of a voice-driven development loop: an
+instruction spoken at the machine is recorded against a project, the model
+this server stands up on the machine reads that project's clone after a spoken
+approval, and the answer is said back. **Continuity comes from qmcp, not the
+model**: every step is a row in this server's database, and each instruction
+is handed the project's earlier instructions and what they found, so the work
+carries across sessions and projects from the record rather than from
+whichever conversation happens to be open.
+
 It speaks the **Model Context Protocol**, so any client that speaks it can use
 these tools without being told about them in advance. Built with FastAPI.
 
@@ -56,6 +65,61 @@ door, and `docs/human_in_loop.md` says what that door does and does not enforce.
 aloud through both. `docs/integrations/voice.md` is the page, and
 `quickstart.md` §5 is the shortest path.
 
+## The voice-driven loop
+
+```
+speak ──> joe: microphone, transcription ──> qmcp: recorded against a project
+                                                         │
+                                        consent asked aloud: approve or hold
+                                                         │ approve
+hear  <── vox: synthesis <── qmcp: summary <── local model reads the clone,
+                                                  told the project's history by qmcp
+```
+
+On one machine: this server (`uv run qmcp serve`); the local model it stands
+up (`uv run qmcp localmodel check` says whether it is installed and served);
+joe, the speech engine, which owns the microphone and runs from its own
+checkout (`uv run joe dev`); and vox, vendored at `vendor/vox`, which carries
+the contract a speech engine answers and the local synthesizer.
+
+Once the workstation is set up -- the onboarding in `docs/voice-loop-demo.md`,
+with the local model served and joe holding a microphone -- two commands, and
+then only speech:
+
+```bash
+uv run joe dev                                  # in joe's checkout: the speech engine
+uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
+```
+
+qmcp says it is ready and asks what should be done. An instruction is read
+back -- and, heard confidently, recorded unless interrupted, otherwise on
+"agree" -- consent is asked aloud and given with
+"approve", the local model reads the project, the answer is said back, and it
+asks whether there is anything else; questions agents have queued are asked in
+between, and "stop listening" ends it. Each step also has a command, for
+checking and debugging:
+
+```bash
+uv run qmcp cookbook converse          # one whole spoken session offline, every take scripted
+uv run qmcp cookbook instruct          # the inbox and the loop offline: nothing spent
+uv run qmcp instruct --voice           # one instruction, spoken; prints the row
+uv run qmcp instructions act <id> --runtime local --budget 1 --voice
+uv run qmcp instructions say <id>      # what an instruction came to, again
+```
+
+Nothing runs on any answer but `approve`, and every runtime is asked. The
+`local` runtime reads the clone with tools that cannot write and spends
+nothing; other runtimes sit behind the same contract and are handed the same
+brief. `docs/voice-loop-demo.md` is the loop's onboarding and cookbook: the
+workstation set up once and proved in three tiers, the first two without a
+microphone, then what to say. `uv run qmcp cookbook instruct --runtime local`
+shows continuity on the local model in one command. The conversation finds a
+project's clone beside this checkout the first time; by command it is passed
+once with `--cwd`; either way it is remembered for the project. `--budget`
+counts runs and defaults to zero, which declares what would be asked and
+stops; `--runtime` has no default, and `scripted` runs nothing. Recording,
+acting and the summary each have a section in `docs/integrations/voice.md`.
+
 ## Adoption and Onboarding
 
 Adoption checklist:
@@ -71,6 +135,12 @@ Onboarding path:
 2. `uv sync --all-extras`
 3. Run the end-to-end tutorial below.
 4. `uv run qmcp serve` for local exploration.
+
+Onboarding to the voice dev loop is its own path, in `docs/voice-loop-demo.md`:
+both submodules (the roster as well as `vox`), the local model through `uv run
+qmcp localmodel check` and `plan`, joe and its microphone, the projects' clones
+beside this checkout, and then three tiers that each prove one more real thing
+-- ending at a person talking to qmcp. Its cookbook is what to say once it runs.
 
 ### End-to-End Tutorial (HITL approval workflow)
 
@@ -212,8 +282,9 @@ The topology, orchestration and design routes name nobody and are served
 wherever the server is bound. `walkthrough/07-saving-a-shape-is-not-running-it.md`
 exercises them, and the reason a refused shape can be saved is in
 `qmcp/topology_designs.py`. The archive-derived readings under
-`/v1/topology/relations/` and `/v1/threads` are loopback-only and are not in
-this table.
+`/v1/topology/relations/`, `/v1/threads`, the voice routes and the instruction
+inbox under `/v1/instructions` are loopback-only and are not in this table;
+`docs/integrations/voice.md` has the last two.
 
 ## Built-in Tools
 
@@ -237,6 +308,9 @@ uv run qmcp test --coverage
 
 # Run linter
 uv run ruff check .
+
+# Run the workflows under .github/workflows locally (a pass is evidence, not proof)
+uv run qmcp preflight --event pull_request --base-ref main
 ```
 
 ## Architecture

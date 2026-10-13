@@ -566,3 +566,55 @@ class MCPClient:
 
         response.raise_for_status()
         return response.json()
+
+    # -------------------------------------------------------------------------
+    # The instruction inbox
+    # -------------------------------------------------------------------------
+
+    def create_instruction(
+        self,
+        text: str,
+        source: str = "typed",
+        project: str | None = None,
+        heard: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Record one instruction. Nothing runs.
+
+        Args:
+            text: The instruction, in the person's words.
+            source: "voice", "typed" or "page".
+            project: The project it is for, stated outright; skips the matching.
+            heard: For a spoken instruction, every transcript the dialog took.
+
+        Returns:
+            The row as recorded, including `status` and `detail`.
+        """
+        payload: dict[str, Any] = {"text": text, "source": source}
+        if project is not None:
+            payload["project"] = project
+        if heard is not None:
+            payload["heard"] = heard
+        response = self._client.post("/v1/instructions", json=payload)
+        response.raise_for_status()
+        return response.json()
+
+    def list_instructions(self, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        """What has been recorded, newest first, optionally one status."""
+        params: dict[str, Any] = {"limit": limit}
+        if status:
+            params["status"] = status
+        response = self._client.get("/v1/instructions", params=params)
+        response.raise_for_status()
+        return response.json()["instructions"]
+
+    def get_instruction(self, instruction_id: str) -> dict[str, Any]:
+        """One instruction, with its evidence.
+
+        Raises:
+            MCPClientError: If there is no such instruction.
+        """
+        response = self._client.get(f"/v1/instructions/{instruction_id}")
+        if response.status_code == 404:
+            raise MCPClientError(f"Instruction '{instruction_id}' not found")
+        response.raise_for_status()
+        return response.json()

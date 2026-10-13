@@ -5,7 +5,7 @@ module that declares a table registers it there, and this repository has two
 unrelated sets:
 
   the server database   `qmcp.db` -- tool invocations, human requests, the
-                        agent framework's entities
+                        instruction inbox, the agent framework's entities
   a flow database       `qmcp.cookbook.persistence`, whose `FlowPersistence`
                         takes a `db_path` per run and creates `flowrun`,
                         `agentrun`, `mcpinvocation`, `artifact` and

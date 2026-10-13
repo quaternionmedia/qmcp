@@ -60,8 +60,9 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3141/v1/tools/echo -Content
 The queue you just exercised can be answered by speaking. Prove the whole
 voice path first, with no hardware, no engine and no model. A request is
 queued on a throwaway server, answered through vox's deterministic engine and
-read back, for four scripted answers: a yes, an option by name, a mismatch and
-silence. It takes a few seconds and leaves this clone's queue alone:
+read back, for each scripted answer: a yes, an option by name, a mismatch,
+silence, and an open question whose transcript is read back and recorded. It
+takes a few seconds and leaves this clone's queue alone:
 
 ```bash
 uv run qmcp cookbook voice
@@ -88,7 +89,7 @@ uv run qmcp human voice             # hear the question, say one of its options
 `cookbook voice --live` queues one request of its own, `voice-check-<time>`,
 which expires in five minutes, and reports what was recorded.
 
-The question is spoken aloud with its options ("Say approve or hold."), and
+The question is spoken aloud with its options ("Approve or hold?"), and
 recording stops when you do. If the server or the engine is not running,
 `human voice` says which and names the command that starts it, before
 anything is spoken. `human list` reads this clone's own database, whose
@@ -98,6 +99,25 @@ or it fails with `no such table: human_requests`.
 `docs/integrations/voice.md` carries the setup that makes this reliable:
 which microphone the engine records from, which synthesizer speaks, and how
 a spoken answer maps onto a request's own options.
+
+## 6) The spoken instruction, on the local model
+
+The loop also runs the other way: an instruction spoken at the machine,
+consented to aloud, carried out by the model `qmcp localmodel` stands up, and
+said back -- with each instruction told what the project's earlier ones found.
+`docs/voice-loop-demo.md` is its onboarding and cookbook; the first two of
+its three tiers need no microphone:
+
+```bash
+uv run qmcp cookbook converse                     # one spoken session, every take scripted
+uv run qmcp cookbook instruct --runtime local     # continuity, on the local model
+```
+
+`--runtime local` needs the model served: `uv run qmcp localmodel check` says
+whether it is, and `uv run qmcp localmodel plan` gives the commands that
+install it. With the speech engine running (step 5), `uv run qmcp serve
+--converse --runtime local` in place of step 2's command makes everything
+after it spoken: qmcp asks what should be done, and a person answers.
 
 ## Next Steps
 
