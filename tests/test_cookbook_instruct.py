@@ -146,3 +146,106 @@ def test_the_verdict_reads_the_inbox_and_not_the_dialogs_return(monkeypatch):
     lines: list[str] = []
     assert run_offline(echo=lines.append, cases=OFFLINE_CASES[:1]) is False
     assert any("recorded project 'dossier', expected 'qmcp'" in line for line in lines)
+
+
+# --- the loop --------------------------------------------------------------------------
+
+
+def test_the_loop_goes_the_whole_way_and_prints_the_conversation():
+    result = CliRunner().invoke(cli, ["cookbook", "instruct"])
+
+    assert result.exit_code == 0, result.output
+    assert f"{len(check.LOOP_CASES)} of {len(check.LOOP_CASES)} loops ended as scripted." in result.output
+    assert "heard     approve" in result.output and "heard     hold" in result.output
+    assert "said      Done in qmcp. Added a health route" in result.output
+    assert "said      Held. Nothing ran for: Rotate the qmcp logs." in result.output
+
+
+def test_the_loop_fails_when_the_wrong_answer_runs(monkeypatch):
+    """A loop that ran on `hold` and not on `approve` is the defect the gate
+    exists to prevent, and the check must turn red on it."""
+    monkeypatch.setattr("qmcp.instructions.act.APPROVE", "hold")
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct"])
+
+    assert result.exit_code == 1, result.output
+    assert "the runtime ran 1 time(s), expected 0" in result.output
+    assert "the runtime ran 0 time(s), expected 1" in result.output
+
+
+def test_the_loop_fails_when_the_summary_is_not_said_back(monkeypatch):
+    """Mutation of the check's subject: a summary that says only 'Done.'"""
+    monkeypatch.setattr("qmcp.instructions.spoken.summarise", lambda row, why="": "Done.")
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct"])
+
+    assert result.exit_code == 1, result.output
+    assert "said 'Done.', expected it to begin 'Done in qmcp. Added a health route'" in result.output
+
+
+def test_the_loop_fails_when_the_panel_is_told_recorded(monkeypatch):
+    """`recorded` shows on the panel as a person's answer accepted."""
+    from qmcp.instructions import spoken
+
+    def recorded(text, tts, stt=None):
+        spoken.announce(stt, "speaking", text)
+        tts.speak(text)
+        spoken.announce(stt, "recorded", text)
+
+    monkeypatch.setattr(spoken, "say", recorded)
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct"])
+
+    assert result.exit_code == 1, result.output
+    assert "the panel was last told" in result.output
+
+
+def test_the_loop_fails_when_the_consent_does_not_say_the_instruction(monkeypatch):
+    """The person at the gate may not be the person who spoke the instruction."""
+    monkeypatch.setattr("qmcp.instructions.act.consent_prompt",
+                        lambda row, clone, runtime, budget, carried=0: "Act on the instruction?")
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct"])
+
+    assert result.exit_code == 1, result.output
+    assert "the consent was never asked aloud with the instruction" in result.output
+
+
+def test_the_loop_fails_when_the_run_fails(monkeypatch):
+    from qmcp.integrations.agents import scripted
+
+    real = scripted.ScriptedRuntime
+    monkeypatch.setattr(scripted, "ScriptedRuntime",
+                        lambda text="", **kw: real(text=text, exit_code=3, **kw))
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct"])
+
+    assert result.exit_code == 1, result.output
+    assert "status 'failed', expected 'done'" in result.output
+
+
+def test_the_loop_fails_when_something_is_said_after_the_summary(monkeypatch):
+    from qmcp.instructions import spoken
+
+    real = spoken.say
+
+    def chatty(text, tts, stt=None):
+        real(text, tts, stt)
+        if text.startswith(("Done", "Held")):
+            tts.speak("Anything else?")
+
+    monkeypatch.setattr(spoken, "say", chatty)
+
+    result = CliRunner().invoke(cli, ["cookbook", "instruct"])
+
+    assert result.exit_code == 1, result.output
+    assert "the summary was not the last thing said" in result.output
+
+
+def test_a_loop_case_expecting_a_run_fails_when_nothing_ran():
+    """The verdict reads the runtime's calls, not the case's expectation."""
+    lines: list[str] = []
+    case = check.Loop(("Rotate the qmcp logs.", "record", "hold"), "refused", True, "Held.")
+
+    assert check.run_loop(echo=lines.append, cases=(case,)) is False
+    assert any("the runtime ran 0 time(s), expected 1" in line for line in lines)
