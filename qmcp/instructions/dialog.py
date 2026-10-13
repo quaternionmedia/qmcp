@@ -56,6 +56,7 @@ from qmcp.integrations.voice.adapter import (
     match_option,
     parse_yes_no,
     say_options,
+    speakably,
 )
 
 PROMPT = "What should be done?"
@@ -97,7 +98,7 @@ class InstructionDialog:
                  answer_duration: float = 5.0, tacit_above: float | None = None,
                  tacit_seconds: float = TACIT_SECONDS, vocabulary: Iterable[str] = ()):
         self.stt = stt
-        self.tts = tts
+        self.tts = speakably(tts)
         self.client = client
         self.names = tuple(names)
         self.max_retries = max_retries
@@ -142,7 +143,7 @@ class InstructionDialog:
         row = self.client.create_instruction(text, source="voice", project=project,
                                              heard=list(self.heard))
         said = (f"Recorded for {row['project']}." if row.get("project")
-                else "Recorded. The project is unresolved.")
+                else "Recorded, no project.")
         self._announce("recorded", said)
         self.tts.speak(said)
         return row
@@ -169,8 +170,8 @@ class InstructionDialog:
         the tacit agreement -- a word, a key, a held key -- and what interrupted
         decides: `agree` or a yes records, `again` or a no takes it again, and
         anything else is asked about outright. Below the threshold, or from an
-        engine that reports no confidence, the read-back asks "Say agree or
-        again." Nothing here runs anything: consent is a separate question.
+        engine that reports no confidence, the read-back asks "Agree or
+        again?" Nothing here runs anything: consent is a separate question.
 
         One budget covers the whole exchange, as the approval dialog's open
         question does: every turn the speaker has to be asked a second time
@@ -196,7 +197,7 @@ class InstructionDialog:
             if answer is None:
                 heard = self._listen(long=True)
                 if not heard.strip():
-                    reask, reason = f"I didn't hear anything. {PROMPT}", "noinput"
+                    reask, reason = f"Didn't catch that. {PROMPT}", "noinput"
                 elif asks_repeat(heard) and repeats < MAX_REPEATS:
                     repeats += 1
                     self._announce("speaking", PROMPT, reason="repeat")
@@ -237,9 +238,9 @@ class InstructionDialog:
                 if agreed is False:
                     reask, reason, answer = PROMPT, "again", None
                 elif not heard.strip():
-                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
+                    reask, reason = f"Didn't catch that. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                    reask, reason = f"Heard {_said(heard, 80)}. {grammar}", "nomatch"
             if reasks >= self.max_retries:
                 break
             reasks += 1
@@ -281,7 +282,7 @@ class InstructionDialog:
         """A closed choice by name only, or None once the budget is spent.
 
         The same grammar and re-asks as an approval, without the yes/no
-        reading: "yes" to "Which project? Say qmcp or vox." chooses nothing,
+        reading: "yes" to "Which project? Qmcp or vox?" chooses nothing,
         and a project is never picked by position.
         """
         grammar = say_options(options)
@@ -301,9 +302,9 @@ class InstructionDialog:
                 return named
             if attempt < self.max_retries:
                 if not heard.strip():
-                    reask, reason = f"I didn't hear anything. {grammar}", "noinput"
+                    reask, reason = f"Didn't catch that. {grammar}", "noinput"
                 else:
-                    reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+                    reask, reason = f"Heard {_said(heard, 80)}. {grammar}", "nomatch"
                 self._announce("speaking", reask, reason=reason, options=options)
                 self.tts.speak(reask)
             attempt += 1

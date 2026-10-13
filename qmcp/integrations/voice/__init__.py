@@ -23,6 +23,8 @@ from qmcp.integrations.voice.adapter import (
     match_option,
     parse_yes_no,
     say_options,
+    speakable,
+    speakably,
 )
 
 __all__ = [
@@ -32,4 +34,6 @@ __all__ = [
     "choose_option",
     "match_option",
     "say_options",
+    "speakable",
+    "speakably",
 ]

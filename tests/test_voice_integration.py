@@ -106,8 +106,8 @@ def test_run_once_answers_clear_approval():
 
     assert result.response == "approve"
     assert client.submitted == [("deploy-001", "approve")]
-    assert tts.spoken[0] == "Deploy to production? Say approve or reject."
-    assert "Recorded: approve" in tts.spoken
+    assert tts.spoken[0] == "Deploy to production? Approve or reject?"
+    assert "Approved." in tts.spoken
 
 
 def test_run_once_answers_clear_rejection():
@@ -134,8 +134,8 @@ def test_run_once_retries_on_unclear_answer_then_succeeds():
 
     assert result.response == "approve"
     assert stt.calls == 3
-    assert tts.spoken[1] == "I heard: uh. Say approve or reject."
-    assert tts.spoken[2] == "I heard: hmm. Say approve or reject."
+    assert tts.spoken[1] == "Heard uh. Approve or reject?"
+    assert tts.spoken[2] == "Heard hmm. Approve or reject?"
 
 
 def test_run_once_raises_when_never_clear():
@@ -331,9 +331,9 @@ def test_noinput_and_nomatch_are_reprompted_differently():
 
     assert loop.run_once("dr-3").response == "approve"
     assert tts.spoken[:3] == [
-        "Launch the audit? Say approve or hold.",
-        "I didn't hear anything. Say approve or hold.",
-        "I heard: banana. Say approve or hold.",
+        "Launch the audit? Approve or hold?",
+        "Didn't catch that. Approve or hold?",
+        "Heard banana. Approve or hold?",
     ]
 
 
@@ -365,7 +365,7 @@ def test_three_or_more_options_are_spoken_as_a_list():
     tts = RecordingTTS()
     VoiceApprovalLoop(stt=ScriptedSTT(["green"]), tts=tts, client=client).run_once("pick-1")
 
-    assert tts.spoken[0] == "Which? Say red, green, or blue."
+    assert tts.spoken[0] == "Which? Red, green, or blue?"
 
 
 # --- an open question: the transcript is the answer ---------------------------
@@ -389,7 +389,7 @@ def test_three_or_more_options_are_spoken_as_a_list():
 # fail that test alone.
 
 OPEN_PROMPT = "What should the branch be called?"
-READBACK = "I heard: {}. Say agree or again."
+READBACK = "I heard: {}. Agree or again?"
 
 
 def test_an_open_question_records_the_transcript_after_record():
@@ -406,7 +406,7 @@ def test_an_open_question_records_the_transcript_after_record():
     assert tts.spoken == [
         OPEN_PROMPT,
         READBACK.format("release candidate"),
-        "Recorded: release candidate",
+        "Noted.",
     ]
     assert stt.calls == 2
 
@@ -414,7 +414,7 @@ def test_an_open_question_records_the_transcript_after_record():
 def test_a_transcripts_closing_stop_is_not_doubled_when_read_back():
     """A transcript ends with its own stop, and the read-back and the re-ask
     each wrap it in a sentence. Mutation: return the transcript unstripped
-    from `_said` -- red, "I heard: Release candidate.. Say agree or again."."""
+    from `_said` -- red, "I heard: Release candidate.. Agree or again?"."""
     client = FakeClient()
     client.add_pending("name-9", OPEN_PROMPT)
     client.add_pending("pick-9", "Ship it?", options=["approve", "hold"])
@@ -425,7 +425,7 @@ def test_a_transcripts_closing_stop_is_not_doubled_when_read_back():
     VoiceApprovalLoop(stt=ScriptedSTT(["Banana!", "hold"]), tts=tts, client=client).run_once("pick-9")
 
     assert READBACK.format("Release candidate") in tts.spoken
-    assert "I heard: Banana. Say approve or hold." in tts.spoken
+    assert "Heard Banana. Approve or hold?" in tts.spoken
 
 
 def test_an_open_question_is_not_read_as_a_closed_choice():
@@ -452,7 +452,7 @@ def test_again_listens_again_and_the_second_transcript_is_recorded():
         READBACK.format("release candy date"),
         OPEN_PROMPT,
         READBACK.format("release candidate"),
-        "Recorded: release candidate",
+        "Noted.",
     ]
 
 
@@ -496,7 +496,7 @@ def test_an_unusable_confirmation_is_reasked_with_the_read_back_grammar():
     result = VoiceApprovalLoop(stt=stt, tts=tts, client=client, max_retries=1).run_once("name-7")
 
     assert result.response == "main"
-    assert tts.spoken[2] == "I heard: banana. Say agree or again."
+    assert tts.spoken[2] == "I heard: banana. Agree or again?"
 
 
 def test_exhausting_the_budget_with_again_raises_and_submits_nothing():
@@ -568,7 +568,7 @@ def test_a_request_with_options_is_still_a_closed_choice():
 
     assert result.response == "approve"
     assert stt.calls == 1
-    assert tts.spoken == ["Deploy? Say approve or reject.", "Recorded: approve"]
+    assert tts.spoken == ["Deploy? Approve or reject?", "Approved."]
 
 
 # --- what the loop tells a display ---------------------------------------------
@@ -597,7 +597,7 @@ def test_a_clear_answer_is_announced_as_asked_then_recorded():
     VoiceApprovalLoop(stt=stt, tts=RecordingTTS(), client=client).run_once("deploy-1")
 
     assert stt.announced == [
-        ("speaking", "Deploy? Say approve or hold.", None),
+        ("speaking", "Deploy? Approve or hold?", None),
         ("recorded", "approve", None),
     ]
 
@@ -615,7 +615,7 @@ def test_each_reask_is_announced_with_its_reason():
         ("speaking", "nomatch"),
         ("recorded", None),
     ]
-    assert stt.announced[2][1].startswith("I heard: banana.")
+    assert stt.announced[2][1].startswith("Heard banana.")
 
 
 def test_giving_up_is_announced_with_what_was_last_heard():
@@ -664,8 +664,8 @@ def test_each_open_question_reask_is_announced_with_its_reason():
         ("speaking", OPEN_PROMPT, None),
         ("speaking", f"I didn't hear anything. {OPEN_PROMPT}", "noinput"),
         ("speaking", READBACK.format("main"), "confirm"),
-        ("speaking", "I didn't hear anything. Say agree or again.", "noinput"),
-        ("speaking", "I heard: banana. Say agree or again.", "nomatch"),
+        ("speaking", "I didn't hear anything. Agree or again?", "noinput"),
+        ("speaking", "I heard: banana. Agree or again?", "nomatch"),
         ("recorded", "main", None),
     ]
     assert client.submitted == [("name-13", "main")]

@@ -94,7 +94,7 @@ def test_interrupting_with_again_takes_the_instruction_again():
 
     assert client.recorded == ["Deploy vox."]
     assert PROMPT in tts.spoken
-    assert _readbacks(tts)[-1] == "I heard: Deploy vox. Say agree or again."  # the retake asks
+    assert _readbacks(tts)[-1] == "I heard: Deploy vox. Agree or again?"  # the retake asks
 
 
 def test_interrupting_with_anything_else_cancels_the_tacit_agreement_and_asks():
@@ -104,7 +104,7 @@ def test_interrupting_with_anything_else_cancels_the_tacit_agreement_and_asks():
     dialog.run_once()
 
     assert client.recorded == ["Deploy qmcp."]
-    assert _readbacks(tts) == ["I heard: Deploy qmcp.", "I heard: Deploy qmcp. Say agree or again."]
+    assert _readbacks(tts) == ["I heard: Deploy qmcp.", "I heard: Deploy qmcp. Agree or again?"]
 
 
 def test_a_key_asking_to_repeat_cancels_it_too():
@@ -112,7 +112,7 @@ def test_a_key_asking_to_repeat_cancels_it_too():
 
     dialog.run_once()
 
-    assert _readbacks(tts)[1].endswith("Say agree or again.")
+    assert _readbacks(tts)[1].endswith("Agree or again?")
 
 
 @pytest.mark.parametrize("confidence, tacit_above", [(0.6, 0.7), (None, 0.7), (1.0, None)])
@@ -122,7 +122,7 @@ def test_below_the_threshold_or_unweighed_or_off_the_read_back_asks(confidence, 
 
     dialog.run_once()
 
-    assert _readbacks(tts) == ["I heard: Deploy qmcp. Say agree or again."]
+    assert _readbacks(tts) == ["I heard: Deploy qmcp. Agree or again?"]
     assert client.recorded == ["Deploy qmcp."]
 
 

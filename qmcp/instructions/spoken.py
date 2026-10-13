@@ -5,13 +5,13 @@
 **THE RECORD IS THE RESULT; THE SENTENCE POINTS AT IT.** An agent's outcome
 can run to pages, and nobody listens to pages. `summarise` says whether the
 instruction ran, in which project, and the outcome's opening sentence, cut at
-a word boundary; when it had to cut, it says the rest is on the record, which
-is where the whole text stays (`qmcp instructions show <id>`). A summary that
+a word boundary, in plain words; the whole text stays on the record
+(`qmcp instructions show <id>`). A summary that
 read the whole outcome aloud would make the spoken loop slower than reading
 the terminal, which is the one thing it exists not to be.
 
 **IT SAYS WHAT THE ROW SAYS, AND NOTHING THE ROW DOES NOT.** Every sentence is
-a function of the row's status, project, text, outcome and exit code, so the
+a function of the row's status, project and outcome, so the
 same row is said the same way by `instructions act --voice`, by
 `instructions say`, and by the offline check. A refusal before anything was
 asked leaves the row as it was, so the caller passes `why` to have the summary
@@ -39,8 +39,6 @@ from typing import Any
 # How much of an outcome is said. About two breaths: long enough for one
 # sentence of what happened, short enough that the loop stays faster than reading.
 SPOKEN_CHARS = 160
-
-REST = "The rest is on the record."
 
 # Characters a synthesizer would read aloud and a reader would not: the
 # emphasis, heading and code marks an agent's markdown carries.
@@ -79,42 +77,38 @@ def summarise(row: Mapping[str, Any], why: str = "") -> str:
     refused before it asked, makes a row still `recorded` or `unresolved` say
     that nothing was asked or run.
     """
+    from qmcp.integrations.voice.adapter import speakable
+
     project = row.get("project")
     where = f"in {project}" if project else "with no project"
     status = row.get("status")
     status = getattr(status, "value", status)
-    asked, _ = first_sentence(row.get("text") or "")
-    outcome, cut = first_sentence(row.get("outcome_text") or "")
-    rest = f" {REST}" if cut else ""
+    outcome, _ = first_sentence(speakable(row.get("outcome_text") or ""))
 
     if status == "done":
-        if not outcome:
-            return f"Done {where}, and the run reported nothing."
-        return f"Done {where}. {_closed(outcome)}{rest}"
+        return f"Done {where}. {_closed(outcome)}" if outcome else f"Done {where}. Nothing reported."
     if status == "failed":
-        code = row.get("exit_code")
-        head = f"The run {where} failed" + (f", exit {code}." if code is not None else ".")
-        return f"{head} {_closed(outcome)}{rest}" if outcome else head
+        return f"Failed {where}. {_closed(outcome)}" if outcome else f"Failed {where}."
     if status == "refused":
-        return f"Held. Nothing ran for: {_closed(asked)}"
+        return "Held. Nothing ran."
     if status == "unanswered":
-        return f"Nobody answered in time, so nothing ran for: {_closed(asked)}"
+        return "No answer. Nothing ran."
     if status == "asking":
-        return f"Waiting for consent to act {where}."
+        return f"Waiting for consent {where}."
     if status in ("consented", "acting"):
         return f"Running {where}."
     if why:
-        return f"Nothing was asked and nothing ran {where}."
+        return "Nothing ran."
     if status == "unresolved":
-        return "Recorded with no project. Nothing has run."
+        return "Recorded, no project."
     if status == "recorded":
-        return f"Recorded for {project}. Nothing has run."
-    return f"The instruction {where} is {status}."
+        return f"Recorded for {project}."
+    return f"Instruction {where}: {status}."
 
 
 def starting(project: str | None) -> str:
     """What is said between the approval and the run, so the wait is not silence."""
-    return f"Approved. Running in {project}." if project else "Approved. Running."
+    return f"Running in {project}." if project else "Running."
 
 
 def announce(stt: Any, state: str, text: str, options: Any = None) -> None:
@@ -131,13 +125,14 @@ def announce(stt: Any, state: str, text: str, options: Any = None) -> None:
 
 def say(text: str, tts: Any, stt: Any = None) -> None:
     """Say `text`, with the panel told it is being said and then that the turn is over."""
+    from qmcp.integrations.voice.adapter import speakably
+
     announce(stt, "speaking", text)
-    tts.speak(text)
+    speakably(tts).speak(text)
     announce(stt, "idle", text)
 
 
 __all__ = [
-    "REST",
     "SPOKEN_CHARS",
     "announce",
     "first_sentence",

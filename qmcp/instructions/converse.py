@@ -55,16 +55,16 @@ from pathlib import Path
 from typing import Any
 
 from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, VOCABULARY, InstructionDialog
-from qmcp.integrations.voice.adapter import REPEAT
+from qmcp.integrations.voice.adapter import REPEAT, speakably
 
 READY = "Ready. What should be done?"
 ANYTHING_ELSE = "Anything else?"
 WAITING = "Listening. Say an instruction whenever you are ready."
-OKAY = "Okay. I am listening."
-STOPPING = "Stopping. Start the server again to talk."
+OKAY = "Listening."
+STOPPING = "Stopping."
 QUESTION_WAITING = "A question is waiting."
-FAILED = "That turn failed, and nothing ran. Say the instruction again."
-NOT_RECORDED = "Nothing was recorded."
+FAILED = "That failed. Nothing ran."
+NOT_RECORDED = "Nothing recorded."
 
 # What ends the conversation, what goes back to waiting, and what asks for an
 # instruction, matched on the whole utterance with punctuation and case gone.
@@ -126,7 +126,7 @@ class Conversation:
                  echo: Callable[[str], None] | None = None,
                  tacit_above: float | None = None) -> None:
         self.stt = stt
-        self.tts = tts
+        self.tts = speakably(tts)
         self.client = client
         self.runtime = runtime
         self.names = tuple(names)

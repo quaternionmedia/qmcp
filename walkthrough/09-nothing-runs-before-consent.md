@@ -88,8 +88,9 @@ act refuses before it asks, with the row unchanged:
 With one run authorised the consent goes on the queue. It is answered here by
 voice, through the same loop `qmcp human voice` runs, with a synthesizer and a
 transcriber stood in for so the page can show what is said. The consent is
-said with the clone's folder, and the request written on the queue names its
-whole path. The person says hold:
+said in a few plain words -- where, what, how, and how many runs -- and the
+request written on the queue names the clone's whole path. The person says
+hold:
 
     >>> class Hears:
     ...     def __init__(self, text): self.text = text
@@ -101,11 +102,8 @@ whole path. The person says hold:
     >>> held = act("pin-the-vectors", runtime, Budget(authorised=1), client=client,
     ...            rows=rows, cwd=clone, stt=Hears("hold"), tts=Says(),
     ...            poll_interval=0.05)
-    >>> Says.spoken[0] == (
-    ...     "Act on the instruction: Pin rad godot to the vectors. "
-    ...     f"Project rad-godot, clone {clone.name}, runtime scripted, budget 1 run(s). "
-    ...     "Say approve or hold.")
-    True
+    >>> Says.spoken[0]
+    'Run in rad-godot: Pin rad godot to the vectors. A script, one run. Approve or hold?'
     >>> held.status, held.answer, held.stages
     ('refused', 'hold', ('instruction', 'clone', 'budget', 'ask', 'answer'))
     >>> runtime.calls
@@ -203,8 +201,8 @@ runtime that ran it:
     ...              rows=rows, stt=Hears("approve"), tts=Says(), poll_interval=0.05)
     >>> second.status, second.cwd == str(clone), second.carried
     ('done', True, ('pin-the-vectors',))
-    >>> "carrying 1 earlier instruction(s) from qmcp's record" in Says.spoken[0]
-    True
+    >>> Says.spoken[0]
+    'Run in rad-godot: Say which commit the vectors are pinned to. Runtime another, one run, with what came before. Approve or hold?'
     >>> (turn,) = another.briefs[0].history
     >>> turn.instruction, turn.runtime, turn.outcome
     ('Pin rad godot to the vectors.', 'scripted', 'pinned to 2c10fd1')

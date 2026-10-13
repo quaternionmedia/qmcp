@@ -182,7 +182,7 @@ def test_a_spoken_instruction_is_read_back_and_recorded_on_record(fake_client, m
 
     assert result.exit_code == 0, result.output
     assert tts.spoken[0] == "What should be done?"
-    assert tts.spoken[1] == "I heard: Deploy qmcp to the pi. Say agree or again."
+    assert tts.spoken[1] == "I heard: Deploy qmcp to the pi. Agree or again?"
     assert tts.spoken[2] == "Recorded for qmcp."
     assert fake_client.recorded == [{
         "text": "Deploy qmcp to the pi.", "source": "voice", "project": None,
@@ -243,9 +243,9 @@ def test_again_takes_the_instruction_a_second_time(fake_client, monkeypatch):
     assert result.exit_code == 0, result.output
     assert tts.spoken == [
         "What should be done?",
-        "I heard: Deploy qmcp. Say agree or again.",
+        "I heard: Deploy qmcp. Agree or again?",
         "What should be done?",
-        "I heard: Deploy qmcp to the pi. Say agree or again.",
+        "I heard: Deploy qmcp to the pi. Agree or again?",
         "Recorded for qmcp.",
     ]
     assert fake_client.recorded[0]["text"] == "Deploy qmcp to the pi."
@@ -295,7 +295,7 @@ def test_an_ambiguous_project_is_asked_back_as_a_closed_choice(fake_client, monk
         "Move the vectors from vox into qmcp.", "agree", "vox"])
 
     assert result.exit_code == 0, result.output
-    assert tts.spoken[2] == "Which project? Say qmcp or vox."
+    assert tts.spoken[2] == "Which project? Qmcp or vox?"
     assert fake_client.recorded[0]["project"] == "vox"
     assert fake_client.recorded[0]["heard"][-1] == "vox"
     assert fake_client.rows["row-1"]["project"] == "vox"
@@ -311,22 +311,22 @@ def test_a_hyphenated_project_is_chosen_as_a_transcript_says_it(fake_client, mon
         "Pin rad godot to the vectors.", "agree", "rad godot"])
 
     assert result.exit_code == 0, result.output
-    assert tts.spoken[2] == "Which project? Say rad or rad-godot."
+    assert tts.spoken[2] == "Which project? Rad or rad-godot?"
     assert fake_client.recorded[0]["project"] == "rad-godot"
     assert tts.spoken[-1] == "Recorded for rad-godot."
 
 
 def test_yes_chooses_no_project(fake_client, monkeypatch):
-    """A project is never picked by position. "yes" to "Say qmcp or vox." is
+    """A project is never picked by position. "yes" to "Qmcp or vox?" is
     a nomatch, re-asked; the budget spent, the row is recorded unresolved.
     Mutation: fall back to `choose_option` -- red, `qmcp` recorded."""
     result, stt, tts = _spoken(monkeypatch, [
         "Move the vectors from vox into qmcp.", "agree", "yes"], "--max-retries", "1")
 
     assert result.exit_code == 0, result.output
-    assert tts.spoken[3] == "I heard: yes. Say qmcp or vox."
+    assert tts.spoken[3] == "Heard yes. Qmcp or vox?"
     assert fake_client.recorded[0]["project"] is None
-    assert tts.spoken[-1] == "Recorded. The project is unresolved."
+    assert tts.spoken[-1] == "Recorded, no project."
     assert "[?] row-1  unresolved  voice" in result.output
 
 
@@ -355,7 +355,7 @@ def test_nothing_heard_is_said_and_the_prompt_repeated(fake_client, monkeypatch)
     result, stt, tts = _spoken(monkeypatch, ["", "Deploy qmcp.", "agree"])
 
     assert result.exit_code == 0, result.output
-    assert tts.spoken[1] == "I didn't hear anything. What should be done?"
+    assert tts.spoken[1] == "Didn't catch that. What should be done?"
     assert fake_client.recorded[0]["heard"] == ["", "Deploy qmcp.", "agree"]
 
 
@@ -366,7 +366,7 @@ def test_an_instruction_nobody_confirms_records_nothing(fake_client, monkeypatch
     assert result.exit_code != 0
     assert "No usable instruction" in result.output
     assert fake_client.recorded == []
-    assert tts.spoken[2] == "I heard: banana. Say agree or again."
+    assert tts.spoken[2] == "Heard banana. Agree or again?"
     assert stt.announced[-1][0] == "gave_up"
 
 
@@ -381,7 +381,7 @@ def test_the_dialog_announces_its_states_with_the_shared_reasons(fake_client, mo
         ("speaking", None),          # What should be done?
         ("speaking", "confirm"),     # I heard: Deploy qmcp.
         ("speaking", "again"),       # What should be done?
-        ("speaking", "noinput"),     # I didn't hear anything.
+        ("speaking", "noinput"),     # Didn't catch that.
         ("speaking", "confirm"),     # I heard: Deploy qmcp to the pi.
         ("recorded", None),
     ]
@@ -440,6 +440,6 @@ def test_silence_when_asked_which_project_is_re_asked_with_the_choices(fake_clie
         "Move the vectors from vox into qmcp.", "agree", "", "vox"])
 
     assert result.exit_code == 0, result.output
-    assert tts.spoken[2] == "Which project? Say qmcp or vox."
-    assert tts.spoken[3] == "I didn't hear anything. Say qmcp or vox."
+    assert tts.spoken[2] == "Which project? Qmcp or vox?"
+    assert tts.spoken[3] == "Didn't catch that. Qmcp or vox?"
     assert fake_client.recorded[0]["project"] == "vox"

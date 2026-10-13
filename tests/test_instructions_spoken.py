@@ -10,7 +10,6 @@ from __future__ import annotations
 import pytest
 
 from qmcp.instructions.spoken import (
-    REST,
     SPOKEN_CHARS,
     first_sentence,
     say,
@@ -59,10 +58,19 @@ def test_nothing_says_nothing():
 
 
 def test_a_done_run_says_where_and_the_outcomes_first_sentence():
-    """Mutation: drop the `rest` clause -- red, nothing says there is more."""
+    """Only the first sentence; the rest is on the record and is not
+    announced. Mutation: say the whole outcome -- red."""
     row = _row("done", outcome_text="Added a health route. Two files changed.", exit_code=0)
 
-    assert summarise(row) == f"Done in qmcp. Added a health route. {REST}"
+    assert summarise(row) == "Done in qmcp. Added a health route."
+
+
+def test_an_outcome_is_said_without_its_syntax():
+    """A path is said by its last name, before the sentence is cut, so the
+    budget is spent on words. Mutation: summarise the raw outcome -- red."""
+    row = _row("done", outcome_text="Edited qmcp/instructions/act.py (2 lines). Tests pass.")
+
+    assert summarise(row) == "Done in qmcp. Edited act.py 2 lines."
 
 
 def test_a_done_run_closes_an_unpunctuated_outcome():
@@ -72,24 +80,25 @@ def test_a_done_run_closes_an_unpunctuated_outcome():
 
 
 def test_a_done_run_that_reported_nothing_says_so():
-    assert summarise(_row("done", outcome_text="")) == "Done in qmcp, and the run reported nothing."
+    assert summarise(_row("done", outcome_text="")) == "Done in qmcp. Nothing reported."
 
 
-def test_a_failed_run_says_its_exit_code_and_what_it_reported():
-    """Mutation: say `done` for every finished run -- red."""
+def test_a_failed_run_says_where_and_what_it_reported():
+    """The exit code is on the record, not in the sentence. Mutation: say
+    `done` for every finished run -- red."""
     row = _row("failed", outcome_text="Tests failed in test_api.py", exit_code=2)
 
-    assert summarise(row) == "The run in qmcp failed, exit 2. Tests failed in test_api.py."
-    assert summarise(_row("failed")) == "The run in qmcp failed."
+    assert summarise(row) == "Failed in qmcp. Tests failed in test api.py."
+    assert summarise(_row("failed")) == "Failed in qmcp."
 
 
 @pytest.mark.parametrize(("status", "said"), [
-    ("refused", "Held. Nothing ran for: Add a health check to qmcp."),
-    ("unanswered", "Nobody answered in time, so nothing ran for: Add a health check to qmcp."),
-    ("asking", "Waiting for consent to act in qmcp."),
+    ("refused", "Held. Nothing ran."),
+    ("unanswered", "No answer. Nothing ran."),
+    ("asking", "Waiting for consent in qmcp."),
     ("consented", "Running in qmcp."),
     ("acting", "Running in qmcp."),
-    ("recorded", "Recorded for qmcp. Nothing has run."),
+    ("recorded", "Recorded for qmcp."),
 ])
 def test_every_status_is_said_as_what_it_is(status, said):
     """Mutation: fall through to the generic sentence for any one of these --
@@ -98,7 +107,7 @@ def test_every_status_is_said_as_what_it_is(status, said):
 
 
 def test_an_unresolved_row_says_it_has_no_project():
-    assert summarise(_row("unresolved", project=None)) == "Recorded with no project. Nothing has run."
+    assert summarise(_row("unresolved", project=None)) == "Recorded, no project."
 
 
 def test_a_refusal_before_the_ask_says_nothing_ran_and_not_why():
@@ -108,7 +117,7 @@ def test_a_refusal_before_the_ask_says_nothing_ran_and_not_why():
 
     said = summarise(_row("recorded"), why=why)
 
-    assert said == "Nothing was asked and nothing ran in qmcp."
+    assert said == "Nothing ran."
     assert "--cwd" not in said
 
 
@@ -119,12 +128,12 @@ def test_a_status_given_as_an_enum_is_read_by_its_value():
 
 
 def test_an_unknown_status_is_said_rather_than_guessed():
-    assert summarise(_row("archived")) == "The instruction in qmcp is archived."
+    assert summarise(_row("archived")) == "Instruction in qmcp: archived."
 
 
 def test_the_running_line_names_the_project_when_there_is_one():
-    assert starting("qmcp") == "Approved. Running in qmcp."
-    assert starting(None) == "Approved. Running."
+    assert starting("qmcp") == "Running in qmcp."
+    assert starting(None) == "Running."
 
 
 # --- say -------------------------------------------------------------------------------
@@ -169,6 +178,15 @@ def test_an_announcement_that_fails_costs_the_sentence_nothing():
     say("Held.", tts, _Engine(fails=True))
 
     assert tts.spoken == ["Held."]
+
+
+def test_a_sentence_is_said_without_its_syntax():
+    """Mutation: speak `text` unwrapped -- red, "(s)" reaches the synthesizer."""
+    tts = _TTS()
+
+    say("Two run(s) in qmcp.", tts)
+
+    assert tts.spoken == ["Two run in qmcp."]
 
 
 def test_without_an_engine_the_sentence_is_still_said():

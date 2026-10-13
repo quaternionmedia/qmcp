@@ -158,7 +158,7 @@ def test_the_loop_goes_the_whole_way_and_prints_the_conversation():
     assert f"{len(check.LOOP_CASES)} of {len(check.LOOP_CASES)} loops ended as scripted." in result.output
     assert "heard     approve" in result.output and "heard     hold" in result.output
     assert "said      Done in qmcp. Added a health route" in result.output
-    assert "said      Held. Nothing ran for: Rotate the qmcp logs." in result.output
+    assert "said      Held. Nothing ran." in result.output
 
 
 def test_the_loop_fails_when_the_wrong_answer_runs(monkeypatch):
@@ -262,7 +262,7 @@ def test_continuity_on_a_runtime_is_shown_end_to_end():
     result = CliRunner().invoke(cli, ["cookbook", "instruct", "--runtime", "scripted"])
 
     assert result.exit_code == 0, result.output
-    assert "carrying 1 earlier instruction(s) from qmcp's record" in result.output
+    assert "one run, with what came before. Approve or hold?" in result.output
     assert "carried   instruction 1 and what it found, from qmcp's record" in result.output
     assert "ran in the remembered clone, told what the first found" in result.output
     assert "The second instruction was carried out knowing what the first found." in result.output
@@ -373,8 +373,8 @@ def test_one_spoken_session_runs_with_nothing_typed():
     assert result.exit_code == 0, result.output
     assert "said   Ready. What should be done?" in result.output
     assert "answered: agent-question -> approve" in result.output
-    assert "carrying 1 earlier instruction(s) from qmcp's record" in result.output
-    assert "said   Stopping. Start the server again to talk." in result.output
+    assert "one run, with what came before. Approve or hold?" in result.output
+    assert "said   Stopping." in result.output
     assert "[ok]   one spoken session" in result.output
 
 

@@ -89,7 +89,7 @@ uv run qmcp human voice             # hear the question, say one of its options
 `cookbook voice --live` queues one request of its own, `voice-check-<time>`,
 which expires in five minutes, and reports what was recorded.
 
-The question is spoken aloud with its options ("Say approve or hold."), and
+The question is spoken aloud with its options ("Approve or hold?"), and
 recording stops when you do. If the server or the engine is not running,
 `human voice` says which and names the command that starts it, before
 anything is spoken. `human list` reads this clone's own database, whose
