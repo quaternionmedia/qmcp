@@ -120,6 +120,7 @@ class TestAgentCreation:
         # This should be either True or False based on installation
         assert isinstance(PYDANTIC_AI_AVAILABLE, bool)
 
+    @pytest.mark.live_anthropic
     @pytest.mark.skipif(
         not _anthropic_ready(),
         reason="pydantic-ai not installed or ANTHROPIC_API_KEY not set",
@@ -135,6 +136,7 @@ class TestAgentCreation:
 
         assert agent is not None
 
+    @pytest.mark.live_anthropic
     @pytest.mark.skipif(
         not _anthropic_ready(),
         reason="pydantic-ai not installed or ANTHROPIC_API_KEY not set",
