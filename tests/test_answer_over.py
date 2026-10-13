@@ -167,6 +167,45 @@ def test_a_type_error_from_inside_the_voice_is_not_taken_for_an_old_voice():
     assert tts.spoken == ["Approve or hold?"]
 
 
+BRANCH = "What should the branch be called?"
+AGREE_OR_AGAIN = ["agree", "again"]
+
+
+def test_an_open_question_and_its_read_back_are_watched_for_the_takes_that_follow_them():
+    """The answer is open, so its watch carries no hint; the read-back's
+    carries agree or again. Mutation: say the open question without `_say` --
+    red; say its read-back without `_say` -- red."""
+    stt = _STT("release candidate", "agree")
+    tts = _TTS(stt)
+    loop = VoiceApprovalLoop(stt, tts, client=_Requests(BRANCH, options=()), listen_duration=6.0)
+
+    assert loop.run_once("r").response == "release candidate"
+
+    assert _kinds(stt)[:6] == ["watch", "speak", "listen", "watch", "speak", "listen"]
+    assert stt.events[0] == ("watch", 6.0, None, None)
+    assert stt.events[3] == ("watch", 6.0, None, AGREE_OR_AGAIN)
+    assert tts.untils[:2] == [stt.interrupted, stt.interrupted]
+
+
+def test_an_open_question_s_repeat_and_re_asks_are_watched_too():
+    """A re-ask of the read-back is watched for agree or again, and the
+    question said again after `again` for an open answer. Mutation: say a
+    repeat of the read-back without `_say` -- red; say a re-ask without `_say`
+    -- red; watch every re-ask for agree or again -- red."""
+    stt = _STT("release candidate", "repeat", "banana", "again", "rc one", "agree")
+    tts = _TTS(stt)
+
+    loop = VoiceApprovalLoop(stt, tts, client=_Requests(BRANCH, options=()), max_retries=2)
+    answer = loop.run_once("r")
+
+    assert answer.response == "rc one"
+    kinds = _kinds(stt)
+    assert kinds.count("watch") == kinds.count("speak") - 1  # the acknowledgement is no question
+    assert all(kinds[i + 1] == "speak" for i, kind in enumerate(kinds) if kind == "watch")
+    assert [e[3] for e in stt.events if e[0] == "watch"] == [
+        None, AGREE_OR_AGAIN, AGREE_OR_AGAIN, AGREE_OR_AGAIN, None, AGREE_OR_AGAIN]
+
+
 # --- the dialog and the conversation -------------------------------------------
 
 
