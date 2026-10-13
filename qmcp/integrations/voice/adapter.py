@@ -101,6 +101,34 @@ def listen_for(stt, duration: float, *, pause_ms: int | None = None, hint=None):
         return stt.listen(**kwargs)
 
 
+def ask_over(stt, tts, text: str, *, duration: float, pause_ms: int | None = None,
+             hint=None) -> None:
+    """Say a question so it can be answered before it ends.
+
+    The engine is watched first (`stt.watch`), with the parameters of the
+    listen that follows, so an answer said over the question is heard from
+    its first word; and the voice stops as soon as the engine says the person
+    interrupted (`stt.interrupted`) -- answered by key, held the talk key, or
+    spoke over it. A backend without either, or a voice that cannot be cut
+    short, says the question whole, as before. The listen is the caller's.
+    """
+    watch = getattr(stt, "watch", None)
+    if callable(watch):
+        try:
+            watch(duration, pause_ms=pause_ms, hint=list(hint) if hint else None)
+        except Exception:  # noqa: BLE001 -- a question that cannot be watched is still asked
+            pass
+    interrupted = getattr(stt, "interrupted", None)
+    if callable(interrupted):
+        try:
+            tts.speak(text, until=interrupted)
+            return
+        except TypeError as exc:
+            if "until" not in str(exc):
+                raise
+    tts.speak(text)
+
+
 def announce_to(stt, state: str, text: str = "", reason: str | None = None,
                 options=None) -> None:
     """Post one dialog state to the backend's `announce`, a question carrying
@@ -322,6 +350,10 @@ class VoiceApprovalLoop:
         # Requests `run_forever` asked and got no usable answer to, oldest first.
         self.unanswered: list[str] = []
 
+    def _say(self, text: str, options: list[str] | None) -> None:
+        """Say a question the person may answer before it ends (`ask_over`)."""
+        ask_over(self.stt, self.tts, text, duration=self.listen_duration, hint=options)
+
     def _ask(self, prompt: str, options: list[str]) -> str:
         """Speak the prompt and its options, listen, and return the option chosen.
 
@@ -331,12 +363,13 @@ class VoiceApprovalLoop:
         re-ask says which of two things went wrong — nothing heard
         (noinput) or something heard and unusable (nomatch), echoing what
         was heard so the speaker can hear the mishearing. Unclear after the
-        retry budget raises, and nothing is guessed.
+        retry budget raises, and nothing is guessed. Every question can be
+        answered before it ends, by key or by voice (`ask_over`).
         """
         grammar = say_options(options)
         question = f"{prompt} {grammar}"
         self._announce("speaking", question, options=options)
-        self.tts.speak(question)
+        self._say(question, options)
         heard = ""
         attempt = repeats = 0
         while attempt <= self.max_retries:
@@ -345,7 +378,7 @@ class VoiceApprovalLoop:
             if asks_repeat(heard) and repeats < MAX_REPEATS:
                 repeats += 1
                 self._announce("speaking", question, reason="repeat", options=options)
-                self.tts.speak(question)
+                self._say(question, options)
                 continue
             decision = parse_yes_no(heard)
             if decision is not None:
@@ -359,7 +392,7 @@ class VoiceApprovalLoop:
                 else:
                     reask, reason = f"Heard {_said(heard, 80)}. {grammar}", "nomatch"
                 self._announce("speaking", reask, reason=reason, options=options)
-                self.tts.speak(reask)
+                self._say(reask, options)
             attempt += 1
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
@@ -374,7 +407,9 @@ class VoiceApprovalLoop:
         as a closed choice between `agree` and `again`, hinted and offered as
         every closed choice is and parsed with the same helpers, so a yes
         records and a no re-asks. "repeat" says the read-back again without
-        spending a retry, up to `MAX_REPEATS`.
+        spending a retry, up to `MAX_REPEATS`. The question, the read-back
+        and every re-ask can be answered before they end (`ask_over`), each
+        watched for the take that follows it.
 
         One budget covers the whole dialog. Every turn the speaker has to be
         asked for a second time costs a retry -- nothing heard for the answer
@@ -384,7 +419,7 @@ class VoiceApprovalLoop:
         """
         grammar = say_options(_CONFIRM)
         self._announce("speaking", prompt)
-        self.tts.speak(prompt)
+        self._say(prompt, None)
         heard = ""
         answer: str | None = None
         repeats = 0
@@ -398,14 +433,14 @@ class VoiceApprovalLoop:
                     answer = heard.strip()
                     readback = f"I heard: {_said(answer)}. {grammar}"
                     self._announce("speaking", readback, reason="confirm", options=_CONFIRM)
-                    self.tts.speak(readback)
+                    self._say(readback, _CONFIRM)
                     continue
                 heard, _ = listen_for(self.stt, self.listen_duration, hint=_CONFIRM)
                 # Asked to say it again: the read-back again, and no retry spent.
                 if asks_repeat(heard) and repeats < MAX_REPEATS:
                     repeats += 1
                     self._announce("speaking", readback, reason="repeat", options=_CONFIRM)
-                    self.tts.speak(readback)
+                    self._say(readback, _CONFIRM)
                     continue
                 decision = parse_yes_no(heard)
                 named = match_option(heard, _CONFIRM) or (
@@ -424,9 +459,9 @@ class VoiceApprovalLoop:
             if reasks < self.max_retries:
                 # A re-ask of the read-back offers its options; a re-ask of
                 # the question has none to offer.
-                self._announce("speaking", reask, reason=reason,
-                               options=_CONFIRM if answer is not None else None)
-                self.tts.speak(reask)
+                offered = _CONFIRM if answer is not None else None
+                self._announce("speaking", reask, reason=reason, options=offered)
+                self._say(reask, offered)
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
             f"No usable answer after {self.max_retries + 1} attempts; last heard {heard!r}"

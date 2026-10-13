@@ -18,6 +18,7 @@ Usage:
 
 from qmcp.integrations.voice.adapter import (
     UnclearResponse,
+    ask_over,
     VoiceApprovalLoop,
     choose_option,
     match_option,
@@ -29,6 +30,7 @@ from qmcp.integrations.voice.adapter import (
 
 __all__ = [
     "VoiceApprovalLoop",
+    "ask_over",
     "UnclearResponse",
     "parse_yes_no",
     "choose_option",

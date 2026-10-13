@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import Any
 
 from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, VOCABULARY, InstructionDialog
-from qmcp.integrations.voice.adapter import REPEAT, speakably
+from qmcp.integrations.voice.adapter import REPEAT, ask_over, speakably
 
 READY = "Ready. What should be done?"
 ANYTHING_ELSE = "Anything else?"
@@ -185,7 +185,14 @@ class Conversation:
         self._question = (text, tuple(options))
         self.echo(f"said: {text}")
         announce(self.stt, "speaking", text, options=list(options) or None)
-        self.tts.speak(text)
+        # Answerable before it ends, watched for the take the loop makes next.
+        ask_over(self.stt, self.tts, text, duration=self.listen_duration, pause_ms=self.pause_ms,
+                 hint=self._hint())
+
+    def _hint(self) -> list[str]:
+        """The question's own options, then the names an instruction is
+        likely to carry: a take after it may be either."""
+        return list(dict.fromkeys([*self._question[1], *self._vocabulary]))[:VOCABULARY + 2]
 
     def _announce(self, state: str, text: str) -> None:
         from qmcp.instructions.spoken import announce
@@ -204,11 +211,8 @@ class Conversation:
         idle = 0
         while True:
             self._ask_waiting(ended)
-            # The question's own options, then the names an instruction is
-            # likely to carry: a take here may be either.
-            hint = list(dict.fromkeys([*self._question[1], *self._vocabulary]))[:VOCABULARY + 2]
             heard, recording = listen_for(self.stt, self.listen_duration, pause_ms=self.pause_ms,
-                                          hint=hint)
+                                          hint=self._hint())
             # An answer with no recording behind it came from a key or a button
             # on the engine's page: it was meant for this conversation.
             keyed = not recording

@@ -304,6 +304,16 @@ microphone stays open, and the next instruction can come at any time; "yes"
 asks for it now. "stop listening" or "goodbye" ends the conversation, and so
 does stopping the server: *Stopping.*
 
+### Answer before the question ends
+
+Knowing the answer, give it: say "approve" over the consent, or press `1`, and
+the question stops mid-sentence and the answer is taken. A spoken answer is
+kept from its first word. Through speakers, speak up over the voice -- an
+answer is taken over the question only when it is clearly louder than the
+question's own echo -- or use the keys; with headphones, any speech does it.
+Every closed question works this way: the consent, the read-back, a choice of
+project, *Anything else?*. `JOE_BARGE_IN=0` on joe leaves only the keys.
+
 ### Answer without speaking, and follow by ear
 
 Every question's answers are on joe's page as numbered buttons, and with the
