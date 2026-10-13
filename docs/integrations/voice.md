@@ -195,13 +195,15 @@ submits nothing: an ambiguous answer is never guessed at.
 A request with no `options` is an open question, and the transcript is the
 answer: *"What should the branch be called?"* is spoken as it is, and what is
 heard is read back once as a closed choice — *"I heard: release candidate. Say
-agree or again."* The read-back goes through the same helpers, so a yes
-records and a no listens again; `again` re-speaks the question; silence and a
-confirmation that matches neither are re-asked as noinput and nomatch. One
-budget covers the dialog: each turn the speaker has to be asked a second time,
-whether for the answer or for the confirmation, costs a retry, and exhausting
-it raises and submits nothing. An `input` request answered "yes" therefore
-records `yes`, not `approve`; a request with options is unaffected.
+agree or again."* — hinted, offered and said again on "repeat" as every closed
+question is; the answer itself is not hinted. The read-back goes through the
+same helpers, so a yes records and a no listens again; `again` re-speaks the
+question; silence and a confirmation that matches neither are re-asked as
+noinput and nomatch. One budget covers the dialog: each turn the speaker has
+to be asked a second time, whether for the answer or for the confirmation,
+costs a retry, and exhausting it raises and submits nothing. An `input`
+request answered "yes" therefore records `yes`, not `approve`; a request with
+options is unaffected.
 
 ## Watching the exchange
 
