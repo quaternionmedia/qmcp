@@ -2,7 +2,8 @@
 
 **AN OPEN QUESTION, THEN A CLOSED ONE.** "What should be done?" has no grammar
 for its answer, so the transcript is the answer and the speaker is the only
-check on it: it is read back as a closed choice between `record` and `again`,
+check on it: it is read back as a closed choice between `agree` and `again` --
+or, heard confidently, agreed to tacitly unless interrupted --
 parsed with the helpers the approval dialog uses (`parse_yes_no`,
 `match_option`, `say_options`), so a yes records and a no asks again. The
 re-asks say which of two things went wrong, `noinput` or `nomatch`, and the two
@@ -59,7 +60,16 @@ from qmcp.integrations.voice.adapter import (
 
 PROMPT = "What should be done?"
 WHICH_PROJECT = "Which project?"
-CONFIRM = ["record", "again"]
+CONFIRM = ["agree", "again"]
+# Said by someone used to the read-back's earlier word; taken as `agree`, never said.
+AGREE_ALIASES = ("record",)
+# How sure the engine must be of an instruction for the read-back to ask nothing
+# (`tacit_above`), and how long it then listens for an interruption. Measured
+# on synthesized instructions, whisper's base model scored 0.5 to 0.75; above
+# 0.7, the takes it got wrong were near misses ("box" for "vox"), and each is
+# still read back aloud with a moment to interrupt.
+TACIT_ABOVE = 0.7
+TACIT_SECONDS = 2.5
 
 # Seconds an instruction may take, and how long a pause ends it. A sentence
 # with a thought in the middle of it; the engine's own default pause is tuned
@@ -80,7 +90,8 @@ class InstructionDialog:
     def __init__(self, stt: SpeechToText, tts: TextToSpeech, client: Any,
                  names: Iterable[str], max_retries: int = 2,
                  listen_duration: float = LISTEN_DURATION, pause_ms: int = PAUSE_MS,
-                 answer_duration: float = 5.0):
+                 answer_duration: float = 5.0, tacit_above: float | None = None,
+                 tacit_seconds: float = TACIT_SECONDS):
         self.stt = stt
         self.tts = tts
         self.client = client
@@ -92,13 +103,19 @@ class InstructionDialog:
         self.answer_duration = answer_duration
         # Every transcript taken, in order; recorded with the row.
         self.heard: list[str] = []
+        # The engine's confidence at or above which the read-back asks nothing
+        # and silence agrees; None always asks.
+        self.tacit_above = tacit_above
+        self.tacit_seconds = tacit_seconds
 
-    def run_once(self, heard: str | None = None) -> dict[str, Any]:
+    def run_once(self, heard: str | None = None,
+                 confidence: float | None = None) -> dict[str, Any]:
         """Ask, confirm, resolve, record. Returns the row as the server recorded it.
 
         `heard` is a transcript already taken -- the standing conversation
         listens before it knows an instruction is coming -- and starts the
-        dialog at the read-back rather than at the prompt.
+        dialog at the read-back rather than at the prompt. `confidence` is how
+        sure the engine was of it, which decides whether the read-back asks.
 
         Raises `UnclearResponse` when the instruction itself was never
         confirmed within the budget; a project that cannot be settled is
@@ -106,7 +123,7 @@ class InstructionDialog:
         has said what they want done.
         """
         self.heard = []
-        text = self._ask_instruction(first=heard)
+        text = self._ask_instruction(first=heard, confidence=confidence)
         found = resolve(text, self.names)
         # None when the text itself named the project: the server reads it
         # again and the row carries that match, not a statement.
@@ -123,85 +140,134 @@ class InstructionDialog:
         self.tts.speak(said)
         return row
 
-    def _listen(self, *, long: bool, hint: list[str] | None = None) -> str:
+    def _listen(self, *, long: bool, hint: list[str] | None = None,
+                duration: float | None = None) -> str:
         """One take. The instruction gets the long cap and the long pause; a
         word in answer gets neither, so the engine's own default serves it."""
         if long:
             heard, _ = self.stt.listen(duration=self.listen_duration, pause_ms=self.pause_ms)
         else:
-            heard, _ = listen_for(self.stt, self.answer_duration, hint=hint)
+            heard, _ = listen_for(self.stt, duration or self.answer_duration, hint=hint)
         self.heard.append(heard)
         return heard
 
-    def _ask_instruction(self, first: str | None = None) -> str:
-        """Speak the prompt, listen long, read the transcript back, return it once confirmed.
+    def _ask_instruction(self, first: str | None = None,
+                         confidence: float | None = None) -> str:
+        """Speak the prompt, listen long, read the transcript back, return it once agreed.
+
+        **A confident take is agreed to tacitly.** When the engine is at least
+        `tacit_above` sure of it, the read-back says what was heard and asks
+        nothing; silence for `tacit_seconds` agrees. Any interruption cancels
+        the tacit agreement -- a word, a key, a held key -- and what interrupted
+        decides: `agree` or a yes records, `again` or a no takes it again, and
+        anything else is asked about outright. Below the threshold, or from an
+        engine that reports no confidence, the read-back asks "Say agree or
+        again." Nothing here runs anything: consent is a separate question.
 
         One budget covers the whole exchange, as the approval dialog's open
         question does: every turn the speaker has to be asked a second time
         costs a retry -- nothing heard for the instruction (noinput), nothing
         usable for the confirmation (noinput or nomatch), or `again` -- and
-        the turns that move the dialog forward cost nothing.
+        the turns that move the dialog forward, or say it again on request,
+        cost nothing.
         """
         grammar = say_options(CONFIRM)
         heard = ""
         answer: str | None = None
-        repeats = 0
+        tacit = asked = False
+        reasks = repeats = 0
         if first is not None and first.strip():
             self.heard.append(first)
             heard, answer = first, first.strip()
-            readback = f"I heard: {_said(answer)}. {grammar}"
-            self._announce("speaking", readback, reason="confirm", options=CONFIRM)
-            self.tts.speak(readback)
+            tacit = self._tacit_allowed(confidence)
         else:
             self._announce("speaking", PROMPT)
             self.tts.speak(PROMPT)
-        for reasks in range(self.max_retries + 1):
-            while True:
-                if answer is None:
-                    heard = self._listen(long=True)
-                    if not heard.strip():
-                        reask, reason = f"I didn't hear anything. {PROMPT}", "noinput"
-                        break
-                    if asks_repeat(heard) and repeats < MAX_REPEATS:
-                        repeats += 1
-                        self._announce("speaking", PROMPT, reason="repeat")
-                        self.tts.speak(PROMPT)
-                        continue
-                    answer = heard.strip()
-                    readback = f"I heard: {_said(answer)}. {grammar}"
-                    self._announce("speaking", readback, reason="confirm", options=CONFIRM)
-                    self.tts.speak(readback)
+        while True:
+            reask = reason = None
+            if answer is None:
+                heard = self._listen(long=True)
+                if not heard.strip():
+                    reask, reason = f"I didn't hear anything. {PROMPT}", "noinput"
+                elif asks_repeat(heard) and repeats < MAX_REPEATS:
+                    repeats += 1
+                    self._announce("speaking", PROMPT, reason="repeat")
+                    self.tts.speak(PROMPT)
                     continue
+                else:
+                    answer, asked = heard.strip(), False
+                    tacit = self._tacit_allowed(getattr(self.stt, "last_confidence", None))
+                    continue
+            elif tacit:
+                tacit = False  # one tacit offer per answer
+                heard = self._offer_tacitly(answer)
+                agreed = self._agreement(heard)
+                if not heard.strip() or agreed is True:
+                    return answer
+                if agreed is False:
+                    reask, reason, answer = PROMPT, "again", None
+                else:
+                    asked = False  # interrupted with something else: ask outright
+                    continue
+            elif not asked:
+                readback = f"I heard: {_said(answer)}. {grammar}"
+                self._announce("speaking", readback, reason="confirm", options=CONFIRM)
+                self.tts.speak(readback)
+                asked = True
+                continue
+            else:
                 heard = self._listen(long=False, hint=CONFIRM)
-                # Asked to say it again: the read-back again, and no retry spent.
                 if asks_repeat(heard) and repeats < MAX_REPEATS:
                     repeats += 1
+                    readback = f"I heard: {_said(answer)}. {grammar}"
                     self._announce("speaking", readback, reason="repeat", options=CONFIRM)
                     self.tts.speak(readback)
                     continue
-                decision = parse_yes_no(heard)
-                named = match_option(heard, CONFIRM)
-                # The decision is consulted before the option named, as the
-                # approval dialog does: "don't record" names record and is a no.
-                if decision is True or (decision is None and named == "record"):
+                agreed = self._agreement(heard)
+                if agreed is True:
                     return answer
-                if decision is False or named == "again":
+                if agreed is False:
                     reask, reason, answer = PROMPT, "again", None
                 elif not heard.strip():
                     reask, reason = f"I didn't hear anything. {grammar}", "noinput"
                 else:
                     reask, reason = f"I heard: {_said(heard, 80)}. {grammar}", "nomatch"
+            if reasks >= self.max_retries:
                 break
-            if reasks < self.max_retries:
-                # A re-ask of the read-back offers its options; a re-ask for
-                # the instruction itself has none to offer.
-                self._announce("speaking", reask, reason=reason,
-                               options=CONFIRM if answer is not None else None)
-                self.tts.speak(reask)
+            reasks += 1
+            # A re-ask of the read-back offers its options; a re-ask for the
+            # instruction itself has none to offer.
+            self._announce("speaking", reask, reason=reason,
+                           options=CONFIRM if answer is not None else None)
+            self.tts.speak(reask)
         self._announce("gave_up", heard.strip())
         raise UnclearResponse(
             f"No usable instruction after {self.max_retries + 1} attempts; last heard {heard!r}"
         )
+
+    def _tacit_allowed(self, confidence: float | None) -> bool:
+        return (self.tacit_above is not None and isinstance(confidence, (int, float))
+                and confidence >= self.tacit_above)
+
+    def _offer_tacitly(self, answer: str) -> str:
+        """Say what was heard, ask nothing, and listen briefly for an interruption."""
+        said = f"I heard: {_said(answer)}."
+        self._announce("speaking", said, reason="tacit", options=CONFIRM)
+        self.tts.speak(said)
+        return self._listen(long=False, hint=CONFIRM, duration=self.tacit_seconds)
+
+    @staticmethod
+    def _agreement(heard: str) -> bool | None:
+        """True to agree, False to take it again, None for neither. The decision
+        is consulted before the option named, as the approval dialog does:
+        "don't agree" names agree and is a no."""
+        decision = parse_yes_no(heard)
+        named = match_option(heard, CONFIRM) or ("agree" if match_option(heard, list(AGREE_ALIASES)) else None)
+        if decision is True or (decision is None and named == "agree"):
+            return True
+        if decision is False or named == "again":
+            return False
+        return None
 
     def _ask_choice(self, prompt: str, options: list[str]) -> str | None:
         """A closed choice by name only, or None once the budget is spent.

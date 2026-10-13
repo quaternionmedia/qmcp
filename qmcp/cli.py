@@ -416,7 +416,7 @@ def converse(runtime_name: str | None, clones: Path | None, wake: str | None,
 
     It waits for this server and the speech engine, says it is ready, and asks
     what should be done. Each instruction is read back and recorded on
-    "record", consent is asked aloud, the runtime carries it out on "approve"
+    "agree", consent is asked aloud, the runtime carries it out on "approve"
     in the project's clone, and the outcome is said back; questions agents put
     on the human queue are asked aloud in between. "Stop listening" or
     "goodbye" ends it. `qmcp serve --converse` starts this beside the server.
@@ -451,7 +451,8 @@ def converse(runtime_name: str | None, clones: Path | None, wake: str | None,
     try:
         wait_for(client, stt, echo=click.echo)
         conversation = Conversation(stt, tts, client, runtime, roster_names(),
-                                    clones=clones, wake=wake, echo=click.echo)
+                                    clones=clones, wake=wake, echo=click.echo,
+                                    tacit_above=settings.voice_tacit_confidence)
         ready = getattr(runtime, "ready", None)
         missing = ready() if ready else None
         if missing:
@@ -2009,7 +2010,7 @@ def instruct(text: str | None, project: str | None, source: str, voice: bool,
 
     --voice asks "What should be done?" aloud, listens with a long cap and a
     long pause (an instruction has pauses mid-thought), reads the transcript
-    back ("I heard: ... Say record or again."), and records on a yes. An
+    back ("I heard: ... Say agree or again."), and records on a yes. An
     ambiguous project is asked back as a closed choice by name; a missing
     one is asked for once. The engine must be reachable, as for
     `qmcp human voice`.
@@ -2036,7 +2037,8 @@ def instruct(text: str | None, project: str | None, source: str, voice: bool,
     with HttpSTT(resolved_engine, contract=contract) as stt:
         dialog = InstructionDialog(stt=stt, tts=Pyttsx3TTS(), client=client,
                                    names=roster_names(), max_retries=max_retries,
-                                   listen_duration=duration, pause_ms=pause_ms)
+                                   listen_duration=duration, pause_ms=pause_ms,
+                                   tacit_above=get_settings().voice_tacit_confidence)
         try:
             row = dialog.run_once()
         except UnclearResponse as exc:

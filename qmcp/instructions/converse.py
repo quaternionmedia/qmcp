@@ -5,7 +5,8 @@
 
 **ONCE THE SERVERS ARE UP, NOTHING IS TYPED.** With the speech engine running
 and `qmcp serve --converse`, this says it is ready and asks what should be
-done. An instruction is spoken, read back and recorded on `record`
+done. An instruction is spoken, read back and recorded -- tacitly when the
+engine heard it confidently, otherwise on `agree`
 (`qmcp.instructions.dialog`); consent is asked aloud and given with `approve`
 (`qmcp.instructions.act`); the runtime carries it out in the project's clone;
 the outcome is said back (`qmcp.instructions.spoken`); and it asks whether
@@ -18,8 +19,10 @@ same loop `qmcp human voice` runs -- closed choices by their options, open
 questions read back. A question nobody answers stays pending for anyone, and
 is not asked again in this conversation.
 
-**NOTHING RUNS WITHOUT TWO SPOKEN WORDS.** `record`, after the instruction is
-read back, and `approve`, after the consent says what will run where. Every
+**NOTHING RUNS WITHOUT A SPOKEN APPROVE.** The instruction is agreed to once it
+is read back -- with `agree`, or, heard confidently, by a moment's uninterrupted
+silence -- and consent is given with `approve`, after it says what will run
+where. Every
 runtime is asked, the local model included. Continuity comes from qmcp, not
 the model: each run is handed the project's earlier instructions and what
 they found, from this server's record.
@@ -120,7 +123,8 @@ class Conversation:
                  listen_duration: float = LISTEN_DURATION, pause_ms: int = PAUSE_MS,
                  answer_duration: float = 5.0, max_retries: int = 2,
                  idle_limit: int | None = None, poll_interval: float = 1.0,
-                 echo: Callable[[str], None] | None = None) -> None:
+                 echo: Callable[[str], None] | None = None,
+                 tacit_above: float | None = None) -> None:
         self.stt = stt
         self.tts = tts
         self.client = client
@@ -139,6 +143,10 @@ class Conversation:
         self.idle_limit = idle_limit
         self.poll_interval = poll_interval
         self.echo = echo or (lambda line: None)
+        # The engine confidence at or above which an instruction's read-back
+        # asks nothing and silence agrees (`InstructionDialog`); None always asks.
+        self.tacit_above = tacit_above
+        self._confidence: float | None = None
         self._asked: set[str] = set()
         # The question the next take answers, and the options it offered, so
         # "repeat" can say it again and the engine can be hinted.
@@ -185,6 +193,7 @@ class Conversation:
             # An answer with no recording behind it came from a key or a button
             # on the engine's page: it was meant for this conversation.
             keyed = not recording
+            self._confidence = getattr(self.stt, "last_confidence", None)
             words = plain(heard)
             if not words:
                 idle += 1
@@ -235,9 +244,10 @@ class Conversation:
         dialog = InstructionDialog(stt=self.stt, tts=self.tts, client=self.client,
                                    names=self.names, max_retries=self.max_retries,
                                    listen_duration=self.listen_duration,
-                                   pause_ms=self.pause_ms, answer_duration=self.answer_duration)
+                                   pause_ms=self.pause_ms, answer_duration=self.answer_duration,
+                                   tacit_above=self.tacit_above)
         try:
-            row = dialog.run_once(heard=heard)
+            row = dialog.run_once(heard=heard, confidence=self._confidence)
         except UnclearResponse:
             self.say(NOT_RECORDED)
             return Turn(None, heard.strip(), "not recorded", NOT_RECORDED)

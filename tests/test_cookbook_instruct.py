@@ -104,7 +104,7 @@ def test_the_offline_check_fails_when_nothing_is_read_back(monkeypatch):
 def test_a_case_expecting_one_project_fails_when_another_is_recorded():
     """A script whose expectation the inbox does not meet is reported as such."""
     lines: list[str] = []
-    wrong = Case(("Deploy qmcp to the pi.", "record"), "Deploy qmcp to the pi.", check.OTHER,
+    wrong = Case(("Deploy qmcp to the pi.", "agree"), "Deploy qmcp to the pi.", check.OTHER,
                  RULE_ONE)
 
     assert run_offline(echo=lines.append, cases=(wrong,)) is False
@@ -118,7 +118,7 @@ def test_the_row_says_how_the_project_was_settled():
     says `stated`; drop the `rule` check from `run_offline` -- green here, so
     the wrong expectation below is what shows the check reads it."""
     lines: list[str] = []
-    wrong = Case(("Deploy qmcp to the pi.", "record"), "Deploy qmcp to the pi.", check.NAMED,
+    wrong = Case(("Deploy qmcp to the pi.", "agree"), "Deploy qmcp to the pi.", check.NAMED,
                  RULE_STATED)
 
     assert run_offline(echo=lines.append, cases=(wrong,)) is False
@@ -245,7 +245,7 @@ def test_the_loop_fails_when_something_is_said_after_the_summary(monkeypatch):
 def test_a_loop_case_expecting_a_run_fails_when_nothing_ran():
     """The verdict reads the runtime's calls, not the case's expectation."""
     lines: list[str] = []
-    case = check.Loop(("Rotate the qmcp logs.", "record", "hold"), "refused", True, "Held.")
+    case = check.Loop(("Rotate the qmcp logs.", "agree", "hold"), "refused", True, "Held.")
 
     assert check.run_loop(echo=lines.append, cases=(case,)) is False
     assert any("the runtime ran 0 time(s), expected 1" in line for line in lines)
@@ -460,3 +460,14 @@ def test_the_session_fails_when_repeat_is_not_honoured(monkeypatch):
 
     assert result.exit_code == 1, result.output
     assert "the first read-back was said 1 time(s)" in result.output
+
+
+def test_the_session_fails_when_a_confident_instruction_is_still_asked(monkeypatch):
+    from qmcp.instructions.dialog import InstructionDialog
+
+    monkeypatch.setattr(InstructionDialog, "_tacit_allowed", lambda self, confidence: False)
+
+    result = CliRunner().invoke(cli, ["cookbook", "converse"])
+
+    assert result.exit_code == 1, result.output
+    assert "the confident second instruction was not agreed to tacitly" in result.output
