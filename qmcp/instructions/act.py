@@ -187,19 +187,21 @@ def clone_for(rows: Rows, instruction_id: str, project: str | None,
 
 
 def consent_prompt(row: Instruction, clone: Clone, runtime: str, budget: Budget,
-                   carried: int = 0, spoken: bool = False) -> str:
+                   carried: int = 0, spoken: bool = False, command: str | None = None) -> str:
     """What the person at the gate is asked, in full, because they may not be
     the person who recorded the instruction.
 
     `spoken` is the form said aloud: a few plain words -- where, what, how,
     how many runs in words, and whether it carries what came before. The
     clone is not named: an absolute path read character by character kept a
-    consent talking for half a minute. The written prompt keeps everything.
+    consent talking for half a minute. The written prompt keeps everything,
+    and names the `command` a runtime that runs one will run.
     """
     if spoken:
         from qmcp.integrations.voice.adapter import counted
 
-        how = {"local": "The local model", "scripted": "A script"}.get(runtime, f"Runtime {runtime}")
+        how = {"local": "The local model", "scripted": "A script",
+               "check": "A declared check"}.get(runtime, f"Runtime {runtime}")
         remembers = ", with what came before" if carried else ""
         asked = row.text.strip()
         asked += "" if asked.endswith((".", "?", "!")) else "."
@@ -207,9 +209,10 @@ def consent_prompt(row: Instruction, clone: Clone, runtime: str, budget: Budget,
                 f"{how}, {counted(budget.authorised, 'run')}{remembers}.")
     history_note = (f", carrying {carried} earlier instruction(s) from qmcp's record"
                     if carried else "")
+    command_note = f", command `{command}`" if command else ""
     return (f"Act on the instruction: {row.text} "
             f"Project {row.project or 'unresolved'}, clone {clone.cwd}, "
-            f"runtime {runtime}, budget {budget.authorised} run(s){history_note}.")
+            f"runtime {runtime}{command_note}, budget {budget.authorised} run(s){history_note}.")
 
 
 def _now() -> datetime:
@@ -287,8 +290,10 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
     reached.append("budget")
     runtime_name = getattr(runtime, "name", type(runtime).__name__)
     budget.service = budget.service or runtime_name
-    would_need = unknown("an agent run makes as many calls as it needs; "
-                         "the runtime reports what it made afterwards")
+    would_need = getattr(runtime, "would_spend", None)
+    if would_need is None:
+        would_need = unknown("an agent run makes as many calls as it needs; "
+                             "the runtime reports what it made afterwards")
     if budget.free:
         return Acted(instruction_id=instruction_id, status=status, stages=tuple(reached),
                      declared=declare(budget, would_need), cwd=str(clone.cwd),
@@ -301,7 +306,9 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
     from qmcp.client import HumanRequestConflictError
 
     request_id, attempt = f"instruction-{instruction_id}", 1
-    prompt = consent_prompt(row, clone, runtime_name, budget, carried=len(carried))
+    command = getattr(runtime, "command", None)
+    told = len(carried) if getattr(runtime, "uses_history", True) else 0
+    prompt = consent_prompt(row, clone, runtime_name, budget, carried=told, command=command)
     declared = declare(budget, would_need)
     while True:
         try:
@@ -312,7 +319,7 @@ def act(instruction_id: str, runtime: AgentRuntime, budget: Budget, *, client: A
                          "cwd": str(clone.cwd), "runtime": runtime_name,
                          "carried": list(carried), "spend": declared,
                          "spoken": consent_prompt(row, clone, runtime_name, budget,
-                                                  carried=len(carried), spoken=True)})
+                                                  carried=told, spoken=True)})
             break
         except HumanRequestConflictError:
             # Acted on before: the earlier consent stands as its own record,
