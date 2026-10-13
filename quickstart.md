@@ -60,8 +60,9 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3141/v1/tools/echo -Content
 The queue you just exercised can be answered by speaking. Prove the whole
 voice path first, with no hardware, no engine and no model. A request is
 queued on a throwaway server, answered through vox's deterministic engine and
-read back, for four scripted answers: a yes, an option by name, a mismatch and
-silence. It takes a few seconds and leaves this clone's queue alone:
+read back, for each scripted answer: a yes, an option by name, a mismatch,
+silence, and an open question whose transcript is read back and recorded. It
+takes a few seconds and leaves this clone's queue alone:
 
 ```bash
 uv run qmcp cookbook voice
