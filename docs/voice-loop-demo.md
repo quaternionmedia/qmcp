@@ -1,12 +1,12 @@
-# The voice loop, demonstrated
+# The voice dev loop
 
-The voice-driven development loop, end to end, in three tiers. Each tier is a
-command that runs, and each adds one thing the tier before it stood in for:
-first nothing real, then the real local model, then a person at the
-microphone -- where, once two servers are started, nothing is typed at all.
-**Continuity comes from qmcp, not the model**: every tier ends with a second
-instruction handed what this server recorded of the first, and nothing a
-runtime kept.
+An instruction spoken at the machine is recorded against a project, consent is
+asked aloud, the local model reads the project's clone, and the answer is said
+back -- and once two servers are started, nothing is typed at all.
+**Continuity comes from qmcp, not the model**: each instruction is handed the
+project's earlier instructions and what they found, from this server's record,
+so work carries across sessions and runtimes rather than living in whichever
+conversation happens to be open.
 
 ```
 speak ──> joe: microphone, transcription ──> qmcp: recorded against a project
@@ -17,10 +17,97 @@ hear  <── vox: synthesis <── qmcp: summary <── local model reads the
                                                   told the project's history by qmcp
 ```
 
-`docs/integrations/voice.md` is the reference for every step; this page is
-the order to run them in and what each one proves.
+**Onboarding** sets a workstation up and proves it in three tiers, each adding
+one real thing the tier before it stood in for. **Cookbook** is what to say,
+and what happens. `docs/integrations/voice.md` is the reference for every step.
 
-## Tier 1 — nothing real: the wiring
+## Onboarding
+
+### What runs where
+
+| Part | Its job | Started by |
+|---|---|---|
+| qmcp, this repository | records each instruction, asks consent, acts, remembers | `uv run qmcp serve`, on `http://127.0.0.1:3141` |
+| the local model | reads a project's clone and answers; cannot write | the model service `qmcp localmodel` sets up |
+| joe, its own checkout | owns the microphone, transcribes with whisper, shows each turn on its page | `uv run joe dev`: the speech engine on port 8000, the page on 3000 |
+| vox, `vendor/vox` | the contract a speech engine answers, and the local synthesizer | nothing; qmcp imports it |
+| the projects' clones | what the model reads | nothing; directories beside this checkout |
+
+### The workspace
+
+The conversation finds a project's clone by its name, beside this checkout, so
+the workspace keeps its repositories as siblings:
+
+```
+<workspace>/
+  qmcp/            this repository
+  <project>/       one clone per project to talk about, named as on the roster
+```
+
+joe can live anywhere: it is a separate server. A project is recognised in
+speech by its name on the roster, `ci/workspace.yaml` in the `governance/qm`
+submodule; a name that is not on it is not recognised, and the instruction is
+recorded unresolved. A checkout kept elsewhere -- a worktree, say -- passes
+`--clones <workspace>` wherever this page names it.
+
+### Set up, once
+
+Needed first: `git`, [`uv`](https://docs.astral.sh/uv/), which fetches the
+Python each repository pins, and Node.js with npm for joe's page.
+
+1. **qmcp, in a checkout that has the loop**, with both submodules -- the
+   roster and vox:
+
+   ```bash
+   git clone https://github.com/quaternionmedia/qmcp
+   cd qmcp
+   git submodule update --init       # first: any uv command fails while vendor/vox is empty
+   uv run qmcp serve --help          # must list --converse; see below if it does not
+   uv sync --all-extras
+   uv run qmcp cookbook converse     # done when it prints [ok]: a whole spoken session, offline
+   ```
+
+   A checkout whose `serve` does not list `--converse` predates the loop: it is
+   on a branch without it, or behind its remote. Switch to a branch that has
+   it -- the one this page was read from -- and run `git submodule update
+   --init` after every switch: branches pin different `vox` commits, and a
+   stale one still passes `cookbook voice` while every instruction fails.
+
+2. **The local model.** `check` reports the machine and whether the model is
+   served; `plan` prints the exact commands that install the model service,
+   keep the weights on a drive with room, pull the model once and prove it
+   answers. It runs nothing itself:
+
+   ```bash
+   uv run qmcp localmodel check
+   uv run qmcp localmodel plan       # then run what it prints
+   uv run qmcp localmodel check      # done when it says `served:` and names the model
+   ```
+
+   `served:` means the service answers and lists the model; the plan's last
+   command asks the model for one word, and its answer is what proves it
+   generates.
+
+3. **joe**, in its own checkout. `voice setup` counts down, tries every input
+   while someone keeps talking, and saves the microphone only once it has
+   transcribed a sentence from it. The first transcription fetches whisper's
+   model, about 145 MB, into the user's cache:
+
+   ```bash
+   git clone https://github.com/quaternionmedia/joe
+   cd joe
+   uv sync
+   npm install
+   uv run joe voice setup            # done when it saves the microphone
+   ```
+
+4. **The clones.** A clone of each project to talk about, beside this checkout
+   and named as on the roster. Nothing is written to them: the local runtime's
+   tools read and cannot write.
+
+### Prove it, tier by tier
+
+#### Tier 1 — nothing real: the wiring
 
 No microphone, speakers, model or agent, and nothing spent. A qmcp server is
 started on an ephemeral port over a database made for the run, and vox's
@@ -43,9 +130,9 @@ uv run qmcp cookbook converse                     # one whole spoken session, no
   in a directory standing in for the clone, and the summary said back. The
   held one runs nothing and says so. Each loop prints as the conversation it
   was.
-- `--runtime scripted` is the continuity demonstration below with nothing
-  real behind it, so it checks what qmcp owns -- the clone remembered, the
-  history carried, the summary said -- on any machine.
+- `--runtime scripted` is tier 2's continuity demonstration with nothing real
+  behind it, so it checks what qmcp owns -- the clone remembered, the history
+  carried, the summary said -- on any machine.
 - `cookbook converse` is tier 3's conversation with every take scripted: it
   says it is ready, asks a question an agent left waiting, waits through a
   silence, takes two instructions the whole way -- the first in the clone found
@@ -55,7 +142,7 @@ uv run qmcp cookbook converse                     # one whole spoken session, no
 Each prints `[ok]` per case and exits non-zero on any `[FAIL]`. The suite runs
 all four, and makes sure each can fail.
 
-## Tier 2 — the local model: continuity, really
+#### Tier 2 — the local model: continuity, really
 
 The model `qmcp localmodel` stands up, reading a real clone. Speech is still the
 deterministic engine, so each consent is answered `approve` by a script
@@ -63,7 +150,6 @@ standing in for the person; nothing is written to the clone and nothing paid
 is called.
 
 ```bash
-uv run qmcp localmodel check                      # is the model installed and served?
 uv run qmcp cookbook instruct --runtime local     # reads this repository
 uv run qmcp cookbook instruct --runtime local --clone <path to a rostered project>
 uv run qmcp cookbook converse --runtime local     # the whole session, on the model
@@ -94,20 +180,22 @@ served. A seven-billion-parameter model is a quick reader, not a reviewer: it
 may quote a heading where a sentence was asked for, and the person who said
 approve is the one who judges what it found.
 
-## Tier 3 — a person at the microphone: two commands, then speech
+#### Tier 3 — a person at the microphone: two commands, then speech
 
 Everything real, and nothing typed after the servers start:
 
 ```bash
-# in joe's checkout -- the speech engine, which owns the microphone
-uv run joe voice setup                          # once: find, save and prove the microphone
-uv run joe dev                                  # the page at http://localhost:3000/joe
+# in joe's checkout: the speech engine, and the page at http://localhost:3000/joe
+uv run joe dev
 
-# here -- the server, and the conversation beside it
+# here: the server, and the conversation beside it
 uv run qmcp serve --converse --runtime local
 ```
 
-Either may start first: the conversation waits for the other. Then it talks:
+Either may start first: the conversation waits for the other. qmcp's terminal
+shows the server's request log, not the conversation: what it hears and says
+is on joe's page, and `curl http://127.0.0.1:3141/v1/human/voice` gives its
+last lines. Then it talks:
 
 ```
 qmcp:   Ready. What should be done?
@@ -131,18 +219,119 @@ qmcp:   Stopping. Start the server again to talk.
 ```
 
 joe's page shows each turn live: the question, the open microphone, the person
-speaking, the pause, the reading. A question an agent has put on the human
-queue is asked aloud before the next instruction. The first time a project is
-acted on, its clone is the one named for it beside this checkout (`--clones`
-moves where it is looked for); after that, the one its last act ran in. A room
-where people talk can require a word first with `--wake`. While it runs it
-listens take after take, and joe keeps every take as a file in its checkout's
-`Data/Voice`; nothing deletes them.
+speaking, the pause, the reading. While the conversation runs it listens take
+after take, and joe keeps every take as a file in its checkout's `Data/Voice`;
+nothing deletes them. Onboarding is done when this tier has run once.
 
-Each step is also a command, for checking and debugging rather than for the
-loop: `uv run qmcp instruct --voice`, `uv run qmcp instructions act <id>
---runtime local --budget 1 --voice`, `uv run qmcp instructions say <id> --speak`
-and `uv run qmcp instructions show <id>`.
+## Cookbook
+
+Unless a recipe says otherwise, it assumes tier 3 is running: `uv run joe dev`
+in joe's checkout and `uv run qmcp serve --converse --runtime local` here. What
+is said to it is in quotes; what it says back is in italics.
+
+### Ask about a project
+
+Say the instruction with the project's name in it: "Which file in qmcp says
+what qmcp is?" *I heard: ... Say record or again.* Say "record", or "again" to
+say it once more. The consent says what will run: the instruction, the project,
+the clone, the runtime, a budget of one run, and how many earlier instructions
+it carries. Say "approve". *Approved. Running in qmcp.* -- and when the model
+has read what it needs, the first sentence of what it found, said back. The
+whole answer is on the record: `uv run qmcp instructions show <id>`.
+
+### Pick up where the last session left off
+
+Nothing to do. Every instruction in a project is handed that project's most
+recent instructions that ran, and what each found, from qmcp's record --
+whichever runtime ran them, and however long ago. "What did that file say qmcp
+is for?" works the next morning as it does the next minute. The consent says
+how many it carries, and the row's `detail.continuity` names them.
+
+### Talk about a project for the first time
+
+Name it; nothing else is needed if its clone sits beside this checkout under
+its roster name. The first act runs there and the clone is remembered, so every
+later act in the project runs in the same one. A clone kept elsewhere: start
+the server with `--clones <the directory holding it>`, or act once by command
+with `--cwd <path>`, which is remembered the same way. With no clone found, the
+act refuses before it asks and says why.
+
+### Name no project, or several
+
+"Deploy to the pi." names none: *Which project?* is asked once, and the name
+said back is recorded as the project when it is one on the roster. "Move the
+vectors from vox into qmcp." names two: *Which project? Say qmcp or vox.* --
+say one. A project is never picked by position, so "yes" chooses nothing.
+
+### Hold instead of approve
+
+"hold" to the consent: nothing runs, and it says so. The instruction stays
+recorded, and `uv run qmcp instructions act <id> --runtime local --budget 1
+--voice` asks again later, as a new consent beside the first.
+
+### Answer what an agent is waiting on
+
+Nothing to start. Before each instruction, questions agents have put on the
+human queue are asked aloud, oldest first -- *A question is waiting.*, then the
+question with its options. Say one. A question nobody answers stays pending for
+anyone: `uv run qmcp human list`, `uv run qmcp human voice`, or joe's page.
+
+### No more for now, and stopping
+
+"no" or "that's all" to *Anything else?*: *Okay. I am listening.* The
+microphone stays open, and the next instruction can come at any time; "yes"
+asks for it now. "stop listening" or "goodbye" ends the conversation, and so
+does stopping the server; *Start the server again to talk.*
+
+### A room where people talk
+
+```bash
+uv run qmcp serve --converse --runtime local --wake qmcp
+```
+
+Everything said to it between turns then begins with the word -- "qmcp, which
+file says what dossier is?", "qmcp, yes", "qmcp, stop listening" -- and
+anything else heard is ignored. Answers to its own questions, "record" and
+"approve" among them, need no word. Without `--wake`, every utterance is read
+back before anything is recorded, so talk in the room interrupts but never
+records itself: nothing is recorded without "record", and nothing runs without
+"approve".
+
+### Hear a result again
+
+Needs only the server.
+
+```bash
+uv run qmcp instructions list                    # newest first, with ids
+uv run qmcp instructions say <id> --speak        # what it came to, said aloud; printed without --speak
+uv run qmcp instructions show <id>               # the whole row: what it found, where, what it carried
+```
+
+### Check it on a machine nobody is at
+
+```bash
+uv run qmcp cookbook converse                              # a whole session, every take scripted
+uv run qmcp converse --runtime local --synth recording     # against running servers, speech written to files
+```
+
+The first needs nothing running. The second runs the conversation on its own
+against a running `qmcp serve` and speech engine, and writes each sentence to a
+file instead of speaking it.
+
+### One step at a time, by command
+
+For checking and debugging rather than for the loop, with the server started
+without `--converse`:
+
+```bash
+uv run qmcp instruct --voice                                          # one instruction, spoken; prints the row
+uv run qmcp instructions act <id> --runtime local --budget 1 --voice  # consent asked aloud, then the run
+uv run qmcp instructions show <id>                                    # what it came to
+```
+
+joe's page offers the first as **Instruct by voice**, and **Answer by voice**
+for a waiting question. `--budget` counts runs and defaults to zero, which
+declares what would be asked and stops.
 
 ## What every tier is held to
 
@@ -156,21 +345,41 @@ and the runner image are not reproduced.
 
 ## When it does not work
 
+- **`Error: No such option '--converse'`** -- or `instruct`, `instructions` or
+  `converse` is not a command. This checkout predates the loop: see step 1 of
+  "Set up, once". `uv run qmcp serve --help` lists what this checkout has.
 - **The local model does not answer, or answers late.** `uv run qmcp localmodel
   check` says whether it is installed and served. The model service on the
   machine this was built on was seen to stall partway through a reply, with
   the GPU busy and later calls queued behind it. Every call qmcp makes is
   capped, and a call that stalls unloads the model through the service's own
   keep-alive and is made once more against a fresh load; a second stall is a
-  failed run naming the endpoint, and the conversation goes on.
+  failed run naming the endpoint, and the conversation goes on. When every
+  call stalls, fresh loads included, the service is answering without
+  generating -- `localmodel check` still says served, and the run says *not
+  generating*: restart the service with the commands `uv run qmcp localmodel
+  plan` prints, and see that nothing else holds the GPU.
 - **The microphone hears nothing.** `uv run joe voice setup` in joe's checkout,
   and `docs/integrations/voice.md`, "Which microphone".
+- **It went quiet after a consent.** An answer it could not read clearly
+  leaves the consent pending -- it never guesses -- and the conversation waits
+  for an answer from anywhere until the consent expires (`CONSENT_SECONDS` in
+  `qmcp.instructions.act`): joe's page, or `uv run qmcp human respond <request
+  id> approve`. `uv run qmcp human list` shows it.
 - **An act refuses for want of a clone.** The conversation looks for a clone
   named for the project beside this checkout, or in `--clones`; by command,
   pass `--cwd` once. The project remembers it either way.
+- **"The project is unresolved."** The name heard is not on the roster, or the
+  `governance/qm` submodule is not checked out: `git submodule update --init`.
 - **Nothing is said, or the conversation seems to have gone.** `curl
   http://127.0.0.1:3141/v1/human/voice` says whether it is running and the last
-  lines it printed: what it is waiting for, or why it ended.
+  lines it printed: what it is waiting for, or why it ended. Its whole output
+  is in the system's temporary directory, as `qmcp-voice-<server pid>.log`.
+- **`TypeError: HttpSTT.listen() got an unexpected keyword argument
+  'pause_ms'`**, from `cookbook instruct`, `cookbook converse` or a spoken
+  instruction, while `cookbook voice` passes. The `vox` submodule is not at
+  this checkout's pin, usually after a branch switch: `git submodule update
+  --init`.
 - **The page's voice buttons say a conversation is running.** The standing
   conversation holds the microphone; speak to it instead, or start the server
   without `--converse`.
