@@ -192,6 +192,11 @@ def test_a_queue_that_cannot_be_read_costs_the_conversation_nothing():
 def test_a_first_project_runs_in_the_clone_named_for_it_beside_the_others(tmp_path, monkeypatch):
     """Mutation: return the sibling even when the record knows the clone -- red,
     the remembered clone would be overruled."""
+    # Imported before the patch, as a running server has it: `act` binds
+    # `last_clone` when first imported, and a first import inside the patch
+    # would keep the stand-in for every later test.
+    import qmcp.instructions.act  # noqa: F401
+
     (tmp_path / "qmcp").mkdir()
     remembered: list = [None]
     monkeypatch.setattr("qmcp.instructions.continuity.last_clone",

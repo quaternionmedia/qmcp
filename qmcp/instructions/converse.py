@@ -54,7 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, InstructionDialog
+from qmcp.instructions.dialog import LISTEN_DURATION, PAUSE_MS, PROMPT, VOCABULARY, InstructionDialog
 from qmcp.integrations.voice.adapter import REPEAT
 
 READY = "Ready. What should be done?"
@@ -151,6 +151,7 @@ class Conversation:
         # The question the next take answers, and the options it offered, so
         # "repeat" can say it again and the engine can be hinted.
         self._question: tuple[str, tuple[str, ...]] = (READY, ())
+        self._vocabulary: list[str] = []
 
     # --- speaking ---------------------------------------------------------------
 
@@ -159,6 +160,20 @@ class Conversation:
 
         self.echo(f"said: {text}")
         say(text, self.tts, self.stt)
+
+    def vocabulary(self) -> list[str]:
+        """The project names an instruction is likely to carry: those of the
+        most recent instructions first, from the record, then the roster's,
+        without repeats and at most `VOCABULARY`. A record that cannot be read
+        leaves the roster's."""
+        recent: list[str] = []
+        try:
+            for row in self.client.list_instructions(limit=20):
+                if row.get("project"):
+                    recent.append(row["project"])
+        except Exception:  # noqa: BLE001 -- a hint is no reason to stop listening
+            pass
+        return list(dict.fromkeys([*recent, *self.names]))[:VOCABULARY]
 
     def ask(self, text: str, options: tuple[str, ...] = ()) -> None:
         """Say a question and leave the turn to the person: announced as
@@ -184,12 +199,16 @@ class Conversation:
         from qmcp.integrations.voice.adapter import listen_for
 
         ended = Ended()
+        self._vocabulary = self.vocabulary()
         self.ask(READY)
         idle = 0
         while True:
             self._ask_waiting(ended)
+            # The question's own options, then the names an instruction is
+            # likely to carry: a take here may be either.
+            hint = list(dict.fromkeys([*self._question[1], *self._vocabulary]))[:VOCABULARY + 2]
             heard, recording = listen_for(self.stt, self.listen_duration, pause_ms=self.pause_ms,
-                                          hint=self._question[1])
+                                          hint=hint)
             # An answer with no recording behind it came from a key or a button
             # on the engine's page: it was meant for this conversation.
             keyed = not recording
@@ -228,6 +247,7 @@ class Conversation:
                 continue
             try:
                 ended.turns.append(self._take(heard))
+                self._vocabulary = self.vocabulary()
             except Exception as exc:  # noqa: BLE001 -- a standing conversation outlives a turn
                 self.echo(f"turn failed: {type(exc).__name__}: {exc}")
                 self.ask(FAILED)
@@ -245,7 +265,7 @@ class Conversation:
                                    names=self.names, max_retries=self.max_retries,
                                    listen_duration=self.listen_duration,
                                    pause_ms=self.pause_ms, answer_duration=self.answer_duration,
-                                   tacit_above=self.tacit_above)
+                                   tacit_above=self.tacit_above, vocabulary=self._vocabulary)
         try:
             row = dialog.run_once(heard=heard, confidence=self._confidence)
         except UnclearResponse:

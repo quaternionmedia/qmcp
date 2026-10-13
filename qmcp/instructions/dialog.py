@@ -70,6 +70,10 @@ AGREE_ALIASES = ("record",)
 # still read back aloud with a moment to interrupt.
 TACIT_ABOVE = 0.7
 TACIT_SECONDS = 2.5
+# Names an instruction's take is hinted with, at most: the engine bounds a
+# hint, and a prompt of names biases a transcriber toward spelling them.
+# Measured on a real take: "camcp" without the project names, "qmcp" with them.
+VOCABULARY = 10
 
 # Seconds an instruction may take, and how long a pause ends it. A sentence
 # with a thought in the middle of it; the engine's own default pause is tuned
@@ -91,7 +95,7 @@ class InstructionDialog:
                  names: Iterable[str], max_retries: int = 2,
                  listen_duration: float = LISTEN_DURATION, pause_ms: int = PAUSE_MS,
                  answer_duration: float = 5.0, tacit_above: float | None = None,
-                 tacit_seconds: float = TACIT_SECONDS):
+                 tacit_seconds: float = TACIT_SECONDS, vocabulary: Iterable[str] = ()):
         self.stt = stt
         self.tts = tts
         self.client = client
@@ -107,6 +111,9 @@ class InstructionDialog:
         # and silence agrees; None always asks.
         self.tacit_above = tacit_above
         self.tacit_seconds = tacit_seconds
+        # The words an instruction is likely to contain -- project names --
+        # handed to the engine as the long take's hint.
+        self.vocabulary = list(vocabulary)[:VOCABULARY]
 
     def run_once(self, heard: str | None = None,
                  confidence: float | None = None) -> dict[str, Any]:
@@ -145,7 +152,8 @@ class InstructionDialog:
         """One take. The instruction gets the long cap and the long pause; a
         word in answer gets neither, so the engine's own default serves it."""
         if long:
-            heard, _ = self.stt.listen(duration=self.listen_duration, pause_ms=self.pause_ms)
+            heard, _ = listen_for(self.stt, self.listen_duration, pause_ms=self.pause_ms,
+                                  hint=self.vocabulary or None)
         else:
             heard, _ = listen_for(self.stt, duration or self.answer_duration, hint=hint)
         self.heard.append(heard)
