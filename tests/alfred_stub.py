@@ -156,6 +156,36 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# The most captions alfred keeps on a project (alfred/core/utils/captions.py).
+MAX_CAPTIONS = 1000
+
+
+def caption_errors(captions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """What alfred refuses in a `PUT`'s captions, as FastAPI answers alfred's
+    `Caption` checks (alfred/core/models/captions.py): a time before 0, text
+    with nothing to read, and -- once both of those hold -- an end that is not
+    after the start. alfred puts captions in order rather than refusing them."""
+    errors = []
+    for n, caption in enumerate(captions):
+        where, times, sound = ["body", "captions", n], {}, True
+        for key in ("start", "end"):
+            if caption[key] < 0:
+                errors.append({"loc": [*where, key], "msg": f"{key} must not be negative",
+                               "type": "value_error"})
+                sound = False
+            times[key] = round(float(caption[key]), 3)
+        if not " ".join(str(caption.get("text") or "").split()):
+            errors.append({"loc": [*where, "text"], "msg": "a caption needs some text",
+                           "type": "value_error"})
+            sound = False
+        if sound and times["end"] <= times["start"]:
+            errors.append({"loc": [*where, "__root__"],
+                           "msg": f"a caption must end after it starts "
+                                  f"(start {times['start']}, end {times['end']})",
+                           "type": "value_error"})
+    return errors
+
+
 class CaptionedAlfred(FakeAlfred):
     """The stand-in, holding projects with captions and their renders.
 
@@ -297,24 +327,21 @@ class CaptionedAlfred(FakeAlfred):
         job.update(state="done", engine="stub engine", segments=len(heard))
 
     def store(self, project: dict[str, Any], body: dict[str, Any]) -> httpx.Response:
-        """`PUT /project/{id}/captions`: checked as alfred checks them, and only
-        the captions and the style stored."""
-        captions = body.get("captions", project["captions"])
-        last = 0.0
-        for n, caption in enumerate(captions, 1):
-            start, end = caption.get("start"), caption.get("end")
-            text = str(caption.get("text") or "").strip()
-            if not isinstance(start, (int, float)) or start < 0:
-                return httpx.Response(422, json={"detail": f"caption {n}: start must be 0 or more"})
-            if not isinstance(end, (int, float)) or end <= start:
-                return httpx.Response(422, json={"detail": f"caption {n}: end must be after start"})
-            if not text:
-                return httpx.Response(422, json={"detail": f"caption {n}: text is empty"})
-            if start < last:
-                return httpx.Response(422, json={"detail": f"caption {n}: starts before the one "
-                                                           "ahead of it"})
-            last = start
-        project["captions"] = [dict(caption) for caption in captions]
+        """`PUT /project/{id}/captions`: checked as alfred checks them, stored in
+        order of when they start, as alfred stores them, and only the captions
+        and the style stored."""
+        if "captions" not in body:
+            return httpx.Response(422, json={"detail": [{
+                "loc": ["body", "captions"], "msg": "field required",
+                "type": "value_error.missing"}]})
+        captions = body["captions"]
+        if errors := caption_errors(captions):
+            return httpx.Response(422, json={"detail": errors})
+        if len(captions) > MAX_CAPTIONS:
+            return httpx.Response(422, json={"detail": f"{len(captions)} captions is more than "
+                                                       f"the {MAX_CAPTIONS} a project may carry"})
+        ordered = sorted(captions, key=lambda caption: (caption["start"], caption["end"]))
+        project["captions"] = [dict(caption) for caption in ordered]
         project["caption_style"] = body.get("style", project["caption_style"])
         return httpx.Response(200, json=self.held(project))
 

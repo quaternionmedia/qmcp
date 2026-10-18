@@ -777,8 +777,9 @@ def alfred_captions_transcribe(params: dict[str, Any]) -> dict[str, Any]:
     name="alfred_captions_set",
     description=(
         "Store an alfred project's captions, its caption style, or both: a person's "
-        "correction of a transcript. alfred checks them -- times in order, text not empty -- "
-        "and stores only these; one left out is sent back as alfred holds it. Returns the "
+        "correction of a transcript. alfred checks each caption -- it starts at 0 or later, "
+        "ends after it starts and has text -- keeps them in order of when they start, and "
+        "stores only these; one left out is sent back as alfred holds it. Returns the "
         "captions, style and job as alfred then holds them."
     ),
     input_schema={
@@ -787,8 +788,8 @@ def alfred_captions_transcribe(params: dict[str, Any]) -> dict[str, Any]:
             "project_id": {"type": "string", "description": "The alfred project's id"},
             "captions": {
                 "type": "array",
-                "description": "Every caption, in order: start and end in timeline seconds, "
-                "and the text",
+                "description": "Every caption: start and end in timeline seconds, and the "
+                "text; alfred puts them in order of when they start",
                 "items": {
                     "type": "object",
                     "properties": {

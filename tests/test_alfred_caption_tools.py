@@ -264,13 +264,37 @@ def test_a_style_never_set_is_left_out_rather_than_sent_as_null(fake):
     assert body(fake.calls("PUT", "/project/p1/captions")[0]) == {"captions": HEARD[:1]}
 
 
-def test_alfred_s_refusal_of_a_caption_is_surfaced(fake):
+@pytest.mark.parametrize("refused,why", [
+    ({"start": 4.0, "end": 3.0, "text": "Backwards."},
+     "body.captions.1.__root__: a caption must end after it starts (start 4.0, end 3.0)"),
+    ({"start": -1.0, "end": 3.0, "text": "Early."},
+     "body.captions.1.start: start must not be negative"),
+    ({"start": 6.0, "end": 7.0, "text": "   "}, "body.captions.1.text: a caption needs some text"),
+])
+def test_alfred_s_refusal_of_a_caption_is_surfaced(fake, refused, why):
+    """In alfred's words: its validation error, where and what."""
     fake.add_project("p1", "Talk", captions=HEARD, style=STYLE)
-    backwards = [HEARD[0], {"start": 4.0, "end": 3.0, "text": "Backwards."}]
-    with pytest.raises(AlfredError, match=r"PUT /project/p1/captions \(422\): "
-                                          r"caption 2: end must be after start$"):
-        alfred.alfred_captions_set({"project_id": "p1", "captions": backwards})
+    with pytest.raises(AlfredError) as refusal:
+        alfred.alfred_captions_set({"project_id": "p1", "captions": [HEARD[0], refused]})
+    assert str(refusal.value) == f"alfred refused PUT /project/p1/captions (422): {why}"
     assert fake.projects["p1"]["captions"] == HEARD
+
+
+def test_captions_sent_out_of_order_come_back_in_alfred_s_order(fake):
+    """alfred puts them in order rather than refusing them, and the result is
+    what alfred holds. Mutation: return the captions as sent -- red."""
+    fake.add_project("p1", "Talk", captions=[], style=STYLE)
+    stored = alfred.alfred_captions_set({"project_id": "p1", "captions": HEARD[::-1]})
+    assert body(fake.calls("PUT", "/project/p1/captions")[0])["captions"] == HEARD[::-1]
+    assert stored["captions"] == HEARD == fake.projects["p1"]["captions"]
+
+
+def test_more_captions_than_alfred_keeps_is_its_refusal(fake):
+    fake.add_project("p1", "Talk", style=STYLE)
+    many = [{"start": float(n), "end": n + 0.5, "text": f"line {n}"} for n in range(1001)]
+    with pytest.raises(AlfredError, match=r"\(422\): 1001 captions is more than the 1000 a "
+                                          r"project may carry$"):
+        alfred.alfred_captions_set({"project_id": "p1", "captions": many})
 
 
 @pytest.mark.parametrize("params,why", [

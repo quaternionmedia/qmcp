@@ -119,10 +119,13 @@ already running` (`NO_AUDIO_ENGINE`, `TRANSCRIPTION_NOT_QUEUED` and
 503 whose detail says neither, such as a proxy in front of alfred answers while
 alfred is down, is passed on as it came.
 
-**`alfred_captions_set`** is a person's correction. alfred checks what it is
-sent -- each caption starts at 0 or later, ends after it starts, has text, and
-comes in order -- and stores the captions and the style and nothing else. Give
-the captions, the style, or both; the one left out is read from alfred and
+**`alfred_captions_set`** is a person's correction. alfred checks each caption
+it is sent -- it starts at 0 or later, ends after it starts, and has text, at
+most 500 characters of it -- refuses more than 1000, and stores the captions in
+order of when they start, however they were sent, with the style and nothing
+else. A caption it refuses is named by alfred's validation error, counting from
+0, as in `body.captions.1.__root__: a caption must end after it starts (start 4.0, end 3.0)`.
+Give the captions, the style, or both; the one left out is read from alfred and
 sent back as it is, so a route that stores both does not reset it, and one
 alfred holds as null is left out rather than sent. The result is what alfred
 then holds, read back with `GET` when alfred's answer does not carry it.
