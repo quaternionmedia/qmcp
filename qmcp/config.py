@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +51,17 @@ class Settings(BaseSettings):
     # Whether an instruction's take is hinted with the core projects' terms as
     # well as their names (`qmcp vocabulary`); off until real takes say it helps.
     voice_hint_terms: bool = False
+
+    # The alfred the `alfred_*` tools drive (docs/integrations/alfred.md): where
+    # its API answers, and who asks -- an account qmcp logs in as, or a token
+    # alfred issued, or neither for an alfred that asks for no account. With no
+    # URL the tools answer that alfred is not configured. Seconds alfred has to
+    # answer one request.
+    alfred_url: str | None = None
+    alfred_email: str | None = None
+    alfred_password: SecretStr | None = None
+    alfred_token: SecretStr | None = None
+    alfred_timeout: float = 10.0
 
 
 @lru_cache
