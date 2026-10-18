@@ -79,6 +79,16 @@ def test_the_settings_are_read_from_qmcp_environment_names(monkeypatch):
         URL, EMAIL, PASSWORD, "a.token.here", 4.5)
 
 
+def test_a_password_is_kept_exactly_and_a_blank_one_is_unset():
+    """Mutation: strip the secret -- red, the spaces are part of the password."""
+    kept = AlfredConfig.from_settings(settings(alfred_url=URL, alfred_email=EMAIL,
+                                               alfred_password=" two words "))
+    assert kept.password == " two words "
+    with pytest.raises(AlfredNotConfiguredError, match="QMCP_ALFRED_PASSWORD"):
+        AlfredConfig.from_settings(settings(alfred_url=URL, alfred_email=EMAIL,
+                                            alfred_password="  "))
+
+
 def test_the_secrets_stay_out_of_every_repr(monkeypatch):
     monkeypatch.setenv("QMCP_ALFRED_PASSWORD", PASSWORD)
     monkeypatch.setenv("QMCP_ALFRED_TOKEN", "a.token.here")

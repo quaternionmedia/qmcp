@@ -113,11 +113,11 @@ class AlfredConfig:
 
 
 def _reveal(value: Any) -> str | None:
-    """A secret's text, from a `SecretStr` or a plain string; blank is None."""
+    """A secret's text, exactly, from a `SecretStr` or a plain string; blank is None."""
     if value is None:
         return None
     text = value.get_secret_value() if hasattr(value, "get_secret_value") else str(value)
-    return text.strip() or None
+    return text if text.strip() else None
 
 
 # ---------------------------------------------------------------------------
