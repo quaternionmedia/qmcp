@@ -61,6 +61,12 @@ NOT_QUEUED = "not queued"
 # The most captions a review prompt lists; the request's context holds them all.
 REVIEW_LINES = 200
 
+# Seconds a transcription is waited for unless the run says otherwise: as long
+# as alfred lets one run before it lets another start in its place, its audio
+# engine's timeout (ALFRED_AUDIO_ENGINE_TIMEOUT, 1800 s unless set) and 900 s
+# to mix the timeline (`stale_after` in alfred's routes/captions.py).
+TRANSCRIBE_TIMEOUT = 2700.0
+
 
 @dataclass(frozen=True)
 class Transcribed:
@@ -112,7 +118,7 @@ def transcribe(
     invoke: Invoke,
     project_id: str,
     *,
-    timeout: float = 900.0,
+    timeout: float = TRANSCRIBE_TIMEOUT,
     queued_timeout: float = 60.0,
     poll_interval: float = 5.0,
     sleep: Callable[[float], None] = time.sleep,
@@ -322,6 +328,7 @@ __all__ = [
     "NO_ENGINE",
     "NOT_QUEUED",
     "REVIEW_LINES",
+    "TRANSCRIBE_TIMEOUT",
     "Delivered",
     "Transcribed",
     "approval_request",

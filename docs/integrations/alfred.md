@@ -259,6 +259,13 @@ the report; and `timed out` otherwise. A transcription of the project already
 running is followed to its end, since it makes the same captions. Only `done`
 is put to a person.
 
+**How long `transcribe` waits.** `--transcribe-timeout` is 2700 s unless given
+(`TRANSCRIBE_TIMEOUT` in `qmcp.cookbook.alfred_captions`): as long as alfred
+lets a transcription run before it lets another start in its place, which is
+its audio engine's timeout -- `ALFRED_AUDIO_ENGINE_TIMEOUT`, 1800 s unless set
+-- and 900 s to mix the timeline. Against an alfred given a longer engine
+timeout, give a longer wait.
+
 **What the person reads first.** The request is
 `alfred-captions-<project id>-<run id>`. Its prompt lists the transcript, a
 line per caption, `m:ss.s-m:ss.s  text`, at most `REVIEW_LINES`

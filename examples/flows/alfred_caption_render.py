@@ -29,6 +29,7 @@ from metaflow import FlowSpec, Parameter, current, step
 from qmcp.client import MCPClient
 from qmcp.client.mcp_client import default_base_url
 from qmcp.cookbook.alfred_captions import (
+    TRANSCRIBE_TIMEOUT,
     approval_request,
     deliver_render,
     review_request,
@@ -79,7 +80,9 @@ class AlfredCaptionRenderFlow(FlowSpec):
         default=os.getenv("MCP_URL") or default_base_url(),
     )
     transcribe_timeout = Parameter(
-        "transcribe-timeout", help="Seconds to wait for the transcription", default=900,
+        "transcribe-timeout",
+        help="Seconds to wait for the transcription; by default as long as alfred lets one run",
+        default=int(TRANSCRIBE_TIMEOUT),
         type=int,
     )
     render_timeout = Parameter(

@@ -11,6 +11,7 @@ Metaflow, which cannot be imported where `import fcntl` fails.
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import pickle
 import re
 import sys
@@ -225,6 +226,17 @@ def test_a_job_queued_behind_running_workers_times_out_rather_than_blaming_them(
     ended, _ = transcribed(Tools("queued", health={"renderer": {"ok": True, "workers": 1}}),
                            queued_timeout=60, timeout=120)
     assert (ended.outcome, ended.why) == (TIMED_OUT, "still queued after 120 s")
+
+
+def test_a_transcription_is_waited_for_as_long_as_alfred_lets_one_run(flow_file):
+    """alfred gives a transcription its audio engine's timeout, 1800 s unless
+    set, and 900 s to mix the timeline before it lets another start in its
+    place (alfred's config.py and routes/captions.py). Mutation: give up at
+    900 s -- red."""
+    assert flow.TRANSCRIBE_TIMEOUT >= 1800 + 900
+    default = inspect.signature(flow.transcribe).parameters["timeout"].default
+    assert default == flow.TRANSCRIBE_TIMEOUT
+    assert flow_file.AlfredCaptionRenderFlow.transcribe_timeout == flow.TRANSCRIBE_TIMEOUT
 
 
 def test_a_transcription_still_running_at_the_timeout_says_so():
