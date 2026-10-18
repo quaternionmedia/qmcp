@@ -14,11 +14,18 @@ import httpx
 import pytest
 
 import qmcp.tools.alfred as alfred
-from qmcp.tools.alfred import NO_AUDIO_ENGINE, TRANSCRIPTION_RUNNING, AlfredError
+from qmcp.tools.alfred import (
+    NO_AUDIO_ENGINE,
+    TRANSCRIPTION_NOT_QUEUED,
+    TRANSCRIPTION_RUNNING,
+    AlfredError,
+)
 from tests.alfred_stub import (
     HEALTH,
     NO_ENGINE_DETAIL,
     NO_OUTPUT_DETAIL,
+    NOT_QUEUED_DETAIL,
+    NOT_QUEUED_ERROR,
     RUNNING_DETAIL,
     URL,
     CaptionedAlfred,
@@ -129,6 +136,56 @@ def test_a_running_transcription_is_said_first_and_alfred_s_detail_kept(fake):
         f"{TRANSCRIPTION_RUNNING}: alfred refused POST /project/p1/captions/transcribe "
         f"(409): {RUNNING_DETAIL}")
     assert refused.value.status == 409
+
+
+def test_a_job_alfred_could_not_queue_is_said_as_that_not_as_no_audio_engine(fake):
+    """alfred's other 503: its broker would not take the job, which alfred then
+    holds as failed. Mutation: open every 503 with NO_AUDIO_ENGINE -- red."""
+    fake.add_project("p1", "Talk")
+    fake.broker = False
+    with pytest.raises(AlfredError) as refused:
+        alfred.alfred_captions_transcribe({"project_id": "p1"})
+    assert str(refused.value) == (
+        f"{TRANSCRIPTION_NOT_QUEUED}: alfred refused POST /project/p1/captions/transcribe "
+        f"(503): {NOT_QUEUED_DETAIL}")
+    assert (refused.value.status, refused.value.detail) == (503, NOT_QUEUED_DETAIL)
+    assert alfred.alfred_captions({"project_id": "p1"})["job"]["error"] == NOT_QUEUED_ERROR
+
+
+# Every reason alfred gives for having no audio engine to ask, as its
+# audio_engine.problem() words them; the list of vox's fields is cut short.
+NO_ENGINE_REASONS = [
+    NO_ENGINE_DETAIL,
+    "ALFRED_AUDIO_ENGINE_URL must be an http(s) URL, not 'engine:8010'.",
+    "The vendored vox (alfred/vox) has no media client (vox.media), so the audio engine at "
+    "http://joe.test:8010 cannot be asked anything.",
+    "ALFRED_AUDIO_ENGINE_CONTRACT_MEDIA_UPLOADS: not a field of vox's EngineContract, so not "
+    "something an engine can be told to spell differently; the fields are audio_path_key, ...",
+    "ALFRED_AUDIO_ENGINE_CONTRACT_*: vox refused the contract: media_transcribe "
+    "'/api/media/transcribe' must name {media_id} once: it is where an upload's id goes",
+]
+
+
+@pytest.mark.parametrize("detail", NO_ENGINE_REASONS)
+def test_every_reason_alfred_gives_for_no_audio_engine_is_said_alike(fake, detail):
+    """Mutation: recognise only the first of them -- red for the rest."""
+    fake.route("POST", "/project/p1/captions/transcribe",
+               lambda request: httpx.Response(503, json={"detail": detail}))
+    with pytest.raises(AlfredError) as refused:
+        alfred.alfred_captions_transcribe({"project_id": "p1"})
+    assert str(refused.value).startswith(f"{NO_AUDIO_ENGINE}: alfred refused POST ")
+    assert refused.value.detail == detail
+
+
+def test_a_503_saying_neither_is_passed_on_unopened(fake):
+    """What a proxy in front of alfred answers while alfred is down. Mutation:
+    open any 503 but the queue's with NO_AUDIO_ENGINE -- red."""
+    fake.route("POST", "/project/p1/captions/transcribe",
+               lambda request: httpx.Response(503, text="no available server"))
+    with pytest.raises(AlfredError) as refused:
+        alfred.alfred_captions_transcribe({"project_id": "p1"})
+    assert str(refused.value) == ("alfred refused POST /project/p1/captions/transcribe (503): "
+                                  "no available server")
 
 
 def test_another_refusal_is_alfred_s_own(fake):

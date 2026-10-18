@@ -107,10 +107,17 @@ transcribed.
 **`alfred_captions_transcribe`** asks alfred to transcribe the project's
 saved timeline and answers with the job alfred started; alfred stores the
 captions on the project when it is done, and `alfred_captions` follows it.
-alfred refuses when it has no audio engine (503) and while a transcription of
-the project runs (409); the error opens with `alfred has no audio engine` or
-`a transcription is already running` (`NO_AUDIO_ENGINE` and
-`TRANSCRIPTION_RUNNING` in `qmcp.tools.alfred`), then alfred's own refusal.
+alfred answers 503 for two reasons, which its `detail` tells apart: it has no
+audio engine it can ask -- none configured, or a setting it cannot use, the
+detail naming the engine or the `ALFRED_AUDIO_ENGINE_*` setting -- or its
+broker would not take the job, when the detail opens `The transcription could
+not be queued` and alfred records the job as failed. It answers 409 while a
+transcription of the project runs. The error opens with `alfred has no audio
+engine`, `alfred could not queue the transcription` or `a transcription is
+already running` (`NO_AUDIO_ENGINE`, `TRANSCRIPTION_NOT_QUEUED` and
+`TRANSCRIPTION_RUNNING` in `qmcp.tools.alfred`), then alfred's own refusal. A
+503 whose detail says neither, such as a proxy in front of alfred answers while
+alfred is down, is passed on as it came.
 
 **`alfred_captions_set`** is a person's correction. alfred checks what it is
 sent -- each caption starts at 0 or later, ends after it starts, has text, and
@@ -147,6 +154,7 @@ and records it as failed.
 | The login was refused | `alfred refused the login for <email> (<status>): <detail>` |
 | A route the server does not have | `... (404): Not Found (the server at <url> calls itself '<title>')`, the title read from the server's `/openapi.json`; an alfred that does not caption answers the caption routes this way |
 | No audio engine, on `alfred_captions_transcribe` | `alfred has no audio engine: alfred refused POST /project/<id>/captions/transcribe (503): <alfred's detail>` |
+| A transcription alfred could not queue | `alfred could not queue the transcription: alfred refused POST ... (503): The transcription could not be queued: <what its broker raised>` |
 | A transcription of the project running | `a transcription is already running: alfred refused POST ... (409): <alfred's detail>` |
 | No answer | `alfred at <url> could not be reached ...`, or `did not answer ... in time` |
 | An answer that is not JSON | `alfred answered <method> <path> with <content type>, not JSON`, and the server's title when it gives one |
@@ -236,7 +244,8 @@ server in `qmcp_mcp.py`. `run --help` lists the parameters and their defaults.
 
 **How `transcribe` ends.** `done`, with the captions; `no speech`, done with no
 caption to show; `failed`, with alfred's reason; `no audio engine`, at once,
-when alfred refuses for want of one; `no renderer`, for a job still queued
+when alfred refuses for want of one; `not queued`, at once, when alfred's broker
+would not take the job; `no renderer`, for a job still queued
 after `--queued-timeout` when `alfred_health` reports no worker running -- a
 transcription is one of alfred's worker tasks, as a render is -- or for one
 that never left the queue within `--transcribe-timeout` on an alfred without

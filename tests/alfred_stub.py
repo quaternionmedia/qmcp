@@ -131,8 +131,13 @@ HEALTH: dict[str, Any] = json.loads(
 
 # alfred's details, from alfred/core/routes/captions.py and render.py. The 503
 # for no audio engine is the sentence the health report's `detail` carries:
-# both are `problem()`'s, in alfred/core/utils/audio_engine.py.
+# both are `problem()`'s, in alfred/core/utils/audio_engine.py. The 503 for a
+# job the broker would not take carries what the broker raised, here a refused
+# connection, and alfred records the job as failed with it.
 NO_ENGINE_DETAIL: str = HEALTH["audio_engine"]["detail"]
+BROKER_DOWN = "[Errno 111] Connection refused"
+NOT_QUEUED_DETAIL = f"The transcription could not be queued: {BROKER_DOWN}"
+NOT_QUEUED_ERROR = f"could not be queued: {BROKER_DOWN}"
 RUNNING_DETAIL = "This project's timeline is already being transcribed; wait for that to finish."
 NO_OUTPUT_DETAIL = "That render has no output file yet"
 
@@ -155,7 +160,8 @@ class CaptionedAlfred(FakeAlfred):
     A project carries `captions`, `caption_style` and `captions_job`, and
     answers the caption routes: `GET` and `PUT /project/{id}/captions`, and
     `POST .../captions/transcribe`, which answers 503 while `audio_engine`
-    says none is configured and 409 while a job runs. Each look at the captions
+    says none is configured, 409 while a job runs, and 503 again, with the
+    job failed, while `broker` is false. Each look at the captions
     moves a job one state -- queued, transcribing, then done with what the
     engine `heard`, or failed -- while `workers` is above 0. A render moves the
     same way, queued, rendering, rendered, on each look at its status, and is
@@ -167,6 +173,7 @@ class CaptionedAlfred(FakeAlfred):
     def __init__(self) -> None:
         super().__init__()
         self.audio_engine: dict[str, Any] = {"configured": True, "ok": True, "detail": None}
+        self.broker = True  # whether alfred's broker takes a job
         self.workers = 1
         self.projects: dict[str, dict[str, Any]] = {}
         self.heard: dict[str, list[dict[str, Any]]] = {}
@@ -264,6 +271,9 @@ class CaptionedAlfred(FakeAlfred):
             return httpx.Response(409, json={"detail": RUNNING_DETAIL})
         project["captions_job"] = {"state": "queued", "error": None, "engine": None,
                                    "segments": None, "updated_at": _now()}
+        if not self.broker:
+            project["captions_job"].update(state="failed", error=NOT_QUEUED_ERROR)
+            return httpx.Response(503, json={"detail": NOT_QUEUED_DETAIL})
         return httpx.Response(202, json={"job": project["captions_job"]})
 
     def tick(self, project: dict[str, Any]) -> None:

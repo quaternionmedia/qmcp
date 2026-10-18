@@ -50,12 +50,17 @@ NOT_CONFIGURED = (
     "alfred that asks for an account"
 )
 
-# How `alfred_captions_transcribe` opens the two refusals a transcription can
-# meet: alfred's 503, when it has no audio engine, and its 409, while one of
-# the project's transcriptions is running. `qmcp.cookbook.alfred_captions`
-# tells the two apart by these, through the error the server records.
+# How `alfred_captions_transcribe` opens the refusals a transcription can meet,
+# which `qmcp.cookbook.alfred_captions` tells apart through the error the
+# server records. alfred answers 503 for two reasons (its routes/captions.py):
+# no audio engine it can ask, its detail naming the engine or an
+# ALFRED_AUDIO_ENGINE_* setting; and a job its broker would not take, its
+# detail opening with QUEUE_REFUSED. It answers 409 while one of the project's
+# transcriptions is running. A 503 saying neither is passed on unopened.
 NO_AUDIO_ENGINE = "alfred has no audio engine"
+TRANSCRIPTION_NOT_QUEUED = "alfred could not queue the transcription"
 TRANSCRIPTION_RUNNING = "a transcription is already running"
+QUEUE_REFUSED = "The transcription could not be queued"
 
 
 class AlfredError(RuntimeError):
@@ -728,13 +733,27 @@ def alfred_captions(params: dict[str, Any]) -> dict[str, Any]:
     return captions_view(project_id, _expect(client().get(path), dict, "GET", path))
 
 
+def transcription_refusal(status: int | None, detail: Any) -> str | None:
+    """How `alfred_captions_transcribe` opens alfred's refusal with `status` and
+    `detail`; None for one it passes on as it came."""
+    if status == 409:
+        return TRANSCRIPTION_RUNNING
+    if status != 503 or not isinstance(detail, str):
+        return None
+    if detail.startswith(QUEUE_REFUSED):
+        return TRANSCRIPTION_NOT_QUEUED
+    if "audio engine" in detail.replace("_", " ").lower():
+        return NO_AUDIO_ENGINE
+    return None
+
+
 @tool_registry.register(
     name="alfred_captions_transcribe",
     description=(
         "Start transcribing an alfred project's saved timeline with alfred's audio engine. "
         "alfred stores the captions on the project when it is done; alfred_captions follows "
-        "the job. An error says so when alfred has no audio engine, or when a transcription "
-        "of the project is already running."
+        "the job. An error says so when alfred has no audio engine, when it could not queue "
+        "the transcription, or when a transcription of the project is already running."
     ),
     input_schema=_PROJECT_ID,
 )
@@ -744,7 +763,7 @@ def alfred_captions_transcribe(params: dict[str, Any]) -> dict[str, Any]:
     try:
         started = client().request("POST", path)
     except AlfredError as refused:
-        opening = {503: NO_AUDIO_ENGINE, 409: TRANSCRIPTION_RUNNING}.get(refused.status)
+        opening = transcription_refusal(refused.status, refused.detail)
         if opening is None:
             raise
         raise AlfredError(
@@ -831,6 +850,8 @@ def alfred_health(params: dict[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "NO_AUDIO_ENGINE",
+    "QUEUE_REFUSED",
+    "TRANSCRIPTION_NOT_QUEUED",
     "TRANSCRIPTION_RUNNING",
     "AlfredClient",
     "AlfredConfig",
@@ -841,4 +862,5 @@ __all__ = [
     "link_expiry",
     "project_captions",
     "project_summary",
+    "transcription_refusal",
 ]

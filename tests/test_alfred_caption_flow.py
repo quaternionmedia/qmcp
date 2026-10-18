@@ -30,6 +30,7 @@ from qmcp.cookbook.alfred_captions import (
     FAILED,
     NO_ENGINE,
     NO_SPEECH,
+    NOT_QUEUED,
     Delivered,
     Transcribed,
 )
@@ -42,8 +43,14 @@ from qmcp.cookbook.alfred_render import (
     ToolFailedError,
     Waited,
 )
-from qmcp.tools.alfred import NO_AUDIO_ENGINE, TRANSCRIPTION_RUNNING
-from tests.alfred_stub import NO_ENGINE_DETAIL, URL, CaptionedAlfred, connect
+from qmcp.tools.alfred import NO_AUDIO_ENGINE, TRANSCRIPTION_NOT_QUEUED, TRANSCRIPTION_RUNNING
+from tests.alfred_stub import (
+    NO_ENGINE_DETAIL,
+    NOT_QUEUED_DETAIL,
+    URL,
+    CaptionedAlfred,
+    connect,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -152,6 +159,16 @@ def test_no_audio_engine_ends_it_at_once_in_alfred_s_words():
     assert ended.outcome == NO_ENGINE and not ended.done
     assert ended.why == (f"{NO_AUDIO_ENGINE}: alfred refused POST "
                          f"/project/p1/captions/transcribe (503): {NO_ENGINE_DETAIL}")
+    assert tools.calls == ["alfred_captions_transcribe"] and clock.slept == []
+
+
+def test_a_job_alfred_could_not_queue_ends_it_at_once_in_alfred_s_words():
+    """Mutation: treat it as any other refusal -- red, it raises."""
+    tools = Tools("queued", start=refusal(TRANSCRIPTION_NOT_QUEUED, 503, NOT_QUEUED_DETAIL))
+    ended, clock = transcribed(tools)
+    assert ended.outcome == NOT_QUEUED and not ended.done
+    assert ended.why == (f"{TRANSCRIPTION_NOT_QUEUED}: alfred refused POST "
+                         f"/project/p1/captions/transcribe (503): {NOT_QUEUED_DETAIL}")
     assert tools.calls == ["alfred_captions_transcribe"] and clock.slept == []
 
 
@@ -560,6 +577,17 @@ def test_no_audio_engine_asks_nobody_anything(flow_file, monkeypatch, server, fa
         "Nothing was asked: the transcription of alfred project p1 could not start: "
         f"{NO_AUDIO_ENGINE}: alfred refused POST /project/p1/captions/transcribe (503): "
         f"{NO_ENGINE_DETAIL}")
+    assert ran.tools == ["alfred_captions_transcribe"] and ran.asked == []
+
+
+def test_a_job_alfred_could_not_queue_asks_nobody_anything(flow_file, monkeypatch, server, fake):
+    fake.broker = False
+    ran = run(flow_file, monkeypatch, server, deliver=True)
+    assert ran.flow.transcribed.outcome == NOT_QUEUED
+    assert ran.line == (
+        "Nothing was asked: the transcription of alfred project p1 could not start: "
+        f"{TRANSCRIPTION_NOT_QUEUED}: alfred refused POST /project/p1/captions/transcribe "
+        f"(503): {NOT_QUEUED_DETAIL}.")
     assert ran.tools == ["alfred_captions_transcribe"] and ran.asked == []
 
 

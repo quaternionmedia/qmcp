@@ -6,7 +6,8 @@ step each:
     transcribe  `alfred_captions_transcribe` for the project's saved timeline,
                 then `alfred_captions` until the job is done or failed, sits
                 queued with no worker running, or runs out of time; an alfred
-                with no audio engine ends it at once
+                with no audio engine, or that could not queue the job, ends it
+                at once
     review      a request on qmcp's human queue carrying the transcript:
                 approve renders the project with its captions, reject ends
                 the run
@@ -44,13 +45,18 @@ from qmcp.cookbook.alfred_render import (
     renderer_workers,
     sentence,
 )
-from qmcp.tools.alfred import NO_AUDIO_ENGINE, TRANSCRIPTION_RUNNING
+from qmcp.tools.alfred import (
+    NO_AUDIO_ENGINE,
+    TRANSCRIPTION_NOT_QUEUED,
+    TRANSCRIPTION_RUNNING,
+)
 
 # How a transcription ends. NO_RENDERER and TIMED_OUT are the render wait's.
 DONE = "done"
 NO_SPEECH = "no speech"
 FAILED = "failed"
 NO_ENGINE = "no audio engine"
+NOT_QUEUED = "not queued"
 
 # The most captions a review prompt lists; the request's context holds them all.
 REVIEW_LINES = 200
@@ -61,10 +67,11 @@ class Transcribed:
     """How a transcription ended.
 
     `outcome` is `DONE`, `NO_SPEECH` (done, with no caption to show),
-    `FAILED`, `NO_ENGINE`, `NO_RENDERER` or `TIMED_OUT`. `captions` are the
-    project's once the job is done; `job` is alfred's last word on it; `why`
-    is one line for a person, empty when it is done. `joined` is true when
-    the run followed a transcription that was already running.
+    `FAILED`, `NO_ENGINE`, `NOT_QUEUED`, `NO_RENDERER` or `TIMED_OUT`.
+    `captions` are the project's once the job is done; `job` is alfred's last
+    word on it; `why` is one line for a person, empty when it is done.
+    `joined` is true when the run followed a transcription that was already
+    running.
     """
 
     outcome: str
@@ -111,7 +118,8 @@ def transcribe(
 ) -> Transcribed:
     """Start transcribing the project's saved timeline and follow the job.
 
-    alfred with no audio engine ends it at once as `NO_ENGINE`. A
+    alfred with no audio engine ends it at once as `NO_ENGINE`, and one that
+    could not queue the job, which it then records as failed, as `NOT_QUEUED`. A
     transcription already running is followed rather than refused, since it
     makes the same captions. A job still queued after `queued_timeout` seconds
     ends the wait as `NO_RENDERER` when `alfred_health` reports no worker
@@ -125,9 +133,11 @@ def transcribe(
     try:
         invoke("alfred_captions_transcribe", {"project_id": project_id})
     except ToolFailedError as refused:
-        if NO_AUDIO_ENGINE in str(refused):
-            return Transcribed(NO_ENGINE, [], None, clock() - started,
-                               _from(NO_AUDIO_ENGINE, refused))
+        for opening, outcome in ((NO_AUDIO_ENGINE, NO_ENGINE),
+                                 (TRANSCRIPTION_NOT_QUEUED, NOT_QUEUED)):
+            if opening in str(refused):
+                return Transcribed(outcome, [], None, clock() - started,
+                                   _from(opening, refused))
         if TRANSCRIPTION_RUNNING not in str(refused):
             raise
         joined = True
@@ -256,6 +266,7 @@ def deliver_render(invoke: Invoke, render_id: str, destination: str | None = Non
 
 _TRANSCRIPTION_ENDED = {
     NO_ENGINE: "could not start",
+    NOT_QUEUED: "could not start",
     NO_SPEECH: "found no speech",
     FAILED: "failed",
     NO_RENDERER: "was not run",
@@ -307,6 +318,7 @@ __all__ = [
     "FAILED",
     "NO_ENGINE",
     "NO_SPEECH",
+    "NOT_QUEUED",
     "REVIEW_LINES",
     "Delivered",
     "Transcribed",
