@@ -13,6 +13,7 @@ FLOW_DIR = Path(__file__).resolve().parents[1] / "examples" / "flows"
 FLOW_MODULES = [
     ("simple_plan.py", ["metaflow"]),
     ("approved_deploy.py", ["metaflow"]),
+    ("alfred_render.py", ["metaflow"]),
     ("local_agent_chain.py", ["metaflow", "pydantic_ai"]),
     ("local_qc_gauntlet.py", ["metaflow", "pydantic_ai"]),
     ("local_release_notes.py", ["metaflow", "pydantic_ai"]),

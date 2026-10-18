@@ -148,6 +148,12 @@ def _recipe_specs(repo_root: Path) -> dict[str, RecipeSpec]:
             flow_rel="examples/flows/approved_deploy.py",
             required_flags=("--service",),
         ),
+        "alfred-render": RecipeSpec(
+            name="alfred-render",
+            description="Render an alfred project, then ask a person to approve it",
+            flow_rel="examples/flows/alfred_render.py",
+            required_flags=("--project-id",),
+        ),
         "local-agent-chain": RecipeSpec(
             name="local-agent-chain",
             description="Local LLM plan -> review -> refine chain",

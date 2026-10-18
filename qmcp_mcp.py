@@ -60,6 +60,11 @@ _RECIPES: dict[str, dict[str, Any]] = {
         "flow": "examples/flows/approved_deploy.py",
         "required_flags": ["--service"],
     },
+    "alfred-render": {
+        "description": "Render an alfred project, then ask a person to approve it",
+        "flow": "examples/flows/alfred_render.py",
+        "required_flags": ["--project-id"],
+    },
     "local-agent-chain": {
         "description": "Local LLM plan -> review -> refine chain",
         "flow": "examples/flows/local_agent_chain.py",
