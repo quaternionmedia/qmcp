@@ -293,6 +293,11 @@ def test_a_request_nobody_answers_ends_the_wait_after_its_expiry():
     (Waited(TIMED_OUT, {}, 30, "still rendering after 30 s"), None,
      "Nothing was asked: render r1 of 'Demo' did not finish in time: "
      "still rendering after 30 s."),
+    # alfred's reason ends its own sentence. Mutation: add a full stop anyway -- red.
+    (Waited(FAILED, {}, 3, "clip 1: 'talk.mp4': not a library path. Name library media as "
+                           "GET /videos lists it (videos/<file>)."), None,
+     "Nothing was asked: render r1 of 'Demo' failed: clip 1: 'talk.mp4': not a library path. "
+     "Name library media as GET /videos lists it (videos/<file>)."),
 ])
 def test_the_summary_says_how_the_run_ended(waited, answer, line):
     assert flow.summary(QUEUED, waited, answer) == line

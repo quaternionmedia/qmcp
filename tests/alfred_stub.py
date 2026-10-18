@@ -3,8 +3,10 @@
 One account, tokens shaped as alfred's JWTs are, and canned answers per route,
 so nothing needs a running alfred. `CaptionedAlfred` also holds projects,
 their captions and their renders the way alfred's caption routes do, with a
-transcription job and a render that each move one state per look. Not
-collected: the name does not start with `test_`.
+transcription job and a render that each move one state per look. What it
+answers in alfred's own words is copied from alfred: `HEALTH` is alfred's
+`GET /health`, kept in `tests/alfred_health.json`. Not collected: the name
+does not start with `test_`.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -119,11 +122,22 @@ def connect(fake: FakeAlfred, **config) -> AlfredClient:
     return AlfredClient(AlfredConfig(url=URL, **config), transport=fake.transport())
 
 
+# --- alfred's own answers ------------------------------------------------------
+
+# alfred's `GET /health` as alfred's code answers it with no audio engine set:
+# its `Health` model, alfred/core/routes/health.py.
+HEALTH: dict[str, Any] = json.loads(
+    Path(__file__).with_name("alfred_health.json").read_text(encoding="utf-8"))
+
+# alfred's details, from alfred/core/routes/captions.py and render.py. The 503
+# for no audio engine is the sentence the health report's `detail` carries:
+# both are `problem()`'s, in alfred/core/utils/audio_engine.py.
+NO_ENGINE_DETAIL: str = HEALTH["audio_engine"]["detail"]
+RUNNING_DETAIL = "This project's timeline is already being transcribed; wait for that to finish."
+NO_OUTPUT_DETAIL = "That render has no output file yet"
+
 # --- captions ------------------------------------------------------------------
 
-NO_ENGINE_DETAIL = "No speech engine is configured: set ALFRED_SPEECH_URL"
-RUNNING_DETAIL = "A transcription of this project is already running"
-NO_OUTPUT_DETAIL = "That render has no output file yet"
 SIGNED_UNTIL = 1893456000  # the `exp` on every download link, 2030-01-01T00:00:00Z
 
 _CAPTIONS = re.compile(r"/project/([^/]+)/captions(/transcribe)?")
@@ -140,18 +154,19 @@ class CaptionedAlfred(FakeAlfred):
 
     A project carries `captions`, `caption_style` and `captions_job`, and
     answers the caption routes: `GET` and `PUT /project/{id}/captions`, and
-    `POST .../captions/transcribe`, which answers 503 while `speech` says no
-    engine is configured and 409 while a job runs. Each look at the captions
+    `POST .../captions/transcribe`, which answers 503 while `audio_engine`
+    says none is configured and 409 while a job runs. Each look at the captions
     moves a job one state -- queued, transcribing, then done with what the
     engine `heard`, or failed -- while `workers` is above 0. A render moves the
     same way, queued, rendering, rendered, on each look at its status, and is
-    delivered by `POST /render/{id}/deliver`. `GET /health` reports `workers`
-    and, unless it is None, `speech`. A route given with `route` answers first.
+    delivered by `POST /render/{id}/deliver`. `GET /health` is alfred's report,
+    `HEALTH`'s shape, with `workers`, the renders queued and `audio_engine`. A
+    route given with `route` answers first.
     """
 
     def __init__(self) -> None:
         super().__init__()
-        self.speech: dict[str, Any] | None = {"configured": True, "ok": True}
+        self.audio_engine: dict[str, Any] = {"configured": True, "ok": True, "detail": None}
         self.workers = 1
         self.projects: dict[str, dict[str, Any]] = {}
         self.heard: dict[str, list[dict[str, Any]]] = {}
@@ -224,15 +239,17 @@ class CaptionedAlfred(FakeAlfred):
                 return self.deliver(render, request.url.params.get("destination"))
         return super().unrouted(request)
 
+    def without_an_audio_engine(self) -> None:
+        """Answer as alfred does with no ALFRED_AUDIO_ENGINE_URL set."""
+        self.audio_engine = dict(HEALTH["audio_engine"])
+
     def health(self) -> dict[str, Any]:
-        report: dict[str, Any] = {
+        return {
             "api": "ok", "db": "ok",
             "renderer": {"ok": self.workers > 0, "workers": self.workers},
             "queue": {"pending": sum(r["state"] == "queued" for r in self.renders.values())},
+            "audio_engine": dict(self.audio_engine),
         }
-        if self.speech is not None:
-            report["speech"] = self.speech
-        return report
 
     @staticmethod
     def held(project: dict[str, Any]) -> dict[str, Any]:
@@ -240,7 +257,7 @@ class CaptionedAlfred(FakeAlfred):
                 "job": project["captions_job"]}
 
     def transcribe(self, project: dict[str, Any]) -> httpx.Response:
-        if not (self.speech or {}).get("configured"):
+        if not self.audio_engine.get("configured"):
             return httpx.Response(503, json={"detail": NO_ENGINE_DETAIL})
         job = project["captions_job"]
         if job and job["state"] in ("queued", "transcribing"):

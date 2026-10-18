@@ -553,13 +553,13 @@ def test_a_rejected_render_is_not_delivered(flow_file, monkeypatch, server, fake
 
 
 def test_no_speech_engine_asks_nobody_anything(flow_file, monkeypatch, server, fake):
-    fake.speech = {"configured": False, "ok": False}
+    fake.without_an_audio_engine()
     ran = run(flow_file, monkeypatch, server, deliver=True)
     assert ran.flow.transcribed.outcome == NO_ENGINE
-    assert ran.line == (
+    assert ran.line == (  # alfred's detail ends the sentence
         "Nothing was asked: the transcription of alfred project p1 could not start: "
         f"{NO_SPEECH_ENGINE}: alfred refused POST /project/p1/captions/transcribe (503): "
-        f"{NO_ENGINE_DETAIL}.")
+        f"{NO_ENGINE_DETAIL}")
     assert ran.tools == ["alfred_captions_transcribe"] and ran.asked == []
 
 

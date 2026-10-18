@@ -1,4 +1,4 @@
-"""The caption tools, a render's captions, delivery, and alfred's speech report.
+"""The caption tools, a render's captions, delivery, and alfred's health report.
 
 alfred is `CaptionedAlfred` in `tests/alfred_stub.py`, which holds projects,
 captions and renders as alfred's caption routes do; nothing here needs a
@@ -8,6 +8,7 @@ running alfred.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -15,6 +16,7 @@ import pytest
 import qmcp.tools.alfred as alfred
 from qmcp.tools.alfred import NO_SPEECH_ENGINE, TRANSCRIPTION_RUNNING, AlfredError
 from tests.alfred_stub import (
+    HEALTH,
     NO_ENGINE_DETAIL,
     NO_OUTPUT_DETAIL,
     RUNNING_DETAIL,
@@ -108,7 +110,7 @@ def test_no_speech_engine_is_said_first_and_alfred_s_detail_kept(fake):
     """Mutation: let alfred's 503 through as it came -- red, the flow could not
     tell it from any other refusal."""
     fake.add_project("p1", "Talk")
-    fake.speech = {"configured": False, "ok": False}
+    fake.without_an_audio_engine()
     with pytest.raises(AlfredError) as refused:
         alfred.alfred_captions_transcribe({"project_id": "p1"})
     assert str(refused.value) == (
@@ -360,17 +362,32 @@ def test_delivery_needs_a_render_id(fake):
 # --- alfred_health ---------------------------------------------------------------------
 
 
-def test_health_carries_alfred_s_speech_report(fake):
-    fake.speech = {"configured": True, "ok": False}
+def keys(value: Any, within: str = "") -> set[str]:
+    """Every key of a JSON object, a nested one as `outer.inner`."""
+    if not isinstance(value, dict):
+        return set()
+    found: set[str] = set()
+    for key, inner in value.items():
+        found |= {within + key} | keys(inner, f"{within}{key}.")
+    return found
+
+
+def test_the_stand_in_reports_health_as_alfred_does(fake):
+    """Held to alfred's own answer, `tests/alfred_health.json`: with no audio
+    engine the stand-in answers exactly that, and with one, the same keys.
+    Mutation: report `speech` for `audio_engine`, or leave out its `detail` -- red."""
+    fake.without_an_audio_engine()
+    assert alfred.alfred_health({}) == HEALTH
+    fake.audio_engine = {"configured": True, "ok": True, "detail": None}
+    assert keys(alfred.alfred_health({})) == keys(HEALTH)
+
+
+def test_health_carries_alfred_s_audio_engine_report(fake):
+    why = "the audio engine at http://joe.test:8010: it failed (500): no model loaded"
+    fake.audio_engine = {"configured": True, "ok": False, "detail": why}
     report = alfred.alfred_health({})
-    assert report["speech"] == {"configured": True, "ok": False}
+    assert report["audio_engine"] == {"configured": True, "ok": False, "detail": why}
     assert report["renderer"] == {"ok": True, "workers": 1}
-
-
-def test_health_from_an_alfred_that_does_not_transcribe_says_nothing_of_speech(fake):
-    """Nothing is filled in for an alfred that does not report it."""
-    fake.speech = None
-    assert "speech" not in alfred.alfred_health({})
 
 
 # --- through the server ----------------------------------------------------------------
@@ -384,7 +401,7 @@ def test_the_server_lists_the_caption_tools(client):
 
 def test_no_speech_engine_reaches_the_invocation_record_in_so_many_words(client, fake):
     fake.add_project("p1", "Talk")
-    fake.speech = {"configured": False, "ok": False}
+    fake.without_an_audio_engine()
     answer = client.post("/v1/tools/alfred_captions_transcribe",
                          json={"input": {"project_id": "p1"}}).json()
     assert answer["error"] == (

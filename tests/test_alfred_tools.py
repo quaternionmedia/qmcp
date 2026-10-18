@@ -24,7 +24,7 @@ from qmcp.tools.alfred import (
     AlfredError,
     AlfredNotConfiguredError,
 )
-from tests.alfred_stub import EMAIL, PASSWORD, URL, FakeAlfred, connect, jwt
+from tests.alfred_stub import EMAIL, HEALTH, PASSWORD, URL, FakeAlfred, connect, jwt
 
 
 @pytest.fixture
@@ -526,9 +526,14 @@ def test_status_needs_a_render_id(tools):
         alfred.alfred_render_status({})
 
 
-def test_health_is_alfred_s_report_as_it_answers(tools):
-    report = {"api": "ok", "db": "ok", "renderer": {"ok": False, "workers": 0},
-              "queue": {"pending": 2}}
+@pytest.mark.parametrize("report", [
+    HEALTH,
+    # An alfred whose report predates its audio engine.
+    {"api": "ok", "db": "ok", "renderer": {"ok": False, "workers": 0}, "queue": {"pending": 2}},
+], ids=["alfred", "before-its-audio-engine"])
+def test_health_is_alfred_s_report_as_it_answers(tools, report):
+    """Nothing added, dropped or filled in. Mutation: default a missing
+    `audio_engine` -- red."""
     tools.route("GET", "/health", report)
     assert alfred.alfred_health({}) == report
 

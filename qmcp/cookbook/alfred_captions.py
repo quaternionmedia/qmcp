@@ -42,6 +42,7 @@ from qmcp.cookbook.alfred_render import (
     ToolFailedError,
     Waited,
     renderer_workers,
+    sentence,
 )
 from qmcp.tools.alfred import NO_SPEECH_ENGINE, TRANSCRIPTION_RUNNING
 
@@ -275,8 +276,8 @@ def summary(
     """One line saying how the run ended."""
     if not transcribed.done:
         ended = _TRANSCRIPTION_ENDED.get(transcribed.outcome, "ended")
-        return (f"Nothing was asked: the transcription of alfred project {project_id} "
-                f"{ended}: {transcribed.why}.")
+        return sentence(f"Nothing was asked: the transcription of alfred project {project_id} "
+                        f"{ended}: {transcribed.why}")
     if reviewed == REJECT:
         return f"The transcript of alfred project {project_id} was rejected; nothing was rendered."
     if reviewed != APPROVE:
@@ -286,7 +287,7 @@ def summary(
               f"{queued.get('captions')} captions")
     if not waited.rendered:
         ended = _RENDER_ENDED.get(waited.outcome, "was not rendered")
-        return f"The transcript was approved, and {render} {ended}: {waited.why}."
+        return sentence(f"The transcript was approved, and {render} {ended}: {waited.why}")
     if answer == REJECT:
         return f"Rejected: {render}; nothing was delivered."
     if answer != APPROVE:
@@ -296,7 +297,7 @@ def summary(
     if delivered is None:
         return f"Approved: {render}, {link}; not delivered."
     if not delivered.ok:
-        return f"Approved: {render}, {link}; the delivery failed: {delivered.error}."
+        return sentence(f"Approved: {render}, {link}; the delivery failed: {delivered.error}")
     return (f"Approved and delivered: {render}, to {delivered.destination} at "
             f"{delivered.location}.")
 

@@ -56,7 +56,7 @@ every `repr`.
 | `alfred_captions` | `project_id` | `{project_id, captions, style, job}` | `GET /project/{id}/captions` |
 | `alfred_captions_transcribe` | `project_id` | `{project_id, job}` | `POST /project/{id}/captions/transcribe` |
 | `alfred_captions_set` | `project_id`; `captions`, `style`, or both | `{project_id, captions, style, job}` | `PUT /project/{id}/captions`, and `GET` for what is left out |
-| `alfred_health` | none | alfred's report, `{api, db, renderer: {ok, workers}, queue: {pending}, speech: {configured, ok}}`, `speech` from an alfred that transcribes | `GET /health` |
+| `alfred_health` | none | alfred's report as alfred answers it, `{api, db, renderer: {ok, workers}, queue: {pending}, audio_engine: {configured, ok, detail}}` | `GET /health` |
 
 **`alfred_projects`** counts the clips on each project's timeline: 0 for a
 project built from a form rather than on the timeline. `duration` is the one
@@ -120,10 +120,17 @@ sent back as it is, so a route that stores both does not reset it, and one
 alfred holds as null is left out rather than sent. The result is what alfred
 then holds, read back with `GET` when alfred's answer does not carry it.
 
-**`alfred_health`**: an alfred without the report answers 404, which the tool
-raises as an error. `speech` says whether a speech engine is configured and
-answers; an alfred that does not transcribe leaves it out, and so does the
-tool.
+**`alfred_health`** is alfred's report as alfred answers it: the tool adds,
+drops and fills in nothing. alfred answers it to a session, as it does every
+route the tools call, and an alfred without the report answers 404, which the
+tool raises as an error. `db` is `ok` or `down`; `renderer.workers` is how many
+render workers answered alfred's ping, and `renderer.ok` whether any did;
+`queue.pending` is how many renders wait for one, null when alfred could not ask
+its broker. `audio_engine` says whether an audio engine is configured --
+alfred's `ALFRED_AUDIO_ENGINE_URL` -- and whether it answers, with `detail`
+saying why not, null when it does; transcribing needs both, and a render worker
+to mix the timeline. An alfred whose report predates its audio engine answers
+without `audio_engine`, and the tool passes that on as it is.
 
 ## Errors
 

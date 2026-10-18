@@ -231,13 +231,20 @@ def wait_for_answer(
     return response.response if response is not None else None
 
 
+def sentence(text: str) -> str:
+    """`text` with a full stop after it, unless it already ends a sentence, as
+    alfred's own words often do."""
+    text = text.rstrip()
+    return text if text.endswith((".", "!", "?")) else f"{text}."
+
+
 def summary(queued: dict[str, Any], waited: Waited, answer: str | None) -> str:
     """One line saying how the run ended."""
     render = f"render {queued['render_id']} of {queued.get('name')!r}"
     if not waited.rendered:
         ended = {FAILED: "failed", TIMED_OUT: "did not finish in time"}.get(
             waited.outcome, "was not rendered")
-        return f"Nothing was asked: {render} {ended}: {waited.why}."
+        return sentence(f"Nothing was asked: {render} {ended}: {waited.why}")
     if answer == APPROVE:
         link = waited.status.get("download_url") or "in alfred"
         return f"Approved: {render}, {link}."
@@ -262,6 +269,7 @@ __all__ = [
     "invoker",
     "queue_render",
     "renderer_workers",
+    "sentence",
     "summary",
     "wait_for_answer",
     "wait_for_render",

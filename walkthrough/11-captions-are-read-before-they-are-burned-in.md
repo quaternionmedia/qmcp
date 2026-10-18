@@ -20,7 +20,7 @@ flow's steps.
 As on page 10, the server is a real one on an ephemeral port over a database
 made for this page, and alfred is a handler answering each route the tools use
 as alfred's API does. This one holds one project's captions, starts with no
-speech engine, finishes a transcription the first time it is looked at, and
+audio engine, finishes a transcription the first time it is looked at, and
 keeps every request:
 
     >>> import json
@@ -36,7 +36,9 @@ keeps every request:
     >>> HEARD = [{"start": 0.0, "end": 2.4, "text": "Welcome to the interview."},
     ...          {"start": 2.4, "end": 5.0, "text": "This is all fred's caption demo."}]
     >>> held = {"captions": [], "style": {"enabled": False, "fontsize": 48}, "job": None}
-    >>> speech = {"configured": False, "ok": False}
+    >>> engine = {"configured": False, "ok": False,
+    ...           "detail": "No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its "
+    ...                     "address (docs/captions.md says how to run one)."}
     >>> sent = []
 
     >>> def answers(request):
@@ -49,16 +51,15 @@ keeps every request:
     ...     if asked == ("GET", "/health"):
     ...         return httpx.Response(200, json={
     ...             "api": "ok", "db": "ok", "renderer": {"ok": True, "workers": 1},
-    ...             "queue": {"pending": 0}, "speech": speech})
+    ...             "queue": {"pending": 0}, "audio_engine": engine})
     ...     if asked == ("GET", f"/project/{PROJECT}"):
     ...         return httpx.Response(200, json={
     ...             "_id": PROJECT, "name": "Interview", "captions": held["captions"],
     ...             "caption_style": held["style"], "edl": {"duration": 5.0, "clips": [
     ...                 {"type": "video", "name": "videos/interview.mp4", "duration": 5.0}]}})
     ...     if asked == ("POST", f"/project/{PROJECT}/captions/transcribe"):
-    ...         if not speech["configured"]:
-    ...             return httpx.Response(
-    ...                 503, json={"detail": "No speech engine is configured: set ALFRED_SPEECH_URL"})
+    ...         if not engine["configured"]:
+    ...             return httpx.Response(503, json={"detail": engine["detail"]})
     ...         held["job"] = {"state": "queued", "error": None}
     ...         return httpx.Response(202, json={"job": held["job"]})
     ...     if asked == ("GET", f"/project/{PROJECT}/captions"):
@@ -89,19 +90,19 @@ keeps every request:
     >>> server = throwaway_server(Path(tempfile.mkdtemp()) / "queue.db")
     >>> client = MCPClient(base_url=server.__enter__())
 
-## An alfred without a speech engine says so
+## An alfred without an audio engine says so
 
-`alfred_health` passes on alfred's report, which says whether a speech engine
-is configured and answering:
+`alfred_health` passes on alfred's report, which says whether the audio engine
+alfred transcribes with is configured and answering, and why not:
 
-    >>> client.invoke_tool("alfred_health", {}).result["speech"]
-    {'configured': False, 'ok': False}
+    >>> client.invoke_tool("alfred_health", {}).result["audio_engine"]
+    {'configured': False, 'ok': False, 'detail': 'No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).'}
 
 Asked to transcribe anyway, alfred refuses, and the tool's error opens with
 what that means before alfred's own words:
 
     >>> print(client.invoke_tool("alfred_captions_transcribe", {"project_id": PROJECT}).error)
-    Tool execution failed: alfred has no speech engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No speech engine is configured: set ALFRED_SPEECH_URL
+    Tool execution failed: alfred has no speech engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).
 
 The caption flow, `examples/flows/alfred_caption_render.py`, runs the steps in
 `qmcp.cookbook.alfred_captions`, one Metaflow step each, with every call to
@@ -115,7 +116,7 @@ first step ends there, asking nobody anything:
     >>> ended.outcome
     'no speech engine'
     >>> print(flow.summary(PROJECT, ended))
-    Nothing was asked: the transcription of alfred project 6a78b0420eea42d905943615 could not start: alfred has no speech engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No speech engine is configured: set ALFRED_SPEECH_URL.
+    Nothing was asked: the transcription of alfred project 6a78b0420eea42d905943615 could not start: alfred has no speech engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).
 
 ## Transcribed, and put to a person
 
@@ -123,7 +124,7 @@ With an engine configured, the step starts a transcription and reads the
 project's captions until the job is done; the page does not sleep between
 reads:
 
-    >>> speech.update(configured=True, ok=True)
+    >>> engine.update(configured=True, ok=True, detail=None)
     >>> transcribed = flow.transcribe(invoke, PROJECT, sleep=lambda seconds: None)
     >>> transcribed.outcome, transcribed.job["engine"]
     ('done', 'joe')

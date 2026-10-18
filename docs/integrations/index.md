@@ -69,7 +69,8 @@ Drives alfred, a self-hosted video editor, over its HTTP API. Provides:
 - `alfred_render_deliver`, a finished render sent to a destination alfred offers
 - `alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set`, a
   project's captions read, transcribed by alfred's speech engine, and corrected
-- `alfred_health`, whether alfred has a renderer running and a speech engine
+- `alfred_health`, whether alfred has a renderer running and an audio engine
+  answering
 - `examples/flows/alfred_render.py`, a render put to a person for approval
 - `examples/flows/alfred_caption_render.py`, a transcript put to a person before
   it is burned into a render, the render put to a person, and delivery on

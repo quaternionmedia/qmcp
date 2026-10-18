@@ -817,10 +817,11 @@ def alfred_captions_set(params: dict[str, Any]) -> dict[str, Any]:
 @tool_registry.register(
     name="alfred_health",
     description=(
-        "alfred's report on itself: whether its API and database answer, how many render "
-        "workers are running, how many renders are waiting, and, from an alfred that "
-        "transcribes, whether a speech engine is configured and answering. An alfred "
-        "without the report answers this with an error."
+        "alfred's report on itself, as alfred answers it: whether its API and database "
+        "answer, how many render workers are running, how many renders are waiting (null "
+        "when alfred could not count them), and whether the audio engine it transcribes "
+        "captions with is configured and answering, with why not. An alfred without the "
+        "report answers this with an error."
     ),
     input_schema={"type": "object", "properties": {}},
 )
