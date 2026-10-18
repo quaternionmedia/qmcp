@@ -127,9 +127,11 @@ tool invocation through the server, under one correlation id:
     height: 720
     fps: 30.0
     quality: None
+    captions: 0
 
 The size and rate are the project's saved ones, and `quality` left as None is
-alfred's default. The timeline went to alfred exactly as alfred stored it,
+alfred's default. The project holds no captions, so none went with it. The
+timeline went to alfred exactly as alfred stored it,
 `"fadeOut": None` included -- no fade, where a missing `fadeOut` would be the
 engine's default one:
 

@@ -408,7 +408,8 @@ def test_a_project_renders_its_saved_edl_exactly_as_stored(tools):
                     "width": 1280, "height": 720, "fps": 30.0, "duration": 5.0}
     assert queued == {"render_id": "6a7900000000000000000001",
                       "project_id": "6a78b0420eea42d905943615", "name": "Timeline demo",
-                      "width": 1280, "height": 720, "fps": 30.0, "quality": None}
+                      "width": 1280, "height": 720, "fps": 30.0, "quality": None,
+                      "captions": 0}
 
 
 def test_what_the_caller_says_overrides_what_the_project_saved(tools):

@@ -1,10 +1,12 @@
 """Tools that drive alfred, the self-hosted video editor, over its HTTP API.
 
 `alfred_projects`, `alfred_templates`, `alfred_render_enqueue`,
-`alfred_render_status` and `alfred_health` each ask the alfred named by
-`QMCP_ALFRED_URL` and return what it answered, reshaped for a caller that is
-not alfred's own editor. `docs/integrations/alfred.md` is the reference: the
-settings, each tool's input and output, and the errors.
+`alfred_render_status`, `alfred_render_deliver`, `alfred_health`, and the
+caption tools `alfred_captions`, `alfred_captions_transcribe` and
+`alfred_captions_set` each ask the alfred named by `QMCP_ALFRED_URL` and
+return what it answered, reshaped for a caller that is not alfred's own
+editor. `docs/integrations/alfred.md` is the reference: the settings, each
+tool's input and output, and the errors.
 
 Nothing from alfred or its render engine is imported; every call is HTTP. A
 request alfred refuses raises `AlfredError` carrying alfred's own `detail`,
@@ -47,6 +49,13 @@ NOT_CONFIGURED = (
     "QMCP_ALFRED_EMAIL and QMCP_ALFRED_PASSWORD, or QMCP_ALFRED_TOKEN, for an "
     "alfred that asks for an account"
 )
+
+# How `alfred_captions_transcribe` opens the two refusals a transcription can
+# meet: alfred's 503, when it has no speech engine, and its 409, while one of
+# the project's transcriptions is running. `qmcp.cookbook.alfred_captions`
+# tells the two apart by these, through the error the server records.
+NO_SPEECH_ENGINE = "alfred has no speech engine"
+TRANSCRIPTION_RUNNING = "a transcription is already running"
 
 
 class AlfredError(RuntimeError):
@@ -198,6 +207,9 @@ class AlfredClient:
 
     def post(self, path: str, body: Any) -> Any:
         return self.request("POST", path, json=body)
+
+    def put(self, path: str, body: Any) -> Any:
+        return self.request("PUT", path, json=body)
 
     def request(self, method: str, path: str, **kwargs: Any) -> Any:
         """alfred's JSON answer to one request; `AlfredError` for anything else."""
@@ -391,6 +403,52 @@ def _path_id(value: Any) -> str:
     return quote(str(value), safe="")
 
 
+def _required(params: dict[str, Any], key: str) -> Any:
+    value = params.get(key)
+    if value is None or value == "":
+        raise ValueError(f"{key} is required")
+    return value
+
+
+def captions_view(project_id: Any, held: dict[str, Any]) -> dict[str, Any]:
+    """A project's captions as alfred holds them (`GET /project/{id}/captions`)."""
+    return {
+        "project_id": str(project_id),
+        "captions": held.get("captions"),
+        "style": held.get("style"),
+        "job": held.get("job"),
+    }
+
+
+def project_captions(
+    project: dict[str, Any], wanted: bool | None
+) -> tuple[list[Any], dict[str, Any]] | None:
+    """The captions and caption style a render of `project` carries, or None.
+
+    Unset (`wanted` None), the project decides: its captions go when its
+    caption style is enabled. `True` sends them with the style switched on,
+    whatever the project saved; `False` sends none. They go as alfred stores
+    them: alfred turns them into clips, not qmcp.
+    """
+    if wanted is False:
+        return None
+    captions = project.get("captions")
+    captions = captions if isinstance(captions, list) else []
+    style = project.get("caption_style")
+    style = style if isinstance(style, dict) else None
+    if wanted is None:
+        if not captions or style is None or style.get("enabled") is not True:
+            return None
+        return captions, style
+    if not captions:
+        raise AlfredError(
+            f"alfred project {project.get('_id') or project.get('id')} "
+            f"({project.get('name')!r}) has no captions to burn in; "
+            "alfred_captions_transcribe makes them"
+        )
+    return captions, {**(style or {}), "enabled": True}
+
+
 def project_summary(project: dict[str, Any]) -> dict[str, Any]:
     """One project as `alfred_projects` lists it."""
     edl = project.get("edl") or {}
@@ -464,8 +522,10 @@ def alfred_templates(params: dict[str, Any]) -> list[dict[str, Any]]:
     name="alfred_render_enqueue",
     description=(
         "Queue a render in alfred, of a saved project's timeline sent exactly as it is "
-        "stored (project_id) or of an explicit EDL (edl); give one of the two. Returns the "
-        "render's id and the settings it was queued with; alfred_render_status follows it."
+        "stored (project_id) or of an explicit EDL (edl); give one of the two. A project "
+        "whose caption style is enabled has its captions burned in. Returns the render's "
+        "id, the settings it was queued with, and how many captions went with it; "
+        "alfred_render_status follows it."
     ),
     input_schema={
         "type": "object",
@@ -499,6 +559,14 @@ def alfred_templates(params: dict[str, Any]) -> list[dict[str, Any]]:
                 "type": "string",
                 "description": "An encoding preset alfred offers: draft, standard or high",
             },
+            "captions": {
+                "type": "boolean",
+                "description": (
+                    "Burn a project's captions in: true sends them with its caption style "
+                    "switched on, false sends none; unset sends them when the project's "
+                    "caption style is enabled"
+                ),
+            },
         },
     },
 )
@@ -507,8 +575,14 @@ def alfred_render_enqueue(params: dict[str, Any]) -> dict[str, Any]:
     edl = params.get("edl")
     if (project_id is None) == (edl is None):
         raise ValueError("give exactly one of project_id, to render a saved project, or edl")
+    wanted = params.get("captions")
+    if wanted is not None and not isinstance(wanted, bool):
+        raise ValueError("captions is true, false, or left out")
+    if wanted and project_id is None:
+        raise ValueError("captions come from a saved project: give project_id to burn them in")
 
     alfred = client()
+    burned: tuple[list[Any], dict[str, Any]] | None = None
     if project_id is not None:
         path = f"/project/{_path_id(project_id)}"
         project = _expect(alfred.get(path), dict, "GET", path)
@@ -518,6 +592,7 @@ def alfred_render_enqueue(params: dict[str, Any]) -> dict[str, Any]:
                 f"alfred project {project_id} ({project.get('name')!r}) has no clips on its "
                 "timeline to render"
             )
+        burned = project_captions(project, wanted)
         name = project.get("name")
         body: dict[str, Any] = {"project": name, "project_id": str(project_id), "name": name}
         saved = project.get("render_settings") or {}
@@ -539,6 +614,8 @@ def alfred_render_enqueue(params: dict[str, Any]) -> dict[str, Any]:
     duration = edl.get("duration")
     if isinstance(duration, (int, float)) and not isinstance(duration, bool):
         body["duration"] = duration
+    if burned is not None:
+        body["captions"], body["caption_style"] = burned
 
     answer = alfred.post("/render", body)
     render_id = answer.strip('"') if isinstance(answer, str) else ""
@@ -549,6 +626,7 @@ def alfred_render_enqueue(params: dict[str, Any]) -> dict[str, Any]:
         "project_id": body.get("project_id"),
         "name": body.get("name"),
         **{key: body.get(key) for key in RENDER_OPTIONS},
+        "captions": len(burned[0]) if burned else 0,
     }
 
 
@@ -589,11 +667,160 @@ def alfred_render_status(params: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool_registry.register(
+    name="alfred_render_deliver",
+    description=(
+        "Send a finished alfred render to a destination alfred offers, and say where it "
+        "went: the destination, and the location as an absolute link. Unset, the "
+        "destination is the one the render was last sent to, else alfred's local store."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "render_id": {
+                "type": "string",
+                "description": "The id alfred_render_enqueue returned",
+            },
+            "destination": {
+                "type": "string",
+                "description": "A destination alfred offers, such as local; alfred's choice "
+                "when unset",
+            },
+        },
+        "required": ["render_id"],
+    },
+)
+def alfred_render_deliver(params: dict[str, Any]) -> dict[str, Any]:
+    render_id = _required(params, "render_id")
+    destination = params.get("destination") or None
+    alfred = client()
+    path = f"/render/{_path_id(render_id)}/deliver"
+    query = {"destination": destination} if destination else None
+    delivered = _expect(alfred.request("POST", path, params=query), dict, "POST", path)
+    location = delivered.get("location")
+    return {
+        "render_id": str(render_id),
+        "destination": delivered.get("destination"),
+        "location": alfred.url_for(location) if location else None,
+    }
+
+
+_PROJECT_ID = {
+    "type": "object",
+    "properties": {
+        "project_id": {"type": "string", "description": "The alfred project's id"},
+    },
+    "required": ["project_id"],
+}
+
+
+@tool_registry.register(
+    name="alfred_captions",
+    description=(
+        "An alfred project's captions -- each one's start and end in timeline seconds and "
+        "its text -- the caption style its renders use, with whether it is enabled, and its "
+        "last transcription job: queued, transcribing, done or failed, and why it failed."
+    ),
+    input_schema=_PROJECT_ID,
+)
+def alfred_captions(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    path = f"/project/{_path_id(project_id)}/captions"
+    return captions_view(project_id, _expect(client().get(path), dict, "GET", path))
+
+
+@tool_registry.register(
+    name="alfred_captions_transcribe",
+    description=(
+        "Start transcribing an alfred project's saved timeline with alfred's speech engine. "
+        "alfred stores the captions on the project when it is done; alfred_captions follows "
+        "the job. An error says so when alfred has no speech engine, or when a transcription "
+        "of the project is already running."
+    ),
+    input_schema=_PROJECT_ID,
+)
+def alfred_captions_transcribe(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    path = f"/project/{_path_id(project_id)}/captions/transcribe"
+    try:
+        started = client().request("POST", path)
+    except AlfredError as refused:
+        opening = {503: NO_SPEECH_ENGINE, 409: TRANSCRIPTION_RUNNING}.get(refused.status)
+        if opening is None:
+            raise
+        raise AlfredError(
+            f"{opening}: {refused}", status=refused.status, detail=refused.detail
+        ) from refused
+    started = _expect(started, dict, "POST", path)
+    return {"project_id": str(project_id), "job": started.get("job")}
+
+
+@tool_registry.register(
+    name="alfred_captions_set",
+    description=(
+        "Store an alfred project's captions, its caption style, or both: a person's "
+        "correction of a transcript. alfred checks them -- times in order, text not empty -- "
+        "and stores only these; one left out is sent back as alfred holds it. Returns the "
+        "captions, style and job as alfred then holds them."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The alfred project's id"},
+            "captions": {
+                "type": "array",
+                "description": "Every caption, in order: start and end in timeline seconds, "
+                "and the text",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start": {"type": "number"},
+                        "end": {"type": "number"},
+                        "text": {"type": "string"},
+                    },
+                    "required": ["start", "end", "text"],
+                },
+            },
+            "style": {
+                "type": "object",
+                "description": "The caption style: enabled, and the text box's fontsize, "
+                "color, bg, position, align and font",
+            },
+        },
+        "required": ["project_id"],
+    },
+)
+def alfred_captions_set(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    captions, style = params.get("captions"), params.get("style")
+    if captions is None and style is None:
+        raise ValueError("give captions, style, or both")
+    if captions is not None and not isinstance(captions, list):
+        raise ValueError("captions must be a list of {start, end, text}")
+    if style is not None and not isinstance(style, dict):
+        raise ValueError("style must be an object")
+
+    alfred = client()
+    path = f"/project/{_path_id(project_id)}/captions"
+    if captions is None or style is None:
+        held = _expect(alfred.get(path), dict, "GET", path)
+        captions = held.get("captions") if captions is None else captions
+        style = held.get("style") if style is None else style
+    body = {key: value for key, value in (("captions", captions), ("style", style))
+            if value is not None}
+    stored = alfred.put(path, body)
+    if not (isinstance(stored, dict) and isinstance(stored.get("captions"), list)
+            and "style" in stored):
+        stored = _expect(alfred.get(path), dict, "GET", path)
+    return captions_view(project_id, stored)
+
+
+@tool_registry.register(
     name="alfred_health",
     description=(
         "alfred's report on itself: whether its API and database answer, how many render "
-        "workers are running, and how many renders are waiting. An alfred without the "
-        "report answers this with an error."
+        "workers are running, how many renders are waiting, and, from an alfred that "
+        "transcribes, whether a speech engine is configured and answering. An alfred "
+        "without the report answers this with an error."
     ),
     input_schema={"type": "object", "properties": {}},
 )
@@ -602,11 +829,15 @@ def alfred_health(params: dict[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
+    "NO_SPEECH_ENGINE",
+    "TRANSCRIPTION_RUNNING",
     "AlfredClient",
     "AlfredConfig",
     "AlfredError",
     "AlfredNotConfiguredError",
+    "captions_view",
     "client",
     "link_expiry",
+    "project_captions",
     "project_summary",
 ]
