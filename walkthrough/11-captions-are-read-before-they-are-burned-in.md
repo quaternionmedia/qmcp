@@ -35,10 +35,16 @@ keeps every request:
     >>> PROJECT, RENDER = "6a78b0420eea42d905943615", "6a7900000000000000000002"
     >>> HEARD = [{"start": 0.0, "end": 2.4, "text": "Welcome to the interview."},
     ...          {"start": 2.4, "end": 5.0, "text": "This is all fred's caption demo."}]
-    >>> held = {"captions": [], "style": {"enabled": False, "fontsize": 48}, "job": None}
-    >>> engine = {"configured": False, "ok": False,
-    ...           "detail": "No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its "
-    ...                     "address (docs/captions.md says how to run one)."}
+
+What alfred answers for its health with no audio engine set, and for a project
+never captioned, is read from the files qmcp's tests hold their stand-in alfred
+to, each alfred's own answer. This project has a caption style saved, switched
+off:
+
+    >>> health = json.loads(Path("tests/alfred_health.json").read_text(encoding="utf-8"))
+    >>> fresh = json.loads(Path("tests/alfred_captions.json").read_text(encoding="utf-8"))
+    >>> engine = health["audio_engine"]
+    >>> held = {**fresh, "style": {**fresh["style"], "fontsize": 48.0}}
     >>> sent = []
 
     >>> def answers(request):
@@ -49,9 +55,7 @@ keeps every request:
     ...     if request.headers.get("authorization") != "Bearer issued":
     ...         return httpx.Response(401, json={"detail": "Unauthorized"})
     ...     if asked == ("GET", "/health"):
-    ...         return httpx.Response(200, json={
-    ...             "api": "ok", "db": "ok", "renderer": {"ok": True, "workers": 1},
-    ...             "queue": {"pending": 0}, "audio_engine": engine})
+    ...         return httpx.Response(200, json=health)
     ...     if asked == ("GET", f"/project/{PROJECT}"):
     ...         return httpx.Response(200, json={
     ...             "_id": PROJECT, "name": "Interview", "captions": held["captions"],
@@ -151,7 +155,7 @@ cannot reset it:
     >>> stored["captions"][1]["text"]
     "This is alfred's caption demo."
     >>> json.loads([r for r in sent if r.method == "PUT"][-1].content)["style"]
-    {'enabled': False, 'fontsize': 48}
+    {'enabled': False, 'fontsize': 48.0, 'color': None, 'bg': None, 'position': None, 'align': None, 'font': None}
 
 As on page 10, the answer is given before the wait begins, and the wait reads
 the request once it has left the pending listing:
@@ -174,7 +178,7 @@ clips on the timeline, not qmcp:
     ('6a7900000000000000000002', 2)
     >>> body = json.loads([r for r in sent if r.url.path == "/render"][-1].content)
     >>> body["captions"] == fixed, body["caption_style"]
-    (True, {'enabled': True, 'fontsize': 48})
+    (True, {'enabled': True, 'fontsize': 48.0, 'color': None, 'bg': None, 'position': None, 'align': None, 'font': None})
 
 It is followed as page 10's render was, and put to a person with its link.
 This run was asked to deliver, so the request says that approving delivers it:
