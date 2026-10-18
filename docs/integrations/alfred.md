@@ -159,6 +159,7 @@ and records it as failed.
 | An email without a password, or the reverse | `alfred's account is half configured: QMCP_ALFRED_PASSWORD is unset` |
 | alfred refused a request | `alfred refused <method> <path> (<status>): <alfred's detail>`; a validation error list is given as `body.width: value is not a valid integer; ...` |
 | alfred refused with 401 | the same, followed by what to change: the account was refused after a fresh login, the token was refused, or alfred asks for an account |
+| An id alfred cannot read, or a project or render it does not hold | `alfred refused ... (422): Not a valid identifier` for an id that is not an ObjectId's 24 hex digits, before alfred looks anything up; `(404): Item not found` for one it does not hold, or that is not the account's |
 | The login was refused | `alfred refused the login for <email> (<status>): <detail>` |
 | A route the server does not have | `... (404): Not Found (the server at <url> calls itself '<title>')`, the title read from the server's `/openapi.json`; an alfred that does not caption answers the caption routes this way |
 | No audio engine, on `alfred_captions_transcribe` | `alfred has no audio engine: alfred refused POST /project/<id>/captions/transcribe (503): <alfred's detail>` |

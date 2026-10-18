@@ -142,6 +142,10 @@ RUNNING_DETAIL = "This project's timeline is already being transcribed; wait for
 NO_OUTPUT_DETAIL = "That render has no output file yet"
 # A job's error when the engine heard no speech (alfred/core/utils/transcription.py).
 NO_SPEECH_ERROR = "the audio engine heard no speech in the timeline's sound"
+# alfred's answers for an id (alfred/core/utils/bucket.py): one that is not an
+# ObjectId is refused before anything is looked up, one nobody holds is 404.
+INVALID_ID_DETAIL = "Not a valid identifier"
+NOT_FOUND_DETAIL = "Item not found"
 
 # --- captions ------------------------------------------------------------------
 
@@ -150,14 +154,36 @@ SIGNED_UNTIL = 1893456000  # the `exp` on every download link, 2030-01-01T00:00:
 _CAPTIONS = re.compile(r"/project/([^/]+)/captions(/transcribe)?")
 _PROJECT = re.compile(r"/project/([^/]+)")
 _RENDER = re.compile(r"/render/([^/]+)/(status|deliver)")
+_OBJECT_ID = re.compile(r"[0-9a-fA-F]{24}")
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def render_id(n: int) -> str:
+    """The id of the `n`th render the stand-in queues: an ObjectId's 24 hex
+    digits, as alfred's `POST /render` answers."""
+    return f"6a79{n:020d}"
+
+
 # The most captions alfred keeps on a project (alfred/core/utils/captions.py).
 MAX_CAPTIONS = 1000
+
+
+def body_errors(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """What alfred refuses in a `PUT /project/{id}/captions` body, as FastAPI
+    answers its CaptionsUpdate (alfred/core/routes/captions.py) before the
+    route looks at the id: captions it requires and checks, and any field
+    besides the captions and the style."""
+    if "captions" in body:
+        errors = caption_errors(body["captions"])
+    else:
+        errors = [{"loc": ["body", "captions"], "msg": "field required",
+                   "type": "value_error.missing"}]
+    return errors + [{"loc": ["body", key], "msg": "extra fields not permitted",
+                      "type": "value_error.extra"}
+                     for key in body if key not in ("captions", "style")]
 
 
 def caption_errors(captions: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -199,8 +225,10 @@ class CaptionedAlfred(FakeAlfred):
     the project had kept -- while `workers` is above 0. A render moves the
     same way, queued, rendering, rendered, on each look at its status, and is
     delivered by `POST /render/{id}/deliver`. `GET /health` is alfred's report,
-    `HEALTH`'s shape, with `workers`, the renders queued and `audio_engine`. A
-    route given with `route` answers first.
+    `HEALTH`'s shape, with `workers`, the renders queued and `audio_engine`.
+    Projects and renders are named as alfred names them, by ObjectId, and
+    refused as alfred refuses them: a body first, then a malformed id, then an
+    unknown one. A route given with `route` answers first.
     """
 
     def __init__(self) -> None:
@@ -251,33 +279,43 @@ class CaptionedAlfred(FakeAlfred):
             return httpx.Response(200, json=self.health())
         if (request.method, path) == ("POST", "/render"):
             return self.queue(json.loads(request.content))
+        # As alfred refuses: a body FastAPI will not take, then an id that is
+        # not an ObjectId, then one nobody holds; only then the route's own.
         if match := _CAPTIONS.fullmatch(path):
-            project = self.projects.get(match[1])
-            if project is None:
-                return httpx.Response(404, json={"detail": "Item not found"})
-            if match[2]:
-                if request.method == "POST":
-                    return self.transcribe(project)
-            elif request.method == "GET":
-                self.tick(project)
-                return httpx.Response(200, json=self.held(project))
-            elif request.method == "PUT":
-                return self.store(project, json.loads(request.content))
-        elif match := _PROJECT.fullmatch(path):
-            project = self.projects.get(match[1])
-            if request.method == "GET":
-                if project is None:
-                    return httpx.Response(404, json={"detail": "Item not found"})
-                return httpx.Response(200, json=project)
+            transcribing = bool(match[2])
+            if (request.method, transcribing) == ("PUT", False):
+                body = json.loads(request.content)
+                if errors := body_errors(body):
+                    return httpx.Response(422, json={"detail": errors})
+                return self._with(self.projects, match[1], lambda p: self.store(p, body))
+            if (request.method, transcribing) == ("GET", False):
+                return self._with(self.projects, match[1], self.look)
+            if (request.method, transcribing) == ("POST", True):
+                return self._with(self.projects, match[1], self.transcribe)
+        elif (match := _PROJECT.fullmatch(path)) and request.method == "GET":
+            return self._with(self.projects, match[1],
+                              lambda project: httpx.Response(200, json=project))
         elif match := _RENDER.fullmatch(path):
-            render = self.renders.get(match[1])
-            if render is None:
-                return httpx.Response(404, json={"detail": "Item not found"})
             if (request.method, match[2]) == ("GET", "status"):
-                return httpx.Response(200, json=self.status(render))
+                return self._with(self.renders, match[1],
+                                  lambda render: httpx.Response(200, json=self.status(render)))
             if (request.method, match[2]) == ("POST", "deliver"):
-                return self.deliver(render, request.url.params.get("destination"))
+                destination = request.url.params.get("destination")
+                return self._with(self.renders, match[1],
+                                  lambda render: self.deliver(render, destination))
         return super().unrouted(request)
+
+    @staticmethod
+    def _with(held: dict[str, dict[str, Any]], item_id: str,
+              answer: Callable[[dict[str, Any]], httpx.Response]) -> httpx.Response:
+        """`answer` for what `held` keeps under `item_id`, or alfred's refusal:
+        422 for an id that is not an ObjectId, before anything is looked up,
+        and 404 for one nobody holds."""
+        if not _OBJECT_ID.fullmatch(item_id):
+            return httpx.Response(422, json={"detail": INVALID_ID_DETAIL})
+        if item_id not in held:
+            return httpx.Response(404, json={"detail": NOT_FOUND_DETAIL})
+        return answer(held[item_id])
 
     def without_an_audio_engine(self) -> None:
         """Answer as alfred does with no ALFRED_AUDIO_ENGINE_URL set."""
@@ -295,6 +333,11 @@ class CaptionedAlfred(FakeAlfred):
     def held(project: dict[str, Any]) -> dict[str, Any]:
         return {"captions": project["captions"], "style": project["caption_style"],
                 "job": project["captions_job"]}
+
+    def look(self, project: dict[str, Any]) -> httpx.Response:
+        """`GET /project/{id}/captions`, which moves the job one step first."""
+        self.tick(project)
+        return httpx.Response(200, json=self.held(project))
 
     def transcribe(self, project: dict[str, Any]) -> httpx.Response:
         if not self.audio_engine.get("configured"):
@@ -327,16 +370,11 @@ class CaptionedAlfred(FakeAlfred):
         job.update(state="done", engine="stub engine", segments=len(heard))
 
     def store(self, project: dict[str, Any], body: dict[str, Any]) -> httpx.Response:
-        """`PUT /project/{id}/captions`: checked as alfred checks them, stored in
-        order of when they start, as alfred stores them, and only the captions
-        and the style stored."""
-        if "captions" not in body:
-            return httpx.Response(422, json={"detail": [{
-                "loc": ["body", "captions"], "msg": "field required",
-                "type": "value_error.missing"}]})
+        """`PUT /project/{id}/captions` for a body already checked (`body_errors`)
+        and a project found: counted as alfred counts them, stored in order of
+        when they start, as alfred stores them, and only the captions and the
+        style stored."""
         captions = body["captions"]
-        if errors := caption_errors(captions):
-            return httpx.Response(422, json={"detail": errors})
         if len(captions) > MAX_CAPTIONS:
             return httpx.Response(422, json={"detail": f"{len(captions)} captions is more than "
                                                        f"the {MAX_CAPTIONS} a project may carry"})
@@ -347,10 +385,10 @@ class CaptionedAlfred(FakeAlfred):
 
     def queue(self, body: dict[str, Any]) -> httpx.Response:
         self.queued.append(body)
-        render_id = f"r{len(self.queued)}"
-        self.renders[render_id] = {"id": render_id, "state": "queued", "progress": None,
-                                   "destination": None}
-        return httpx.Response(200, json=render_id)
+        queued = render_id(len(self.queued))
+        self.renders[queued] = {"id": queued, "state": "queued", "progress": None,
+                                "destination": None}
+        return httpx.Response(200, json=queued)
 
     def status(self, render: dict[str, Any]) -> dict[str, Any]:
         """One step of the render, when a worker runs, then its status."""

@@ -52,6 +52,7 @@ from tests.alfred_stub import (
     URL,
     CaptionedAlfred,
     connect,
+    render_id,
 )
 
 REPO = Path(__file__).resolve().parents[1]
@@ -400,6 +401,10 @@ def test_the_summary_says_how_the_run_ended(ending, line):
 
 FLOW_FILE = REPO / "examples" / "flows" / "alfred_caption_render.py"
 CORRELATION = "alfred-caption-render-run-1"
+# The project the stand-in holds, named by ObjectId as alfred names projects,
+# and the id of the first render it queues.
+PROJECT = "6a78b0420eea42d905943601"
+RENDER = render_id(1)
 
 
 class _FlowSpec:
@@ -435,7 +440,7 @@ def flow_file(monkeypatch):
 @pytest.fixture
 def fake(monkeypatch) -> CaptionedAlfred:
     stand_in = CaptionedAlfred()
-    stand_in.add_project("p1", "Talk", heard=HEARD,
+    stand_in.add_project(PROJECT, "Talk", heard=HEARD,
                          render_settings={"width": 1280, "height": 720})
     connected = connect(stand_in)
     monkeypatch.setattr(alfred, "client", lambda: connected)
@@ -490,7 +495,7 @@ def run(module, monkeypatch, url: str, *, review: str | None = APPROVE,
     monkeypatch.setattr(module, "wait_for_answer", a_person_answers)
 
     ran = module.AlfredCaptionRenderFlow()
-    ran.project_id, ran.mcp_url = "p1", url
+    ran.project_id, ran.mcp_url = PROJECT, url
     for name, value in parameters.items():
         setattr(ran, name, value)
     step = ran.start
@@ -511,7 +516,7 @@ def run(module, monkeypatch, url: str, *, review: str | None = APPROVE,
 # The stand-in moves a job and a render one state per look: two looks each.
 TRANSCRIBE_TOOLS = ["alfred_captions_transcribe"] + ["alfred_captions"] * 2
 RENDER_TOOLS = ["alfred_render_enqueue"] + ["alfred_render_status"] * 2
-SIGNED = f"{URL}/render/r1/download?exp=1893456000&sig=c2ln"
+SIGNED = f"{URL}/render/{RENDER}/download?exp=1893456000&sig=c2ln"
 
 
 def test_an_approved_transcript_and_render_are_delivered_when_asked(
@@ -520,20 +525,20 @@ def test_an_approved_transcript_and_render_are_delivered_when_asked(
     call to alfred is an invocation it recorded under the run's correlation id,
     and both requests are answered on its queue."""
     ran = run(flow_file, monkeypatch, server, deliver=True)
-    assert ran.line == ("Approved and delivered: render r1 of 'Talk' with 2 captions, to "
-                        f"local at {URL}/render/r1/download.")
+    assert ran.line == (f"Approved and delivered: render {RENDER} of 'Talk' with 2 captions, "
+                        f"to local at {URL}/render/{RENDER}/download.")
     assert ran.tools == sorted(TRANSCRIBE_TOOLS + RENDER_TOOLS + ["alfred_render_deliver"])
     review, approval = ran.asked
-    assert review["request_id"] == "alfred-captions-p1-run-1"
+    assert review["request_id"] == f"alfred-captions-{PROJECT}-run-1"
     assert "  0:02.5-0:05.0  This is the demo." in review["prompt"].splitlines()
-    assert approval["request_id"] == "alfred-caption-render-r1-run-1"
+    assert approval["request_id"] == f"alfred-caption-render-{RENDER}-run-1"
     assert approval["prompt"].endswith("Answer approve to deliver it to alfred's default "
                                        "destination, or reject to leave it undelivered.")
     # What alfred was asked to render: the saved size, and the captions with a style on.
     sent = fake.queued[0]
     assert (sent["captions"], sent["caption_style"]) == (HEARD, {"enabled": True})
     assert (sent["width"], sent["height"]) == (1280, 720)
-    assert fake.renders["r1"]["destination"] == "local"
+    assert fake.renders[RENDER]["destination"] == "local"
     assert ran.pending == []
 
 
@@ -541,9 +546,10 @@ def test_an_approved_render_is_not_delivered_unless_the_run_was_asked_to(
         flow_file, monkeypatch, server, fake):
     """Mutation: deliver whenever the render is approved -- red."""
     ran = run(flow_file, monkeypatch, server)
-    assert ran.line == f"Approved: render r1 of 'Talk' with 2 captions, {SIGNED}; not delivered."
+    assert ran.line == (f"Approved: render {RENDER} of 'Talk' with 2 captions, {SIGNED}; "
+                        "not delivered.")
     assert "alfred_render_deliver" not in ran.tools
-    assert fake.renders["r1"]["destination"] is None
+    assert fake.renders[RENDER]["destination"] is None
     assert ran.asked[1]["prompt"].endswith("Nothing is delivered either way: this run was not "
                                            "asked to deliver.")
 
@@ -553,36 +559,39 @@ def test_a_named_destination_is_where_it_goes(flow_file, monkeypatch, server, fa
     asked for its own choice."""
     ran = run(flow_file, monkeypatch, server, deliver=True, destination="local")
     assert ran.line.startswith("Approved and delivered:")
-    assert fake.calls("POST", "/render/r1/deliver")[0].url.params.get("destination") == "local"
+    delivery = fake.calls("POST", f"/render/{RENDER}/deliver")[0]
+    assert delivery.url.params.get("destination") == "local"
 
 
 def test_a_destination_alfred_refuses_is_said_in_the_last_line(
         flow_file, monkeypatch, server, fake):
     ran = run(flow_file, monkeypatch, server, deliver=True, destination="dropbox")
-    assert re.fullmatch(r"Approved: render r1 of 'Talk' with 2 captions, \S+; the delivery "
-                        r"failed: alfred refused POST /render/r1/deliver \(502\): unknown "
-                        r"destination 'dropbox'; known: \['bucket', 'local'\]\.", ran.line)
+    assert re.fullmatch(rf"Approved: render {RENDER} of 'Talk' with 2 captions, \S+; the "
+                        rf"delivery failed: alfred refused POST /render/{RENDER}/deliver \(502\): "
+                        r"unknown destination 'dropbox'; known: \['bucket', 'local'\]\.", ran.line)
 
 
 def test_a_rejected_transcript_renders_nothing(flow_file, monkeypatch, server, fake):
     """Mutation: render whatever the review's answer -- red."""
     ran = run(flow_file, monkeypatch, server, review=REJECT, deliver=True)
-    assert ran.line == "The transcript of alfred project p1 was rejected; nothing was rendered."
+    assert ran.line == (f"The transcript of alfred project {PROJECT} was rejected; nothing was "
+                        "rendered.")
     assert ran.tools == sorted(TRANSCRIBE_TOOLS)
     assert fake.queued == [] and len(ran.asked) == 1
 
 
 def test_a_transcript_nobody_reviews_renders_nothing(flow_file, monkeypatch, server, fake):
     ran = run(flow_file, monkeypatch, server, review=None, review_timeout=60)
-    assert ran.line == ("Nobody reviewed the transcript of alfred project p1 before the request "
-                        "expired; nothing was rendered.")
+    assert ran.line == (f"Nobody reviewed the transcript of alfred project {PROJECT} before the "
+                        "request expired; nothing was rendered.")
     assert fake.queued == []
 
 
 def test_a_rejected_render_is_not_delivered(flow_file, monkeypatch, server, fake):
     """Mutation: deliver once the transcript is approved -- red."""
     ran = run(flow_file, monkeypatch, server, approval=REJECT, deliver=True)
-    assert ran.line == "Rejected: render r1 of 'Talk' with 2 captions; nothing was delivered."
+    assert ran.line == (f"Rejected: render {RENDER} of 'Talk' with 2 captions; nothing was "
+                        "delivered.")
     assert "alfred_render_deliver" not in ran.tools and len(ran.asked) == 2
 
 
@@ -591,9 +600,9 @@ def test_no_audio_engine_asks_nobody_anything(flow_file, monkeypatch, server, fa
     ran = run(flow_file, monkeypatch, server, deliver=True)
     assert ran.flow.transcribed.outcome == NO_ENGINE
     assert ran.line == (  # alfred's detail ends the sentence
-        "Nothing was asked: the transcription of alfred project p1 could not start: "
-        f"{NO_AUDIO_ENGINE}: alfred refused POST /project/p1/captions/transcribe (503): "
-        f"{NO_ENGINE_DETAIL}")
+        f"Nothing was asked: the transcription of alfred project {PROJECT} could not start: "
+        f"{NO_AUDIO_ENGINE}: alfred refused POST /project/{PROJECT}/captions/transcribe "
+        f"(503): {NO_ENGINE_DETAIL}")
     assert ran.tools == ["alfred_captions_transcribe"] and ran.asked == []
 
 
@@ -602,19 +611,19 @@ def test_a_job_alfred_could_not_queue_asks_nobody_anything(flow_file, monkeypatc
     ran = run(flow_file, monkeypatch, server, deliver=True)
     assert ran.flow.transcribed.outcome == NOT_QUEUED
     assert ran.line == (
-        "Nothing was asked: the transcription of alfred project p1 could not start: "
-        f"{TRANSCRIPTION_NOT_QUEUED}: alfred refused POST /project/p1/captions/transcribe "
-        f"(503): {NOT_QUEUED_DETAIL}.")
+        f"Nothing was asked: the transcription of alfred project {PROJECT} could not start: "
+        f"{TRANSCRIPTION_NOT_QUEUED}: alfred refused POST "
+        f"/project/{PROJECT}/captions/transcribe (503): {NOT_QUEUED_DETAIL}.")
     assert ran.tools == ["alfred_captions_transcribe"] and ran.asked == []
 
 
 def test_a_timeline_with_no_speech_asks_nobody_anything(flow_file, monkeypatch, server, fake):
     """alfred ends a transcription that hears no speech as failed, in its words."""
-    fake.heard["p1"] = []
+    fake.heard[PROJECT] = []
     ran = run(flow_file, monkeypatch, server, deliver=True)
     assert ran.flow.transcribed.outcome == FAILED
-    assert ran.line == ("Nothing was asked: the transcription of alfred project p1 failed: "
-                        f"{NO_SPEECH_ERROR}.")
+    assert ran.line == (f"Nothing was asked: the transcription of alfred project {PROJECT} "
+                        f"failed: {NO_SPEECH_ERROR}.")
     assert ran.asked == [] and fake.queued == []
 
 
@@ -622,18 +631,18 @@ def test_no_worker_running_asks_nobody_anything(flow_file, monkeypatch, server, 
     fake.workers = 0
     ran = run(flow_file, monkeypatch, server)
     assert (ran.flow.transcribed.outcome, ran.flow.transcribed.seconds) == (NO_RENDERER, 60)
-    assert ran.line == ("Nothing was asked: the transcription of alfred project p1 was not run: "
-                        "still queued after 60 s, and alfred reports no worker running to "
-                        "transcribe it.")
+    assert ran.line == (f"Nothing was asked: the transcription of alfred project {PROJECT} was "
+                        "not run: still queued after 60 s, and alfred reports no worker running "
+                        "to transcribe it.")
     assert "alfred_health" in ran.tools and ran.asked == []
 
 
 def test_a_transcription_already_running_is_followed_to_the_same_end(
         flow_file, monkeypatch, server, fake):
-    alfred.client().request("POST", "/project/p1/captions/transcribe")  # someone else's
+    alfred.client().request("POST", f"/project/{PROJECT}/captions/transcribe")  # someone else's
     ran = run(flow_file, monkeypatch, server, deliver=True)
     assert ran.flow.transcribed.joined and ran.flow.transcribed.outcome == DONE
-    assert ran.line.startswith("Approved and delivered: render r1")
+    assert ran.line.startswith(f"Approved and delivered: render {RENDER}")
 
 
 def test_a_correction_saved_in_alfred_during_the_review_is_what_is_rendered(
@@ -651,6 +660,6 @@ def test_a_correction_saved_in_alfred_during_the_review_is_what_is_rendered(
     ran = run(flow_file, monkeypatch, server)
     assert "  0:02.5-0:05.0  This is the demo." in ran.asked[0]["prompt"].splitlines()
     assert fake.queued[0]["captions"] == corrected
-    assert ran.line.startswith("Approved: render r1 of 'Talk' with 2 captions")
+    assert ran.line.startswith(f"Approved: render {RENDER} of 'Talk' with 2 captions")
 
 
