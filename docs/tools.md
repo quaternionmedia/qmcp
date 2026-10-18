@@ -231,8 +231,10 @@ caption tools `alfred_captions`, `alfred_captions_transcribe` and
 API; [integrations/alfred.md](integrations/alfred.md) is their reference. Each
 call is a request or two to alfred, made inline, with a short timeout: a
 transcription is started by one call and followed by others, never waited for
-inside one. Between calls they keep alfred's token, so a call does not log in
-again while it works.
+inside one. A delivery is the exception, waited for up to
+`QMCP_ALFRED_DELIVER_TIMEOUT`, because alfred answers it only once the whole
+render is copied or uploaded. Between calls they keep alfred's token, so a call
+does not log in again while it works.
 
 ---
 

@@ -446,6 +446,32 @@ def test_a_destination_alfred_cannot_reach_is_its_502(fake):
         alfred.alfred_render_deliver({"render_id": render_id, "destination": "dropbox"})
 
 
+def test_a_delivery_is_given_its_own_longer_wait(fake):
+    """alfred answers a delivery once the whole render is copied or uploaded.
+    Mutation: send it with the client's own timeout -- red."""
+    render_id = rendered(fake)
+    alfred.alfred_render_deliver({"render_id": render_id})
+    waits = {(r.method, r.url.path): r.extensions["timeout"]["read"] for r in fake.requests}
+    assert waits[("POST", f"/render/{render_id}/deliver")] == alfred.DEFAULT_DELIVER_TIMEOUT
+    assert waits[("GET", f"/render/{render_id}/status")] == alfred.DEFAULT_TIMEOUT
+
+
+def test_a_delivery_that_outlasts_the_wait_says_alfred_carries_on_with_it(fake):
+    render_id = rendered(fake)
+
+    def copying(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    fake.route("POST", f"/render/{render_id}/deliver", copying)
+    with pytest.raises(AlfredError) as failed:
+        alfred.alfred_render_deliver({"render_id": render_id})
+    assert str(failed.value) == (
+        f"alfred at {URL} did not answer POST /render/{render_id}/deliver in time "
+        f"(ReadTimeout, {alfred.DEFAULT_DELIVER_TIMEOUT:g} s); alfred answers a delivery once "
+        "it has copied or uploaded the whole render, and carries on with one nobody waits "
+        "for: QMCP_ALFRED_DELIVER_TIMEOUT is how long qmcp waits")
+
+
 def test_delivery_needs_a_render_id(fake):
     with pytest.raises(ValueError, match="render_id is required"):
         alfred.alfred_render_deliver({})

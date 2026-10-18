@@ -56,12 +56,14 @@ class Settings(BaseSettings):
     # its API answers, and who asks -- an account qmcp logs in as, or a token
     # alfred issued, or neither for an alfred that asks for no account. With no
     # URL the tools answer that alfred is not configured. Seconds alfred has to
-    # answer one request.
+    # answer one request, and to answer a delivery, which it does only once it
+    # has copied or uploaded the whole render.
     alfred_url: str | None = None
     alfred_email: str | None = None
     alfred_password: SecretStr | None = None
     alfred_token: SecretStr | None = None
     alfred_timeout: float = 10.0
+    alfred_deliver_timeout: float = 300.0
 
 
 @lru_cache

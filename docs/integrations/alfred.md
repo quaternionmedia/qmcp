@@ -24,6 +24,7 @@ engine code is imported.
 | `QMCP_ALFRED_EMAIL`, `QMCP_ALFRED_PASSWORD` | An alfred account qmcp logs in as. Both or neither |
 | `QMCP_ALFRED_TOKEN` | A token alfred issued, sent before any login |
 | `QMCP_ALFRED_TIMEOUT` | Seconds alfred has to answer one request; the default is in `qmcp/config.py`. Opening a connection may take at most `CONNECT_TIMEOUT` (`qmcp.tools.alfred`) |
+| `QMCP_ALFRED_DELIVER_TIMEOUT` | Seconds alfred has to answer a delivery, which it answers only once it has copied or uploaded the whole render; the default, longer, is in `qmcp/config.py` |
 
 They are read as qmcp reads every setting, from the environment or from a `.env`
 file in the directory the server starts in, once per server process. `.env` is
@@ -95,7 +96,11 @@ the render was last sent, else its local store. `location` is where it went,
 made absolute against `QMCP_ALFRED_URL` when alfred answers a path: a local
 delivery is the render's download route, which asks for the owner's session,
 not a signed link. alfred refuses a render that has not finished (409) and a
-destination it cannot reach (502).
+destination it cannot reach (502). alfred answers only once it has copied the
+render or uploaded it, which takes longer than any other call for a long one,
+so the tool waits `QMCP_ALFRED_DELIVER_TIMEOUT` rather than
+`QMCP_ALFRED_TIMEOUT`. A delivery that outlasts that is an error saying so;
+alfred carries on with it and records it, and asking again delivers it again.
 
 **`alfred_captions`**: `captions` is a list of `{start, end, text}` in timeline
 seconds; `style` is the caption style, `{enabled, fontsize, color, bg,
@@ -159,7 +164,7 @@ and records it as failed.
 | No audio engine, on `alfred_captions_transcribe` | `alfred has no audio engine: alfred refused POST /project/<id>/captions/transcribe (503): <alfred's detail>` |
 | A transcription alfred could not queue | `alfred could not queue the transcription: alfred refused POST ... (503): The transcription could not be queued: <what its broker raised>` |
 | A transcription of the project running | `a transcription is already running: alfred refused POST ... (409): <alfred's detail>` |
-| No answer | `alfred at <url> could not be reached ...`, or `did not answer ... in time` |
+| No answer | `alfred at <url> could not be reached ...`, or `did not answer ... in time (<error>, <seconds> s)`, followed for a delivery by `QMCP_ALFRED_DELIVER_TIMEOUT` and that alfred carries on with it |
 | An answer that is not JSON | `alfred answered <method> <path> with <content type>, not JSON`, and the server's title when it gives one |
 
 The title names what is actually listening at `QMCP_ALFRED_URL`, which differs

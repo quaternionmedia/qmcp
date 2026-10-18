@@ -32,9 +32,11 @@ import httpx
 from qmcp import config
 from qmcp.tools.registry import tool_registry
 
-# Seconds alfred has to answer one request when `QMCP_ALFRED_TIMEOUT` is unset
-# (the settings' own default), and the most a connection may take to open.
+# Seconds alfred has to answer one request when `QMCP_ALFRED_TIMEOUT` is unset,
+# and a delivery when `QMCP_ALFRED_DELIVER_TIMEOUT` is (the settings' own
+# defaults), and the most a connection may take to open.
 DEFAULT_TIMEOUT: float = config.Settings.model_fields["alfred_timeout"].default
+DEFAULT_DELIVER_TIMEOUT: float = config.Settings.model_fields["alfred_deliver_timeout"].default
 CONNECT_TIMEOUT = 3.0
 
 # A token with fewer seconds than this left is renewed before it is sent.
@@ -93,6 +95,7 @@ class AlfredConfig:
     password: str | None = field(default=None, repr=False)
     token: str | None = field(default=None, repr=False)
     timeout: float = DEFAULT_TIMEOUT
+    deliver_timeout: float = DEFAULT_DELIVER_TIMEOUT
 
     @property
     def can_log_in(self) -> bool:
@@ -123,6 +126,8 @@ class AlfredConfig:
             password=password,
             token=_reveal(getattr(settings, "alfred_token", None)),
             timeout=float(getattr(settings, "alfred_timeout", None) or DEFAULT_TIMEOUT),
+            deliver_timeout=float(getattr(settings, "alfred_deliver_timeout", None)
+                                  or DEFAULT_DELIVER_TIMEOUT),
         )
 
 
@@ -216,12 +221,16 @@ class AlfredClient:
     def put(self, path: str, body: Any) -> Any:
         return self.request("PUT", path, json=body)
 
-    def request(self, method: str, path: str, **kwargs: Any) -> Any:
-        """alfred's JSON answer to one request; `AlfredError` for anything else."""
+    def request(self, method: str, path: str, *, timeout: float | None = None,
+                **kwargs: Any) -> Any:
+        """alfred's JSON answer to one request; `AlfredError` for anything else.
+        `timeout` is the seconds alfred has to answer it, the configured
+        `timeout` unless given."""
         token = self._authorization()
-        response = self._send(method, path, token, **kwargs)
+        response = self._send(method, path, token, timeout=timeout, **kwargs)
         if response.status_code == 401 and self.config.can_log_in:
-            response = self._send(method, path, self._log_in_again(token), **kwargs)
+            response = self._send(method, path, self._log_in_again(token), timeout=timeout,
+                                  **kwargs)
         return self._answer(method, path, response)
 
     # --- the token ----------------------------------------------------------
@@ -279,14 +288,18 @@ class AlfredClient:
 
     # --- one exchange -------------------------------------------------------
 
-    def _send(self, method: str, path: str, token: str | None, **kwargs: Any) -> httpx.Response:
+    def _send(self, method: str, path: str, token: str | None, *,
+              timeout: float | None = None, **kwargs: Any) -> httpx.Response:
         headers = {"Authorization": f"Bearer {token}"} if token else None
+        if timeout is not None:
+            kwargs["timeout"] = httpx.Timeout(timeout, connect=min(CONNECT_TIMEOUT, timeout))
         try:
             return self._http.request(method, path, headers=headers, **kwargs)
         except httpx.TimeoutException as exc:
+            waited = self.config.timeout if timeout is None else timeout
             raise AlfredError(
                 f"alfred at {self.config.url} did not answer {method} {path} in time "
-                f"({type(exc).__name__}, {self.config.timeout:g} s)"
+                f"({type(exc).__name__}, {waited:g} s)"
             ) from exc
         except httpx.HTTPError as exc:
             raise AlfredError(
@@ -676,7 +689,9 @@ def alfred_render_status(params: dict[str, Any]) -> dict[str, Any]:
     description=(
         "Send a finished alfred render to a destination alfred offers, and say where it "
         "went: the destination, and the location as an absolute link. Unset, the "
-        "destination is the one the render was last sent to, else alfred's local store."
+        "destination is the one the render was last sent to, else alfred's local store. "
+        "alfred answers once it has copied or uploaded the whole render, and qmcp waits "
+        "QMCP_ALFRED_DELIVER_TIMEOUT for that."
     ),
     input_schema={
         "type": "object",
@@ -700,7 +715,18 @@ def alfred_render_deliver(params: dict[str, Any]) -> dict[str, Any]:
     alfred = client()
     path = f"/render/{_path_id(render_id)}/deliver"
     query = {"destination": destination} if destination else None
-    delivered = _expect(alfred.request("POST", path, params=query), dict, "POST", path)
+    try:
+        delivered = alfred.request("POST", path, params=query,
+                                   timeout=alfred.config.deliver_timeout)
+    except AlfredError as failed:
+        if not isinstance(failed.__cause__, httpx.TimeoutException):
+            raise
+        raise AlfredError(
+            f"{failed}; alfred answers a delivery once it has copied or uploaded the whole "
+            "render, and carries on with one nobody waits for: QMCP_ALFRED_DELIVER_TIMEOUT is "
+            "how long qmcp waits"
+        ) from failed
+    delivered = _expect(delivered, dict, "POST", path)
     location = delivered.get("location")
     return {
         "render_id": str(render_id),

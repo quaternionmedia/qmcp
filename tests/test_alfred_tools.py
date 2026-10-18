@@ -74,9 +74,17 @@ def test_the_settings_are_read_from_qmcp_environment_names(monkeypatch):
     monkeypatch.setenv("QMCP_ALFRED_PASSWORD", PASSWORD)
     monkeypatch.setenv("QMCP_ALFRED_TOKEN", "a.token.here")
     monkeypatch.setenv("QMCP_ALFRED_TIMEOUT", "4.5")
+    monkeypatch.setenv("QMCP_ALFRED_DELIVER_TIMEOUT", "90")
     read = AlfredConfig.from_settings(qmcp.config.Settings(_env_file=None))
-    assert (read.url, read.email, read.password, read.token, read.timeout) == (
-        URL, EMAIL, PASSWORD, "a.token.here", 4.5)
+    assert (read.url, read.email, read.password, read.token, read.timeout,
+            read.deliver_timeout) == (URL, EMAIL, PASSWORD, "a.token.here", 4.5, 90)
+
+
+def test_a_delivery_is_waited_for_longer_than_any_other_call_unless_set():
+    unset = AlfredConfig.from_settings(settings(alfred_url=URL))
+    assert (unset.timeout, unset.deliver_timeout) == (
+        alfred.DEFAULT_TIMEOUT, alfred.DEFAULT_DELIVER_TIMEOUT)
+    assert alfred.DEFAULT_DELIVER_TIMEOUT > alfred.DEFAULT_TIMEOUT
 
 
 def test_a_password_is_kept_exactly_and_a_blank_one_is_unset():
