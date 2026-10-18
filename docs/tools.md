@@ -222,6 +222,17 @@ All tools must:
 
 ---
 
+## alfred Tools
+
+`alfred_projects`, `alfred_templates`, `alfred_render_enqueue`,
+`alfred_render_status` and `alfred_health` drive alfred, a self-hosted video
+editor, over its HTTP API; [integrations/alfred.md](integrations/alfred.md) is
+their reference. Each call is a request or two to alfred, made inline, with a
+short timeout. Between calls they keep alfred's token, so a call does not log
+in again while it works.
+
+---
+
 ## What Tools Must NOT Do
 
 - ❌ Call other tools

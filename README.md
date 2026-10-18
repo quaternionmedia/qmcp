@@ -339,6 +339,7 @@ The system follows a three-plane architecture:
 - [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
 - [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
 - [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
+- [alfred Integration](docs/integrations/alfred.md) - Video renders queued, followed and approved
 - [Thread Archive](docs/threads.md) - Conversations read as units of work
 - [Self-Checks](docs/self-checks.md) - Dashboard, audit, self-check and the feedback loop
 - [Deployment](docs/deployment.md) - Production deployment guide
@@ -351,6 +352,7 @@ See [examples/flows/](examples/flows/) for Metaflow integration examples:
 
 - **simple_plan.py** - Basic tool invocation
 - **approved_deploy.py** - HITL approval workflow
+- **alfred_render.py** - An alfred render, put to a person for approval
 - **local_agent_chain.py** - Local LLM plan -> review -> refine with SQLModel artifacts
 - **local_qc_gauntlet.py** - Local LLM QC checklist/task/gate builder
 - **local_release_notes.py** - Local LLM release notes and doc update suggestions

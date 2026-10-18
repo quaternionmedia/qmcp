@@ -59,6 +59,23 @@ stt = HttpSTT("http://127.0.0.1:8000", contract=JOE)
 VoiceApprovalLoop(stt=stt, tts=Pyttsx3TTS()).run_once("deploy-001")
 ```
 
+### [alfred](alfred.md)
+
+Drives alfred, a self-hosted video editor, over its HTTP API. Provides:
+- `alfred_projects` and `alfred_templates`, what alfred holds
+- `alfred_render_enqueue`, a project's saved timeline or an explicit EDL queued
+  to render
+- `alfred_render_status`, a render followed to its state and a download link
+- `alfred_health`, whether alfred has a renderer running
+- `examples/flows/alfred_render.py`, a render put to a person for approval
+
+Configured by the `QMCP_ALFRED_*` settings; nothing from alfred is imported.
+`walkthrough/10-a-render-waits-for-a-person.md` runs it against an alfred
+stood in for.
+
+**Status**: Tested against a stand-in alfred; a running alfred is checked by
+hand.
+
 ## Decision Matrix
 
 When to use what:
@@ -71,6 +88,7 @@ When to use what:
 | Audit all tool calls | QMCP MCP Server |
 | Human approval workflow | QMCP human request API |
 | Answer an approval by speaking | QMCP `integrations.voice` over vox |
+| Render a video project, behind approval | QMCP `alfred_*` tools and the `alfred-render` flow |
 | Model pricing/limits | QMCP `Models` registry |
 | Multi-agent patterns | QMCP Topologies |
 | Structured output | PydanticAI `output_type` |

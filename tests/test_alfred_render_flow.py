@@ -346,7 +346,8 @@ def test_a_rendered_project_reaches_a_person_and_their_answer_ends_the_run(
     assert flow.summary(queued, waited, answer) == (
         "Approved: render r1 of 'Demo', "
         "http://alfred.test/render/r1/download?exp=1792000000&sig=s.")
-    assert [(r["tool_name"], r["status"], r["correlation_id"]) for r in reversed(recorded)] == [
+    # Sorted: the listing orders by creation time alone, which two calls can share.
+    assert sorted((r["tool_name"], r["status"], r["correlation_id"]) for r in recorded) == [
         ("alfred_render_enqueue", "success", "alfred-render-run-1"),
         ("alfred_render_status", "success", "alfred-render-run-1"),
         ("alfred_render_status", "success", "alfred-render-run-1"),
