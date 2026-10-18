@@ -103,11 +103,14 @@ so the tool waits `QMCP_ALFRED_DELIVER_TIMEOUT` rather than
 alfred carries on with it and records it, and asking again delivers it again.
 
 **`alfred_captions`**: `captions` is a list of `{start, end, text}` in timeline
-seconds; `style` is the caption style, `{enabled, fontsize, color, bg,
-position, align, font}`, each optional; `job` is the last transcription,
-`{state, error, engine, segments, updated_at}`, its `state` one of `queued`,
+seconds, empty for a project never captioned; `style` is the caption style,
+every field of it for every project -- `{enabled, fontsize, color, bg,
+position, align, font}`, null where it is not set -- with `enabled` false until
+someone switches the captions on; `job` is the last transcription, `{state,
+error, engine, segments, updated_at}`, its `state` one of `queued`,
 `transcribing`, `done` or `failed` -- or null when the project was never
-transcribed.
+transcribed. A transcription that finishes stores a style that says nothing of
+`enabled` as switched off.
 
 **`alfred_captions_transcribe`** asks alfred to transcribe the project's
 saved timeline and answers with the job alfred started; alfred stores the
@@ -130,10 +133,13 @@ most 500 characters of it -- refuses more than 1000, and stores the captions in
 order of when they start, however they were sent, with the style and nothing
 else. A caption it refuses is named by alfred's validation error, counting from
 0, as in `body.captions.1.__root__: a caption must end after it starts (start 4.0, end 3.0)`.
-Give the captions, the style, or both; the one left out is read from alfred and
-sent back as it is, so a route that stores both does not reset it, and one
-alfred holds as null is left out rather than sent. The result is what alfred
-then holds, read back with `GET` when alfred's answer does not carry it.
+alfred checks the style's fields too, a colour as `#rrggbb` for one. Give the
+captions, the style, or both; the one left out is read from alfred and sent
+back as alfred answered it, so a route that stores both does not reset it.
+alfred answers both for every project, the style whole and switched off until
+it is set. A style sent without `enabled` keeps the `enabled` alfred holds. The
+result is what alfred then holds, read back with `GET` when alfred's answer
+does not carry it.
 
 **`alfred_health`** is alfred's report as alfred answers it: the tool adds,
 drops and fills in nothing. alfred answers it to a session, as it does every

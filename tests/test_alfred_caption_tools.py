@@ -21,6 +21,7 @@ from qmcp.tools.alfred import (
     AlfredError,
 )
 from tests.alfred_stub import (
+    CAPTIONS,
     HEALTH,
     INVALID_ID_DETAIL,
     NO_ENGINE_DETAIL,
@@ -39,8 +40,9 @@ HEARD = [
     {"start": 0.0, "end": 2.5, "text": "Hello and welcome."},
     {"start": 2.5, "end": 5.0, "text": "This is the demo."},
 ]
-STYLE = {"enabled": True, "fontsize": 48, "color": "white", "bg": "black",
-         "position": "bottom", "align": "center", "font": "Roboto"}
+# A whole style, as alfred holds one: its colours are #rrggbb, as it requires.
+STYLE = {"enabled": True, "fontsize": 48, "color": "#ffffff", "bg": "#000000",
+         "position": "bottom", "align": "center", "font": "DejaVu-Sans"}
 
 # Projects named as alfred names them, by an ObjectId's 24 hex digits. No test
 # adds UNKNOWN.
@@ -80,10 +82,20 @@ def test_captions_are_the_projects_captions_style_and_job(fake):
     assert asked(fake) == [("GET", f"/project/{P1}/captions")]
 
 
-def test_a_project_never_transcribed_has_no_job(fake):
+def test_a_project_never_captioned_is_answered_as_alfred_answers_one(fake):
+    """Held to alfred's own answer, `tests/alfred_captions.json`: no captions, no
+    job, and a whole style switched off. Mutation: answer the style as stored,
+    null -- red."""
     fake.add_project(P1, "Talk")
-    assert alfred.alfred_captions({"project_id": P1}) == {
-        "project_id": P1, "captions": [], "style": None, "job": None}
+    assert alfred.alfred_captions({"project_id": P1}) == {"project_id": P1, **CAPTIONS}
+
+
+def test_a_stored_style_is_answered_whole_as_alfred_answers_it(fake):
+    """Every field of alfred's style, the ones never set null. Mutation: answer
+    only the fields stored -- red."""
+    fake.add_project(P1, "Talk", style={"enabled": True, "fontsize": 48})
+    assert alfred.alfred_captions({"project_id": P1})["style"] == {
+        **CAPTIONS["style"], "enabled": True, "fontsize": 48}
 
 
 def test_a_project_id_cannot_leave_its_path_segment_in_the_caption_routes(fake):
@@ -291,10 +303,20 @@ def test_a_new_style_sends_back_the_captions_alfred_holds(fake):
         "captions": HEARD, "style": {"enabled": False}}
 
 
-def test_a_style_never_set_is_left_out_rather_than_sent_as_null(fake):
+def test_a_style_never_set_goes_back_as_alfred_answers_it_switched_off(fake):
+    """alfred answers a whole style for every project, so a correction of the
+    captions alone sends that back."""
     fake.add_project(P1, "Talk", captions=HEARD)
     alfred.alfred_captions_set({"project_id": P1, "captions": HEARD[:1]})
-    assert body(fake.calls("PUT", f"/project/{P1}/captions")[0]) == {"captions": HEARD[:1]}
+    assert body(fake.calls("PUT", f"/project/{P1}/captions")[0]) == {
+        "captions": HEARD[:1], "style": CAPTIONS["style"]}
+
+
+def test_a_style_sent_without_enabled_keeps_the_one_alfred_holds(fake):
+    """As alfred stores it: `enabled` as sent, else as it was, else false."""
+    fake.add_project(P1, "Talk", captions=HEARD, style=STYLE)
+    stored = alfred.alfred_captions_set({"project_id": P1, "style": {"fontsize": 40}})
+    assert stored["style"] == {**CAPTIONS["style"], "enabled": True, "fontsize": 40}
 
 
 @pytest.mark.parametrize("refused,why", [

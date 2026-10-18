@@ -829,7 +829,8 @@ def alfred_captions_transcribe(params: dict[str, Any]) -> dict[str, Any]:
             "style": {
                 "type": "object",
                 "description": "The caption style: enabled, and the text box's fontsize, "
-                "color, bg, position, align and font",
+                "color, bg, position, align and font; alfred takes a colour as #rrggbb, and "
+                "keeps the enabled it holds when this leaves it out",
             },
         },
         "required": ["project_id"],

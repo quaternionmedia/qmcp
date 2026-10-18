@@ -46,6 +46,7 @@ from qmcp.cookbook.alfred_render import (
 )
 from qmcp.tools.alfred import NO_AUDIO_ENGINE, TRANSCRIPTION_NOT_QUEUED, TRANSCRIPTION_RUNNING
 from tests.alfred_stub import (
+    CAPTIONS,
     NO_ENGINE_DETAIL,
     NO_SPEECH_ERROR,
     NOT_QUEUED_DETAIL,
@@ -534,9 +535,11 @@ def test_an_approved_transcript_and_render_are_delivered_when_asked(
     assert approval["request_id"] == f"alfred-caption-render-{RENDER}-run-1"
     assert approval["prompt"].endswith("Answer approve to deliver it to alfred's default "
                                        "destination, or reject to leave it undelivered.")
-    # What alfred was asked to render: the saved size, and the captions with a style on.
+    # What alfred was asked to render: the saved size, and the captions with the
+    # style alfred stored when it transcribed them, switched on.
     sent = fake.queued[0]
-    assert (sent["captions"], sent["caption_style"]) == (HEARD, {"enabled": True})
+    assert (sent["captions"], sent["caption_style"]) == (
+        HEARD, {**CAPTIONS["style"], "enabled": True})
     assert (sent["width"], sent["height"]) == (1280, 720)
     assert fake.renders[RENDER]["destination"] == "local"
     assert ran.pending == []

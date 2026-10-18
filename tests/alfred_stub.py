@@ -5,8 +5,10 @@ so nothing needs a running alfred. `CaptionedAlfred` also holds projects,
 their captions and their renders the way alfred's caption routes do, with a
 transcription job and a render that each move one state per look. What it
 answers in alfred's own words is copied from alfred: `HEALTH` is alfred's
-`GET /health`, kept in `tests/alfred_health.json`. Not collected: the name
-does not start with `test_`.
+`GET /health`, kept in `tests/alfred_health.json`, and `CAPTIONS` its
+`GET /project/{id}/captions` for a project never captioned, kept in
+`tests/alfred_captions.json`. Not collected: the name does not start with
+`test_`.
 """
 
 from __future__ import annotations
@@ -129,6 +131,12 @@ def connect(fake: FakeAlfred, **config) -> AlfredClient:
 HEALTH: dict[str, Any] = json.loads(
     Path(__file__).with_name("alfred_health.json").read_text(encoding="utf-8"))
 
+# alfred's `GET /project/{id}/captions` for a project never captioned, as its
+# code answers it: no captions, no job, and a caption style with every field,
+# each null, `enabled` false (alfred/core/routes/captions.py, `view_of`).
+CAPTIONS: dict[str, Any] = json.loads(
+    Path(__file__).with_name("alfred_captions.json").read_text(encoding="utf-8"))
+
 # alfred's details, from alfred/core/routes/captions.py and render.py. The 503
 # for no audio engine is the sentence the health report's `detail` carries:
 # both are `problem()`'s, in alfred/core/utils/audio_engine.py. The 503 for a
@@ -169,6 +177,33 @@ def render_id(n: int) -> str:
 
 # The most captions alfred keeps on a project (alfred/core/utils/captions.py).
 MAX_CAPTIONS = 1000
+
+
+def project_style(stored: Any) -> dict[str, Any]:
+    """A project's caption style as alfred answers it: every field of one,
+    null where nothing is stored, and `enabled` false unless stored true or
+    false (alfred/core/utils/captions.py, `project_style`)."""
+    stored = stored if isinstance(stored, dict) else {}
+    style = {key: stored.get(key) for key in CAPTIONS["style"]}
+    if style["enabled"] is None:
+        style["enabled"] = False
+    return style
+
+
+def style_to_store(sent: dict[str, Any] | None, stored: Any) -> dict[str, Any] | None:
+    """The style alfred keeps when a project's captions are written, or None
+    when the stored one stands (alfred/core/utils/captions.py,
+    `style_to_store`): one sent, with `enabled` as sent, else as stored, else
+    false; none sent, the stored one, given `enabled: false` if it says nothing."""
+    stored = stored if isinstance(stored, dict) else {}
+    if sent is not None:
+        style = {key: sent.get(key) for key in CAPTIONS["style"]}
+        if "enabled" not in sent:
+            style["enabled"] = bool(stored.get("enabled"))
+        return style
+    if stored.get("enabled") is not None:
+        return None
+    return project_style(stored)
 
 
 def body_errors(body: dict[str, Any]) -> list[dict[str, Any]]:
@@ -216,7 +251,8 @@ class CaptionedAlfred(FakeAlfred):
     """The stand-in, holding projects with captions and their renders.
 
     A project carries `captions`, `caption_style` and `captions_job`, and
-    answers the caption routes: `GET` and `PUT /project/{id}/captions`, and
+    answers the caption routes as alfred does, its style always whole
+    (`CAPTIONS`'s shape): `GET` and `PUT /project/{id}/captions`, and
     `POST .../captions/transcribe`, which answers 503 while `audio_engine`
     says none is configured, 409 while a job runs, and 503 again, with the
     job failed, while `broker` is false. Each look at the captions
@@ -253,8 +289,10 @@ class CaptionedAlfred(FakeAlfred):
         render_settings: dict[str, Any] | None = None,
         failure: str | None = None,
     ) -> dict[str, Any]:
-        """A project with a one-clip timeline. `heard` is what the audio engine
-        will hear in it; `failure`, when given, is why its transcription fails."""
+        """A project with a one-clip timeline, held as alfred stores one: no
+        captions or style is null until one is given. `heard` is what the audio
+        engine will hear in it; `failure`, when given, is why its transcription
+        fails."""
         project = {
             "_id": project_id,
             "name": name,
@@ -262,7 +300,7 @@ class CaptionedAlfred(FakeAlfred):
             "edl": {"clips": [{"type": "video", "name": "videos/talk.mp4", "duration": 9.0}],
                     "duration": 9.0},
             "render_settings": render_settings,
-            "captions": list(captions or []),
+            "captions": None if captions is None else list(captions),
             "caption_style": style,
             "captions_job": None,
         }
@@ -331,7 +369,9 @@ class CaptionedAlfred(FakeAlfred):
 
     @staticmethod
     def held(project: dict[str, Any]) -> dict[str, Any]:
-        return {"captions": project["captions"], "style": project["caption_style"],
+        """A project's captions, style and job as alfred answers them."""
+        return {"captions": project["captions"] or [],
+                "style": project_style(project["caption_style"]),
                 "job": project["captions_job"]}
 
     def look(self, project: dict[str, Any]) -> httpx.Response:
@@ -367,20 +407,25 @@ class CaptionedAlfred(FakeAlfred):
             job.update(state="failed", error=failure)
             return
         project["captions"] = [dict(caption) for caption in heard]
+        # As alfred's worker does: a style that says nothing of `enabled` is
+        # stored saying false, so new captions are not drawn until someone says.
+        if (style := style_to_store(None, project["caption_style"])) is not None:
+            project["caption_style"] = style
         job.update(state="done", engine="stub engine", segments=len(heard))
 
     def store(self, project: dict[str, Any], body: dict[str, Any]) -> httpx.Response:
         """`PUT /project/{id}/captions` for a body already checked (`body_errors`)
         and a project found: counted as alfred counts them, stored in order of
-        when they start, as alfred stores them, and only the captions and the
-        style stored."""
+        when they start, as alfred stores them, with the style alfred keeps
+        (`style_to_store`), and nothing else stored."""
         captions = body["captions"]
         if len(captions) > MAX_CAPTIONS:
             return httpx.Response(422, json={"detail": f"{len(captions)} captions is more than "
                                                        f"the {MAX_CAPTIONS} a project may carry"})
         ordered = sorted(captions, key=lambda caption: (caption["start"], caption["end"]))
         project["captions"] = [dict(caption) for caption in ordered]
-        project["caption_style"] = body.get("style", project["caption_style"])
+        if (style := style_to_store(body.get("style"), project["caption_style"])) is not None:
+            project["caption_style"] = style
         return httpx.Response(200, json=self.held(project))
 
     def queue(self, body: dict[str, Any]) -> httpx.Response:
