@@ -1,12 +1,17 @@
 # alfred Integration
 
 qmcp can drive alfred, a self-hosted video editor whose renders are made on its
-server. Five tools let an agent see alfred's projects and templates, queue a
-render, and follow it to a link a person can open; an approval flow puts a
-finished render in front of a person before anything else happens to it. Every
-call to alfred is a tool invocation, so it is in qmcp's record.
-`walkthrough/10-a-render-waits-for-a-person.md` runs the tools and the flow's
-steps against an alfred stood in for.
+server. Its tools let an agent see alfred's projects and templates, queue a
+render, follow it to a link a person can open, and deliver it; and caption a
+project -- transcribe its timeline with alfred's speech engine, read the
+captions, and store a person's correction -- so that a render burns them in.
+Two flows put the work in front of a person: one asks about a finished render
+before anything else happens to it, the other asks about the transcript before
+it is burned into a render, then about the render. Every call to alfred is a
+tool invocation, so it is in qmcp's record.
+`walkthrough/10-a-render-waits-for-a-person.md` and
+`walkthrough/11-captions-are-read-before-they-are-burned-in.md` run the tools
+and the flows' steps against an alfred stood in for.
 
 The tools talk to alfred over its HTTP API and nothing else: no alfred or render
 engine code is imported.
@@ -45,9 +50,13 @@ every `repr`.
 |---|---|---|---|
 | `alfred_projects` | `skip`, `limit` (optional) | `[{id, name, clips, duration}]` | `GET /project` |
 | `alfred_templates` | none | alfred's list, `[{name, description, parameters, deprecated}]` | `GET /templates` |
-| `alfred_render_enqueue` | `project_id` or `edl`, exactly one; `name`, `description`, `width`, `height`, `fps`, `quality` (optional) | `{render_id, project_id, name, width, height, fps, quality}` | `GET /project/{id}`, `POST /render` |
+| `alfred_render_enqueue` | `project_id` or `edl`, exactly one; `name`, `description`, `width`, `height`, `fps`, `quality`, `captions` (optional) | `{render_id, project_id, name, width, height, fps, quality, captions}` | `GET /project/{id}`, `POST /render` |
 | `alfred_render_status` | `render_id` | `{render_id, state, progress, error, download_url, download_expires_at}` | `GET /render/{id}/status` |
-| `alfred_health` | none | alfred's report, `{api, db, renderer: {ok, workers}, queue: {pending}}` | `GET /health` |
+| `alfred_render_deliver` | `render_id`; `destination` (optional) | `{render_id, destination, location}` | `POST /render/{id}/deliver` |
+| `alfred_captions` | `project_id` | `{project_id, captions, style, job}` | `GET /project/{id}/captions` |
+| `alfred_captions_transcribe` | `project_id` | `{project_id, job}` | `POST /project/{id}/captions/transcribe` |
+| `alfred_captions_set` | `project_id`; `captions`, `style`, or both | `{project_id, captions, style, job}` | `PUT /project/{id}/captions`, and `GET` for what is left out |
+| `alfred_health` | none | alfred's report, `{api, db, renderer: {ok, workers}, queue: {pending}, speech: {configured, ok}}`, `speech` from an alfred that transcribes | `GET /health` |
 
 **`alfred_projects`** counts the clips on each project's timeline: 0 for a
 project built from a form rather than on the timeline. `duration` is the one
@@ -63,6 +72,16 @@ encoding presets: `draft`, `standard` or `high`. A project with no clips is
 refused before anything is queued. **With `edl`**, the EDL and the options
 given are sent, and nothing else.
 
+**Captions in a render.** A project whose caption style is enabled has its
+captions burned in: its `captions` and `caption_style` go with the render as
+alfred stores them, and alfred turns each caption into a text clip over the
+timeline -- qmcp maps nothing. `captions: true` burns them in with the style
+switched on, whatever the project saved, and is refused before anything is
+queued for a project with no captions; `captions: false` sends none. A style
+that does not say `enabled: true` counts as switched off. `captions` in the
+result is how many went with the render; with `edl` there are none, and
+`captions: true` is refused.
+
 **`alfred_render_status`**: `state` is alfred's -- `queued`, `rendering`,
 `rendered` or `failed` -- and `error` says why a render failed. Once a render is
 rendered, an alfred that issues signed links answers a `download_url`; the tool
@@ -70,8 +89,41 @@ makes it absolute against `QMCP_ALFRED_URL`, and `download_expires_at` is when
 it stops working, read from the link. The link needs no token until then, and
 each call issues a fresh one. An alfred that issues no links answers null.
 
+**`alfred_render_deliver`** sends a finished render to a destination alfred
+offers, as the `destination` query parameter; unset, alfred chooses -- where
+the render was last sent, else its local store. `location` is where it went,
+made absolute against `QMCP_ALFRED_URL` when alfred answers a path: a local
+delivery is the render's download route, which asks for the owner's session,
+not a signed link. alfred refuses a render that has not finished (409) and a
+destination it cannot reach (502).
+
+**`alfred_captions`**: `captions` is a list of `{start, end, text}` in timeline
+seconds; `style` is the caption style, `{enabled, fontsize, color, bg,
+position, align, font}`, each optional; `job` is the last transcription,
+`{state, error, engine, segments, updated_at}`, its `state` one of `queued`,
+`transcribing`, `done` or `failed` -- or null when the project was never
+transcribed.
+
+**`alfred_captions_transcribe`** asks alfred to transcribe the project's
+saved timeline and answers with the job alfred started; alfred stores the
+captions on the project when it is done, and `alfred_captions` follows it.
+alfred refuses when it has no speech engine (503) and while a transcription of
+the project runs (409); the error opens with `alfred has no speech engine` or
+`a transcription is already running` (`NO_SPEECH_ENGINE` and
+`TRANSCRIPTION_RUNNING` in `qmcp.tools.alfred`), then alfred's own refusal.
+
+**`alfred_captions_set`** is a person's correction. alfred checks what it is
+sent -- each caption starts at 0 or later, ends after it starts, has text, and
+comes in order -- and stores the captions and the style and nothing else. Give
+the captions, the style, or both; the one left out is read from alfred and
+sent back as it is, so a route that stores both does not reset it, and one
+alfred holds as null is left out rather than sent. The result is what alfred
+then holds, read back with `GET` when alfred's answer does not carry it.
+
 **`alfred_health`**: an alfred without the report answers 404, which the tool
-raises as an error.
+raises as an error. `speech` says whether a speech engine is configured and
+answers; an alfred that does not transcribe leaves it out, and so does the
+tool.
 
 ## Errors
 
@@ -86,7 +138,9 @@ and records it as failed.
 | alfred refused a request | `alfred refused <method> <path> (<status>): <alfred's detail>`; a validation error list is given as `body.width: value is not a valid integer; ...` |
 | alfred refused with 401 | the same, followed by what to change: the account was refused after a fresh login, the token was refused, or alfred asks for an account |
 | The login was refused | `alfred refused the login for <email> (<status>): <detail>` |
-| A route the server does not have | `... (404): Not Found (the server at <url> calls itself '<title>')`, the title read from the server's `/openapi.json` |
+| A route the server does not have | `... (404): Not Found (the server at <url> calls itself '<title>')`, the title read from the server's `/openapi.json`; an alfred that does not caption answers the caption routes this way |
+| No speech engine, on `alfred_captions_transcribe` | `alfred has no speech engine: alfred refused POST /project/<id>/captions/transcribe (503): <alfred's detail>` |
+| A transcription of the project running | `a transcription is already running: alfred refused POST ... (409): <alfred's detail>` |
 | No answer | `alfred at <url> could not be reached ...`, or `did not answer ... in time` |
 | An answer that is not JSON | `alfred answered <method> <path> with <content type>, not JSON`, and the server's title when it gives one |
 
@@ -139,13 +193,85 @@ A deadline two polls past the expiry covers a server whose listing keeps it.
 
 **What approval does.** It ends the run, approved; nothing is delivered or
 published by the flow. A rejection and an approval nobody gave end it too, each
-said in the last line.
+said in the last line. The caption flow below can deliver an approved render,
+when it is asked to.
+
+## The caption flow
+
+`examples/flows/alfred_caption_render.py` captions a project and renders it
+with the captions burned in, asking a person twice: about the transcript before
+it is rendered, and about the render before it goes anywhere. Its steps are
+`qmcp.cookbook.alfred_captions`, beside `qmcp.cookbook.alfred_render`'s, and
+every call to alfred goes through the tools above, under the correlation id
+`alfred-caption-render-<run id>`.
+
+```bash
+uv run qmcp serve                    # with the QMCP_ALFRED_* settings
+uv run python examples/flows/alfred_caption_render.py run --project-id <id>
+uv run python examples/flows/alfred_caption_render.py run --project-id <id> --deliver True
+uv run qmcp human respond <request id> approve      # or reject, for each request
+```
+
+It is also the `alfred-caption-render` recipe: `uv run qmcp cookbook run
+alfred-caption-render --project-id <id>`, or `run_recipe_local` from the MCP
+server in `qmcp_mcp.py`. `run --help` lists the parameters and their defaults.
+
+| Step | What it does |
+|---|---|
+| `start` | checks the qmcp server answers |
+| `transcribe` | `alfred_captions_transcribe`, then `alfred_captions` every `--poll-interval` seconds until the job is done or failed |
+| `review` | for a transcript with captions: an approval carrying it, that expires after `--review-timeout`, then the answer |
+| `render` | for an approved transcript: `alfred_render_enqueue` with `captions: true`, with `--width`, `--height` and `--quality` when given |
+| `follow` | `alfred_render_status` until the render settles, as `alfred-render` follows one |
+| `ask_person` | for a rendered render: an approval with its link that expires after `--approval-timeout`, then the answer |
+| `delivery` | for an approved render, only when `--deliver True`: `alfred_render_deliver`, to `--destination` or alfred's choice |
+| `end` | prints how the run ended |
+
+**How `transcribe` ends.** `done`, with the captions; `no speech`, done with no
+caption to show; `failed`, with alfred's reason; `no speech engine`, at once,
+when alfred refuses for want of one; `no renderer`, for a job still queued
+after `--queued-timeout` when `alfred_health` reports no worker running -- a
+transcription is one of alfred's worker tasks, as a render is -- or for one
+that never left the queue within `--transcribe-timeout` on an alfred without
+the report; and `timed out` otherwise. A transcription of the project already
+running is followed to its end, since it makes the same captions. Only `done`
+is put to a person.
+
+**What the person reads first.** The request is
+`alfred-captions-<project id>-<run id>`. Its prompt lists the transcript, a
+line per caption, `m:ss.s-m:ss.s  text`, at most `REVIEW_LINES`
+(`qmcp.cookbook.alfred_captions`) of them, and its context holds every
+caption, the engine and the run. Approving renders the
+project with the captions alfred holds when the render is queued, so a
+correction saved in alfred meanwhile -- in alfred's editor, or with
+`alfred_captions_set` -- is in the render; rejecting ends the run with nothing
+rendered.
+
+**What the person reads second.** The request is
+`alfred-caption-render-<render id>-<run id>`, `alfred-render`'s approval with
+the link and when it stops working, and it says what approving does: delivers
+the render, when the run was started with `--deliver True`, and otherwise
+nothing more.
+
+**Delivery is an opt-in.** Without `--deliver True` an approval ends the run,
+as it does in `alfred-render`. With it, the approved render goes to
+`--destination`, or where alfred chooses when that is unset. A delivery alfred
+refuses is said in the last line rather than raised: the render is fine, and
+`alfred_render_deliver` can be asked again.
+
+Both answers are waited for as `alfred-render` waits: the pending listing is
+watched until the request leaves it, and the request read once.
 
 ## What is checked
 
-`tests/test_alfred_tools.py` and `tests/test_alfred_render_flow.py` drive a
-stand-in alfred through `httpx.MockTransport`, and one run of the flow's steps
-goes through a qmcp server on an ephemeral port and its queue. Each guard names
-the mutation that turns it red. A running alfred is not part of the suite, and
-neither is the Metaflow flow where Metaflow cannot be imported (`import
-fcntl`); `tests/test_examples_smoke.py` imports it where it can.
+`tests/test_alfred_tools.py`, `tests/test_alfred_caption_tools.py`,
+`tests/test_alfred_render_flow.py` and `tests/test_alfred_caption_flow.py` drive
+a stand-in alfred through `httpx.MockTransport` (`tests/alfred_stub.py`), which
+also holds projects' captions, a transcription job and a render that each move
+one state per look. One run of `alfred-render`'s steps goes through a qmcp
+server on an ephemeral port and its queue; the caption flow's file is run step
+by step there, over a stand-in for Metaflow's classes and decorators, through
+each way a run can end. Each guard names the mutation that turns it red. A
+running alfred is not part of the suite, and neither is Metaflow itself where it
+cannot be imported (`import fcntl`); `tests/test_examples_smoke.py` imports
+both flows where it can.

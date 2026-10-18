@@ -225,11 +225,14 @@ All tools must:
 ## alfred Tools
 
 `alfred_projects`, `alfred_templates`, `alfred_render_enqueue`,
-`alfred_render_status` and `alfred_health` drive alfred, a self-hosted video
-editor, over its HTTP API; [integrations/alfred.md](integrations/alfred.md) is
-their reference. Each call is a request or two to alfred, made inline, with a
-short timeout. Between calls they keep alfred's token, so a call does not log
-in again while it works.
+`alfred_render_status`, `alfred_render_deliver`, `alfred_health`, and the
+caption tools `alfred_captions`, `alfred_captions_transcribe` and
+`alfred_captions_set` drive alfred, a self-hosted video editor, over its HTTP
+API; [integrations/alfred.md](integrations/alfred.md) is their reference. Each
+call is a request or two to alfred, made inline, with a short timeout: a
+transcription is started by one call and followed by others, never waited for
+inside one. Between calls they keep alfred's token, so a call does not log in
+again while it works.
 
 ---
 

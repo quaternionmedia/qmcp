@@ -66,12 +66,19 @@ Drives alfred, a self-hosted video editor, over its HTTP API. Provides:
 - `alfred_render_enqueue`, a project's saved timeline or an explicit EDL queued
   to render
 - `alfred_render_status`, a render followed to its state and a download link
-- `alfred_health`, whether alfred has a renderer running
+- `alfred_render_deliver`, a finished render sent to a destination alfred offers
+- `alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set`, a
+  project's captions read, transcribed by alfred's speech engine, and corrected
+- `alfred_health`, whether alfred has a renderer running and a speech engine
 - `examples/flows/alfred_render.py`, a render put to a person for approval
+- `examples/flows/alfred_caption_render.py`, a transcript put to a person before
+  it is burned into a render, the render put to a person, and delivery on
+  approval when asked for
 
 Configured by the `QMCP_ALFRED_*` settings; nothing from alfred is imported.
-`walkthrough/10-a-render-waits-for-a-person.md` runs it against an alfred
-stood in for.
+`walkthrough/10-a-render-waits-for-a-person.md` and
+`walkthrough/11-captions-are-read-before-they-are-burned-in.md` run it against
+an alfred stood in for.
 
 **Status**: Tested against a stand-in alfred; a running alfred is checked by
 hand.
@@ -89,6 +96,7 @@ When to use what:
 | Human approval workflow | QMCP human request API |
 | Answer an approval by speaking | QMCP `integrations.voice` over vox |
 | Render a video project, behind approval | QMCP `alfred_*` tools and the `alfred-render` flow |
+| Caption a video project, the transcript read before it is burned in | QMCP `alfred_captions*` tools and the `alfred-caption-render` flow |
 | Model pricing/limits | QMCP `Models` registry |
 | Multi-agent patterns | QMCP Topologies |
 | Structured output | PydanticAI `output_type` |
