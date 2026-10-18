@@ -4,7 +4,7 @@ Everything on this page runs. It is executed by the ordinary test command, so
 an example that stops being true fails the build rather than sitting here
 misleading somebody.
 
-alfred, the video editor of page 10, can caption a project: its speech engine
+alfred, the video editor of page 10, can caption a project: its audio engine
 transcribes the project's saved timeline, alfred keeps the captions on the
 project, and a render can burn them into the picture. qmcp reaches that through
 three more tools -- `alfred_captions`, `alfred_captions_transcribe` and
@@ -102,7 +102,7 @@ Asked to transcribe anyway, alfred refuses, and the tool's error opens with
 what that means before alfred's own words:
 
     >>> print(client.invoke_tool("alfred_captions_transcribe", {"project_id": PROJECT}).error)
-    Tool execution failed: alfred has no speech engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).
+    Tool execution failed: alfred has no audio engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).
 
 The caption flow, `examples/flows/alfred_caption_render.py`, runs the steps in
 `qmcp.cookbook.alfred_captions`, one Metaflow step each, with every call to
@@ -114,9 +114,9 @@ first step ends there, asking nobody anything:
     >>> invoke = alfred_render.invoker(client, "alfred-caption-render-page-11")
     >>> ended = flow.transcribe(invoke, PROJECT, sleep=lambda seconds: None)
     >>> ended.outcome
-    'no speech engine'
+    'no audio engine'
     >>> print(flow.summary(PROJECT, ended))
-    Nothing was asked: the transcription of alfred project 6a78b0420eea42d905943615 could not start: alfred has no speech engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).
+    Nothing was asked: the transcription of alfred project 6a78b0420eea42d905943615 could not start: alfred has no audio engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).
 
 ## Transcribed, and put to a person
 
@@ -222,7 +222,7 @@ correlation id. Sorted, because the listing orders by creation time alone:
 
 ## What this page does not claim
 
-That alfred transcribes anything, or that a speech engine hears what was said:
+That alfred transcribes anything, or that its audio engine hears what was said:
 the handler answers as told, and the tools against a running alfred with an
 engine are a person's check (`docs/integrations/alfred.md`). Nor does the page
 run the Metaflow flow; its steps are the ones above, and

@@ -42,7 +42,7 @@ from qmcp.cookbook.alfred_render import (
     ToolFailedError,
     Waited,
 )
-from qmcp.tools.alfred import NO_SPEECH_ENGINE, TRANSCRIPTION_RUNNING
+from qmcp.tools.alfred import NO_AUDIO_ENGINE, TRANSCRIPTION_RUNNING
 from tests.alfred_stub import NO_ENGINE_DETAIL, URL, CaptionedAlfred, connect
 
 REPO = Path(__file__).resolve().parents[1]
@@ -145,12 +145,12 @@ def test_a_transcription_is_followed_until_its_captions_are_there():
     assert clock.slept == [5, 5] and not ended.joined
 
 
-def test_no_speech_engine_ends_it_at_once_in_alfred_s_words():
+def test_no_audio_engine_ends_it_at_once_in_alfred_s_words():
     """Mutation: treat the 503 as any other refusal -- red, it raises."""
-    tools = Tools("queued", start=refusal(NO_SPEECH_ENGINE, 503, NO_ENGINE_DETAIL))
+    tools = Tools("queued", start=refusal(NO_AUDIO_ENGINE, 503, NO_ENGINE_DETAIL))
     ended, clock = transcribed(tools)
     assert ended.outcome == NO_ENGINE and not ended.done
-    assert ended.why == (f"{NO_SPEECH_ENGINE}: alfred refused POST "
+    assert ended.why == (f"{NO_AUDIO_ENGINE}: alfred refused POST "
                          f"/project/p1/captions/transcribe (503): {NO_ENGINE_DETAIL}")
     assert tools.calls == ["alfred_captions_transcribe"] and clock.slept == []
 
@@ -172,9 +172,9 @@ def test_any_other_refusal_to_start_is_raised():
 
 
 def test_a_failed_transcription_ends_with_alfred_s_reason():
-    ended, _ = transcribed(Tools("transcribing",
-                                 {"state": "failed", "error": "the speech engine timed out"}))
-    assert (ended.outcome, ended.why) == (FAILED, "the speech engine timed out")
+    why = "the audio engine at http://joe.test:8010: timed out"
+    ended, _ = transcribed(Tools("transcribing", {"state": "failed", "error": why}))
+    assert (ended.outcome, ended.why) == (FAILED, why)
 
 
 def test_a_transcription_that_hears_nothing_is_not_put_to_anyone():
@@ -324,9 +324,9 @@ STILL_QUEUED = Transcribed(NO_RENDERER, [], {"state": "queued"}, 60,
 
 
 @pytest.mark.parametrize("ending,line", [
-    ((Transcribed(NO_ENGINE, [], None, 0, f"{NO_SPEECH_ENGINE}: ... (503): none set"),),
+    ((Transcribed(NO_ENGINE, [], None, 0, f"{NO_AUDIO_ENGINE}: ... (503): none set"),),
      f"Nothing was asked: the transcription of alfred project p1 could not start: "
-     f"{NO_SPEECH_ENGINE}: ... (503): none set."),
+     f"{NO_AUDIO_ENGINE}: ... (503): none set."),
     ((STILL_QUEUED,),
      "Nothing was asked: the transcription of alfred project p1 was not run: still queued "
      "after 60 s, and alfred reports no worker running to transcribe it."),
@@ -552,13 +552,13 @@ def test_a_rejected_render_is_not_delivered(flow_file, monkeypatch, server, fake
     assert "alfred_render_deliver" not in ran.tools and len(ran.asked) == 2
 
 
-def test_no_speech_engine_asks_nobody_anything(flow_file, monkeypatch, server, fake):
+def test_no_audio_engine_asks_nobody_anything(flow_file, monkeypatch, server, fake):
     fake.without_an_audio_engine()
     ran = run(flow_file, monkeypatch, server, deliver=True)
     assert ran.flow.transcribed.outcome == NO_ENGINE
     assert ran.line == (  # alfred's detail ends the sentence
         "Nothing was asked: the transcription of alfred project p1 could not start: "
-        f"{NO_SPEECH_ENGINE}: alfred refused POST /project/p1/captions/transcribe (503): "
+        f"{NO_AUDIO_ENGINE}: alfred refused POST /project/p1/captions/transcribe (503): "
         f"{NO_ENGINE_DETAIL}")
     assert ran.tools == ["alfred_captions_transcribe"] and ran.asked == []
 

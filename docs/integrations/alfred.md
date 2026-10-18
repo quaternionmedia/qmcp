@@ -3,7 +3,7 @@
 qmcp can drive alfred, a self-hosted video editor whose renders are made on its
 server. Its tools let an agent see alfred's projects and templates, queue a
 render, follow it to a link a person can open, and deliver it; and caption a
-project -- transcribe its timeline with alfred's speech engine, read the
+project -- transcribe its timeline with alfred's audio engine, read the
 captions, and store a person's correction -- so that a render burns them in.
 Two flows put the work in front of a person: one asks about a finished render
 before anything else happens to it, the other asks about the transcript before
@@ -107,9 +107,9 @@ transcribed.
 **`alfred_captions_transcribe`** asks alfred to transcribe the project's
 saved timeline and answers with the job alfred started; alfred stores the
 captions on the project when it is done, and `alfred_captions` follows it.
-alfred refuses when it has no speech engine (503) and while a transcription of
-the project runs (409); the error opens with `alfred has no speech engine` or
-`a transcription is already running` (`NO_SPEECH_ENGINE` and
+alfred refuses when it has no audio engine (503) and while a transcription of
+the project runs (409); the error opens with `alfred has no audio engine` or
+`a transcription is already running` (`NO_AUDIO_ENGINE` and
 `TRANSCRIPTION_RUNNING` in `qmcp.tools.alfred`), then alfred's own refusal.
 
 **`alfred_captions_set`** is a person's correction. alfred checks what it is
@@ -146,7 +146,7 @@ and records it as failed.
 | alfred refused with 401 | the same, followed by what to change: the account was refused after a fresh login, the token was refused, or alfred asks for an account |
 | The login was refused | `alfred refused the login for <email> (<status>): <detail>` |
 | A route the server does not have | `... (404): Not Found (the server at <url> calls itself '<title>')`, the title read from the server's `/openapi.json`; an alfred that does not caption answers the caption routes this way |
-| No speech engine, on `alfred_captions_transcribe` | `alfred has no speech engine: alfred refused POST /project/<id>/captions/transcribe (503): <alfred's detail>` |
+| No audio engine, on `alfred_captions_transcribe` | `alfred has no audio engine: alfred refused POST /project/<id>/captions/transcribe (503): <alfred's detail>` |
 | A transcription of the project running | `a transcription is already running: alfred refused POST ... (409): <alfred's detail>` |
 | No answer | `alfred at <url> could not be reached ...`, or `did not answer ... in time` |
 | An answer that is not JSON | `alfred answered <method> <path> with <content type>, not JSON`, and the server's title when it gives one |
@@ -235,7 +235,7 @@ server in `qmcp_mcp.py`. `run --help` lists the parameters and their defaults.
 | `end` | prints how the run ended |
 
 **How `transcribe` ends.** `done`, with the captions; `no speech`, done with no
-caption to show; `failed`, with alfred's reason; `no speech engine`, at once,
+caption to show; `failed`, with alfred's reason; `no audio engine`, at once,
 when alfred refuses for want of one; `no renderer`, for a job still queued
 after `--queued-timeout` when `alfred_health` reports no worker running -- a
 transcription is one of alfred's worker tasks, as a render is -- or for one

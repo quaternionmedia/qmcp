@@ -1,6 +1,6 @@
 """Caption an alfred project, and render it once a person has read the captions.
 
-alfred transcribes the project's saved timeline with its speech engine; a
+alfred transcribes the project's saved timeline with its audio engine; a
 person reads the transcript on qmcp's human queue and approves or rejects it;
 an approved transcript is burned into a render, which is followed until it
 renders and put to a person with its download link; and an approved render is

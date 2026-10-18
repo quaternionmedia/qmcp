@@ -51,10 +51,10 @@ NOT_CONFIGURED = (
 )
 
 # How `alfred_captions_transcribe` opens the two refusals a transcription can
-# meet: alfred's 503, when it has no speech engine, and its 409, while one of
+# meet: alfred's 503, when it has no audio engine, and its 409, while one of
 # the project's transcriptions is running. `qmcp.cookbook.alfred_captions`
 # tells the two apart by these, through the error the server records.
-NO_SPEECH_ENGINE = "alfred has no speech engine"
+NO_AUDIO_ENGINE = "alfred has no audio engine"
 TRANSCRIPTION_RUNNING = "a transcription is already running"
 
 
@@ -731,9 +731,9 @@ def alfred_captions(params: dict[str, Any]) -> dict[str, Any]:
 @tool_registry.register(
     name="alfred_captions_transcribe",
     description=(
-        "Start transcribing an alfred project's saved timeline with alfred's speech engine. "
+        "Start transcribing an alfred project's saved timeline with alfred's audio engine. "
         "alfred stores the captions on the project when it is done; alfred_captions follows "
-        "the job. An error says so when alfred has no speech engine, or when a transcription "
+        "the job. An error says so when alfred has no audio engine, or when a transcription "
         "of the project is already running."
     ),
     input_schema=_PROJECT_ID,
@@ -744,7 +744,7 @@ def alfred_captions_transcribe(params: dict[str, Any]) -> dict[str, Any]:
     try:
         started = client().request("POST", path)
     except AlfredError as refused:
-        opening = {503: NO_SPEECH_ENGINE, 409: TRANSCRIPTION_RUNNING}.get(refused.status)
+        opening = {503: NO_AUDIO_ENGINE, 409: TRANSCRIPTION_RUNNING}.get(refused.status)
         if opening is None:
             raise
         raise AlfredError(
@@ -830,7 +830,7 @@ def alfred_health(params: dict[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
-    "NO_SPEECH_ENGINE",
+    "NO_AUDIO_ENGINE",
     "TRANSCRIPTION_RUNNING",
     "AlfredClient",
     "AlfredConfig",

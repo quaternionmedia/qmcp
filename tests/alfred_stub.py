@@ -185,7 +185,7 @@ class CaptionedAlfred(FakeAlfred):
         render_settings: dict[str, Any] | None = None,
         failure: str | None = None,
     ) -> dict[str, Any]:
-        """A project with a one-clip timeline. `heard` is what the speech engine
+        """A project with a one-clip timeline. `heard` is what the audio engine
         will hear in it; `failure`, when given, is why its transcription fails."""
         project = {
             "_id": project_id,

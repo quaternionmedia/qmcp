@@ -14,7 +14,7 @@ import httpx
 import pytest
 
 import qmcp.tools.alfred as alfred
-from qmcp.tools.alfred import NO_SPEECH_ENGINE, TRANSCRIPTION_RUNNING, AlfredError
+from qmcp.tools.alfred import NO_AUDIO_ENGINE, TRANSCRIPTION_RUNNING, AlfredError
 from tests.alfred_stub import (
     HEALTH,
     NO_ENGINE_DETAIL,
@@ -106,7 +106,7 @@ def test_transcribing_starts_a_job_and_returns_it(fake):
     assert request.content == b""  # alfred is asked to transcribe what it saved
 
 
-def test_no_speech_engine_is_said_first_and_alfred_s_detail_kept(fake):
+def test_no_audio_engine_is_said_first_and_alfred_s_detail_kept(fake):
     """Mutation: let alfred's 503 through as it came -- red, the flow could not
     tell it from any other refusal."""
     fake.add_project("p1", "Talk")
@@ -114,7 +114,7 @@ def test_no_speech_engine_is_said_first_and_alfred_s_detail_kept(fake):
     with pytest.raises(AlfredError) as refused:
         alfred.alfred_captions_transcribe({"project_id": "p1"})
     assert str(refused.value) == (
-        f"{NO_SPEECH_ENGINE}: alfred refused POST /project/p1/captions/transcribe (503): "
+        f"{NO_AUDIO_ENGINE}: alfred refused POST /project/p1/captions/transcribe (503): "
         f"{NO_ENGINE_DETAIL}")
     assert (refused.value.status, refused.value.detail) == (503, NO_ENGINE_DETAIL)
 
@@ -399,13 +399,13 @@ def test_the_server_lists_the_caption_tools(client):
             "alfred_render_deliver"} <= names
 
 
-def test_no_speech_engine_reaches_the_invocation_record_in_so_many_words(client, fake):
+def test_no_audio_engine_reaches_the_invocation_record_in_so_many_words(client, fake):
     fake.add_project("p1", "Talk")
     fake.without_an_audio_engine()
     answer = client.post("/v1/tools/alfred_captions_transcribe",
                          json={"input": {"project_id": "p1"}}).json()
     assert answer["error"] == (
-        f"Tool execution failed: {NO_SPEECH_ENGINE}: alfred refused POST "
+        f"Tool execution failed: {NO_AUDIO_ENGINE}: alfred refused POST "
         f"/project/p1/captions/transcribe (503): {NO_ENGINE_DETAIL}")
     recorded = client.get(f"/v1/invocations/{answer['invocation_id']}").json()
     assert recorded["status"] == "failed" and NO_ENGINE_DETAIL in recorded["error"]
