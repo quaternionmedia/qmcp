@@ -242,11 +242,14 @@ server in `qmcp_mcp.py`. `run --help` lists the parameters and their defaults.
 | `delivery` | for an approved render, only when `--deliver True`: `alfred_render_deliver`, to `--destination` or alfred's choice |
 | `end` | prints how the run ended |
 
-**How `transcribe` ends.** `done`, with the captions; `no speech`, done with no
-caption to show; `failed`, with alfred's reason; `no audio engine`, at once,
-when alfred refuses for want of one; `not queued`, at once, when alfred's broker
-would not take the job; `no renderer`, for a job still queued
-after `--queued-timeout` when `alfred_health` reports no worker running -- a
+**How `transcribe` ends.** `done`, with the captions; `failed`, with alfred's
+reason -- a timeline in which the audio engine heard no speech ends here, in
+alfred's words, and the project keeps the captions it had; `no captions`, a job
+done while the project holds none, as when they are cleared after it finishes,
+since alfred stores a job's captions with it; `no audio engine`, at once, when
+alfred refuses for want of one; `not queued`, at once, when alfred's broker
+would not take the job; `no renderer`, for a job still queued after
+`--queued-timeout` when `alfred_health` reports no worker running -- a
 transcription is one of alfred's worker tasks, as a render is -- or for one
 that never left the queue within `--transcribe-timeout` on an alfred without
 the report; and `timed out` otherwise. A transcription of the project already

@@ -140,6 +140,8 @@ NOT_QUEUED_DETAIL = f"The transcription could not be queued: {BROKER_DOWN}"
 NOT_QUEUED_ERROR = f"could not be queued: {BROKER_DOWN}"
 RUNNING_DETAIL = "This project's timeline is already being transcribed; wait for that to finish."
 NO_OUTPUT_DETAIL = "That render has no output file yet"
+# A job's error when the engine heard no speech (alfred/core/utils/transcription.py).
+NO_SPEECH_ERROR = "the audio engine heard no speech in the timeline's sound"
 
 # --- captions ------------------------------------------------------------------
 
@@ -163,7 +165,8 @@ class CaptionedAlfred(FakeAlfred):
     says none is configured, 409 while a job runs, and 503 again, with the
     job failed, while `broker` is false. Each look at the captions
     moves a job one state -- queued, transcribing, then done with what the
-    engine `heard`, or failed -- while `workers` is above 0. A render moves the
+    engine `heard`, or failed, as when it heard nothing, with the captions
+    the project had kept -- while `workers` is above 0. A render moves the
     same way, queued, rendering, rendered, on each look at its status, and is
     delivered by `POST /render/{id}/deliver`. `GET /health` is alfred's report,
     `HEALTH`'s shape, with `workers`, the renders queued and `audio_engine`. A
@@ -285,11 +288,11 @@ class CaptionedAlfred(FakeAlfred):
         if job["state"] == "queued":
             job["state"] = "transcribing"
             return
-        failure = self.failure[project["_id"]]
+        heard = self.heard[project["_id"]]
+        failure = self.failure[project["_id"]] or (None if heard else NO_SPEECH_ERROR)
         if failure:
             job.update(state="failed", error=failure)
             return
-        heard = self.heard[project["_id"]]
         project["captions"] = [dict(caption) for caption in heard]
         job.update(state="done", engine="stub engine", segments=len(heard))
 

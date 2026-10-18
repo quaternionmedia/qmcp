@@ -24,6 +24,7 @@ from tests.alfred_stub import (
     HEALTH,
     NO_ENGINE_DETAIL,
     NO_OUTPUT_DETAIL,
+    NO_SPEECH_ERROR,
     NOT_QUEUED_DETAIL,
     NOT_QUEUED_ERROR,
     RUNNING_DETAIL,
@@ -212,6 +213,16 @@ def test_a_job_moves_as_alfred_s_does_while_a_worker_runs(fake):
     seen = [alfred.alfred_captions({"project_id": "p1"}) for _ in range(3)]
     assert [s["job"]["state"] for s in seen] == ["transcribing", "done", "done"]
     assert seen[-1]["captions"] == HEARD and seen[-1]["job"]["segments"] == 2
+
+
+def test_a_job_that_hears_no_speech_fails_as_alfred_s_does(fake):
+    """alfred says so as the job's error and keeps the captions the project had,
+    rather than finishing with none."""
+    fake.add_project("p1", "Talk", captions=HEARD)  # and nothing for the engine to hear
+    alfred.alfred_captions_transcribe({"project_id": "p1"})
+    seen = [alfred.alfred_captions({"project_id": "p1"}) for _ in range(2)]
+    assert [s["job"]["state"] for s in seen] == ["transcribing", "failed"]
+    assert (seen[-1]["job"]["error"], seen[-1]["captions"]) == (NO_SPEECH_ERROR, HEARD)
 
 
 # --- alfred_captions_set -------------------------------------------------------------

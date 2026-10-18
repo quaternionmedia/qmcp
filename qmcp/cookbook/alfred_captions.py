@@ -53,7 +53,7 @@ from qmcp.tools.alfred import (
 
 # How a transcription ends. NO_RENDERER and TIMED_OUT are the render wait's.
 DONE = "done"
-NO_SPEECH = "no speech"
+NO_CAPTIONS = "no captions"
 FAILED = "failed"
 NO_ENGINE = "no audio engine"
 NOT_QUEUED = "not queued"
@@ -66,12 +66,14 @@ REVIEW_LINES = 200
 class Transcribed:
     """How a transcription ended.
 
-    `outcome` is `DONE`, `NO_SPEECH` (done, with no caption to show),
-    `FAILED`, `NO_ENGINE`, `NOT_QUEUED`, `NO_RENDERER` or `TIMED_OUT`.
-    `captions` are the project's once the job is done; `job` is alfred's last
-    word on it; `why` is one line for a person, empty when it is done.
-    `joined` is true when the run followed a transcription that was already
-    running.
+    `outcome` is `DONE`, `NO_CAPTIONS`, `FAILED`, `NO_ENGINE`, `NOT_QUEUED`,
+    `NO_RENDERER` or `TIMED_OUT`. alfred stores a finished transcription's
+    captions with the job, and ends one that hears no speech `FAILED`, in its
+    own words; `NO_CAPTIONS` is a job done while the project holds no captions,
+    which a correction made since can leave. `captions` are the project's once
+    the job is done; `job` is alfred's last word on it; `why` is one line for a
+    person, empty when it is done. `joined` is true when the run followed a
+    transcription that was already running.
     """
 
     outcome: str
@@ -152,8 +154,8 @@ def transcribe(
         if state == DONE:
             captions = held.get("captions") or []
             if not captions:
-                return Transcribed(NO_SPEECH, [], job, waited,
-                                   "the speech engine heard nothing to caption", joined)
+                return Transcribed(NO_CAPTIONS, [], job, waited,
+                                   "it finished, but the project holds no captions now", joined)
             return Transcribed(DONE, captions, job, waited, "", joined)
         if state == FAILED:
             return Transcribed(FAILED, [], job, waited,
@@ -267,7 +269,7 @@ def deliver_render(invoke: Invoke, render_id: str, destination: str | None = Non
 _TRANSCRIPTION_ENDED = {
     NO_ENGINE: "could not start",
     NOT_QUEUED: "could not start",
-    NO_SPEECH: "found no speech",
+    NO_CAPTIONS: "left nothing to read",
     FAILED: "failed",
     NO_RENDERER: "was not run",
     TIMED_OUT: "did not finish in time",
@@ -316,8 +318,8 @@ def summary(
 __all__ = [
     "DONE",
     "FAILED",
+    "NO_CAPTIONS",
     "NO_ENGINE",
-    "NO_SPEECH",
     "NOT_QUEUED",
     "REVIEW_LINES",
     "Delivered",

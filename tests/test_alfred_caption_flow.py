@@ -28,8 +28,8 @@ from qmcp.cookbook import alfred_render
 from qmcp.cookbook.alfred_captions import (
     DONE,
     FAILED,
+    NO_CAPTIONS,
     NO_ENGINE,
-    NO_SPEECH,
     NOT_QUEUED,
     Delivered,
     Transcribed,
@@ -46,6 +46,7 @@ from qmcp.cookbook.alfred_render import (
 from qmcp.tools.alfred import NO_AUDIO_ENGINE, TRANSCRIPTION_NOT_QUEUED, TRANSCRIPTION_RUNNING
 from tests.alfred_stub import (
     NO_ENGINE_DETAIL,
+    NO_SPEECH_ERROR,
     NOT_QUEUED_DETAIL,
     URL,
     CaptionedAlfred,
@@ -194,9 +195,13 @@ def test_a_failed_transcription_ends_with_alfred_s_reason():
     assert (ended.outcome, ended.why) == (FAILED, why)
 
 
-def test_a_transcription_that_hears_nothing_is_not_put_to_anyone():
+def test_captions_cleared_once_the_transcription_finished_are_not_put_to_anyone():
+    """alfred stores a job's captions with it, so a job done while the project
+    holds none is one a correction has cleared since. Mutation: put it to a
+    person as done -- red."""
     ended, _ = transcribed(Tools("done", captions=[]))
-    assert (ended.outcome, ended.done) == (NO_SPEECH, False)
+    assert (ended.outcome, ended.done) == (NO_CAPTIONS, False)
+    assert ended.why == "it finished, but the project holds no captions now"
 
 
 def test_a_job_queued_with_no_worker_running_ends_early_as_no_renderer():
@@ -347,9 +352,9 @@ STILL_QUEUED = Transcribed(NO_RENDERER, [], {"state": "queued"}, 60,
     ((STILL_QUEUED,),
      "Nothing was asked: the transcription of alfred project p1 was not run: still queued "
      "after 60 s, and alfred reports no worker running to transcribe it."),
-    ((Transcribed(NO_SPEECH, [], None, 9, "the speech engine heard nothing to caption"),),
-     "Nothing was asked: the transcription of alfred project p1 found no speech: the speech "
-     "engine heard nothing to caption."),
+    ((Transcribed(NO_CAPTIONS, [], None, 9, "it finished, but the project holds no captions now"),),
+     "Nothing was asked: the transcription of alfred project p1 left nothing to read: it "
+     "finished, but the project holds no captions now."),
     ((Transcribed(FAILED, [], None, 9, "the engine timed out"),),
      "Nothing was asked: the transcription of alfred project p1 failed: the engine timed out."),
     ((done(), REJECT),
@@ -589,6 +594,16 @@ def test_a_job_alfred_could_not_queue_asks_nobody_anything(flow_file, monkeypatc
         f"{TRANSCRIPTION_NOT_QUEUED}: alfred refused POST /project/p1/captions/transcribe "
         f"(503): {NOT_QUEUED_DETAIL}.")
     assert ran.tools == ["alfred_captions_transcribe"] and ran.asked == []
+
+
+def test_a_timeline_with_no_speech_asks_nobody_anything(flow_file, monkeypatch, server, fake):
+    """alfred ends a transcription that hears no speech as failed, in its words."""
+    fake.heard["p1"] = []
+    ran = run(flow_file, monkeypatch, server, deliver=True)
+    assert ran.flow.transcribed.outcome == FAILED
+    assert ran.line == ("Nothing was asked: the transcription of alfred project p1 failed: "
+                        f"{NO_SPEECH_ERROR}.")
+    assert ran.asked == [] and fake.queued == []
 
 
 def test_no_worker_running_asks_nobody_anything(flow_file, monkeypatch, server, fake):
