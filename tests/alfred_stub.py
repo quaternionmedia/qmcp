@@ -5,10 +5,11 @@ so nothing needs a running alfred. `CaptionedAlfred` also holds projects,
 their captions and their renders the way alfred's caption routes do, with a
 transcription job and a render that each move one state per look. What it
 answers in alfred's own words is copied from alfred: `HEALTH` is alfred's
-`GET /health`, kept in `tests/alfred_health.json`, and `CAPTIONS` its
+`GET /health`, kept in `tests/alfred_health.json`; `CAPTIONS` its
 `GET /project/{id}/captions` for a project never captioned, kept in
-`tests/alfred_captions.json`. Not collected: the name does not start with
-`test_`.
+`tests/alfred_captions.json`; and `REFUSALS` its refusals, each its status and
+its body, `{detail, code}`, kept in `tests/alfred_refusals.json`. Not
+collected: the name does not start with `test_`.
 """
 
 from __future__ import annotations
@@ -137,6 +138,20 @@ HEALTH: dict[str, Any] = json.loads(
 CAPTIONS: dict[str, Any] = json.loads(
     Path(__file__).with_name("alfred_captions.json").read_text(encoding="utf-8"))
 
+# alfred's refusals as alfred's code answers them, each `{status, body}` by its
+# `code`: captured from alfred's routes (alfred/core/errors.py lists the codes,
+# its docs/api/errors.md says what each means). Where a refusal names what was
+# asked -- how many captions, which destination -- the stand-in words it as
+# alfred does (`too_many_captions`, `unknown_destination`), held to these.
+REFUSALS: dict[str, dict[str, Any]] = json.loads(
+    Path(__file__).with_name("alfred_refusals.json").read_text(encoding="utf-8"))
+
+
+def said(code: str) -> str:
+    """The sentence alfred refuses with, beside `code`."""
+    return REFUSALS[code]["body"]["detail"]
+
+
 # alfred's details, from alfred/core/routes/captions.py and render.py. The 503
 # for no audio engine is the sentence the health report's `detail` carries:
 # both are `problem()`'s, in alfred/core/utils/audio_engine.py. The 503 for a
@@ -144,16 +159,16 @@ CAPTIONS: dict[str, Any] = json.loads(
 # connection, and alfred records the job as failed with it.
 NO_ENGINE_DETAIL: str = HEALTH["audio_engine"]["detail"]
 BROKER_DOWN = "[Errno 111] Connection refused"
-NOT_QUEUED_DETAIL = f"The transcription could not be queued: {BROKER_DOWN}"
+NOT_QUEUED_DETAIL = said("transcription_not_queued")
 NOT_QUEUED_ERROR = f"could not be queued: {BROKER_DOWN}"
-RUNNING_DETAIL = "This project's timeline is already being transcribed; wait for that to finish."
-NO_OUTPUT_DETAIL = "That render has no output file yet"
+RUNNING_DETAIL = said("transcription_running")
+NO_OUTPUT_DETAIL = said("render_not_finished")
 # A job's error when the engine heard no speech (alfred/core/utils/transcription.py).
 NO_SPEECH_ERROR = "the audio engine heard no speech in the timeline's sound"
 # alfred's answers for an id (alfred/core/utils/bucket.py): one that is not an
 # ObjectId is refused before anything is looked up, one nobody holds is 404.
-INVALID_ID_DETAIL = "Not a valid identifier"
-NOT_FOUND_DETAIL = "Item not found"
+INVALID_ID_DETAIL = said("invalid_id")
+NOT_FOUND_DETAIL = said("not_found")
 
 # --- captions ------------------------------------------------------------------
 
@@ -177,6 +192,16 @@ def render_id(n: int) -> str:
 
 # The most captions alfred keeps on a project (alfred/core/utils/captions.py).
 MAX_CAPTIONS = 1000
+
+
+def too_many_captions(count: int) -> str:
+    """alfred's sentence for `count` captions, more than a project carries."""
+    return f"{count} captions is more than the {MAX_CAPTIONS} a project may carry"
+
+
+def unknown_destination(name: str) -> str:
+    """alfred's sentence for a destination it has no such name for."""
+    return f"unknown destination {name!r}; known: ['bucket', 'local']"
 
 
 def project_style(stored: Any) -> dict[str, Any]:
@@ -255,22 +280,26 @@ class CaptionedAlfred(FakeAlfred):
     (`CAPTIONS`'s shape): `GET` and `PUT /project/{id}/captions`, and
     `POST .../captions/transcribe`, which answers 503 while `audio_engine`
     says none is configured, 409 while a job runs, and 503 again, with the
-    job failed, while `broker` is false. Each look at the captions
-    moves a job one state -- queued, transcribing, then done with what the
-    engine `heard`, or failed, as when it heard nothing, with the captions
-    the project had kept -- while `workers` is above 0. A render moves the
+    job failed, while `broker` is false. Each look at the captions moves a
+    job one state -- queued, transcribing, then done with what the engine
+    `heard`, or failed, as when it heard nothing, with the captions the
+    project had kept -- while `workers` is above 0. A render moves the
     same way, queued, rendering, rendered, on each look at its status, and is
     delivered by `POST /render/{id}/deliver`. `GET /health` is alfred's report,
     `HEALTH`'s shape, with `workers`, the renders queued and `audio_engine`.
     Projects and renders are named as alfred names them, by ObjectId, and
     refused as alfred refuses them: a body first, then a malformed id, then an
-    unknown one. A route given with `route` answers first.
+    unknown one. Every refusal of alfred's own is one of `REFUSALS`, its
+    `code` beside its `detail` -- or the detail alone while `codes` is false,
+    as an alfred from before codes answers. A route given with `route`
+    answers first.
     """
 
     def __init__(self) -> None:
         super().__init__()
         self.audio_engine: dict[str, Any] = {"configured": True, "ok": True, "detail": None}
         self.broker = True  # whether alfred's broker takes a job
+        self.codes = True  # whether alfred puts a `code` beside a refusal's detail
         self.workers = 1
         self.projects: dict[str, dict[str, Any]] = {}
         self.heard: dict[str, list[dict[str, Any]]] = {}
@@ -343,16 +372,24 @@ class CaptionedAlfred(FakeAlfred):
                                   lambda render: self.deliver(render, destination))
         return super().unrouted(request)
 
-    @staticmethod
-    def _with(held: dict[str, dict[str, Any]], item_id: str,
+    def refuse(self, code: str, detail: str | None = None) -> httpx.Response:
+        """alfred's refusal `code`, with its status and sentence (`REFUSALS`), or
+        `detail` where alfred's sentence names what was asked; without the code
+        while `codes` is false."""
+        body = {**REFUSALS[code]["body"], **({} if detail is None else {"detail": detail})}
+        if not self.codes:
+            del body["code"]
+        return httpx.Response(REFUSALS[code]["status"], json=body)
+
+    def _with(self, held: dict[str, dict[str, Any]], item_id: str,
               answer: Callable[[dict[str, Any]], httpx.Response]) -> httpx.Response:
         """`answer` for what `held` keeps under `item_id`, or alfred's refusal:
         422 for an id that is not an ObjectId, before anything is looked up,
         and 404 for one nobody holds."""
         if not _OBJECT_ID.fullmatch(item_id):
-            return httpx.Response(422, json={"detail": INVALID_ID_DETAIL})
+            return self.refuse("invalid_id")
         if item_id not in held:
-            return httpx.Response(404, json={"detail": NOT_FOUND_DETAIL})
+            return self.refuse("not_found")
         return answer(held[item_id])
 
     def without_an_audio_engine(self) -> None:
@@ -381,15 +418,15 @@ class CaptionedAlfred(FakeAlfred):
 
     def transcribe(self, project: dict[str, Any]) -> httpx.Response:
         if not self.audio_engine.get("configured"):
-            return httpx.Response(503, json={"detail": NO_ENGINE_DETAIL})
+            return self.refuse("audio_engine_missing")
         job = project["captions_job"]
         if job and job["state"] in ("queued", "transcribing"):
-            return httpx.Response(409, json={"detail": RUNNING_DETAIL})
+            return self.refuse("transcription_running")
         project["captions_job"] = {"state": "queued", "error": None, "engine": None,
                                    "segments": None, "updated_at": _now()}
         if not self.broker:
             project["captions_job"].update(state="failed", error=NOT_QUEUED_ERROR)
-            return httpx.Response(503, json={"detail": NOT_QUEUED_DETAIL})
+            return self.refuse("transcription_not_queued")
         return httpx.Response(202, json={"job": project["captions_job"]})
 
     def tick(self, project: dict[str, Any]) -> None:
@@ -420,8 +457,7 @@ class CaptionedAlfred(FakeAlfred):
         (`style_to_store`), and nothing else stored."""
         captions = body["captions"]
         if len(captions) > MAX_CAPTIONS:
-            return httpx.Response(422, json={"detail": f"{len(captions)} captions is more than "
-                                                       f"the {MAX_CAPTIONS} a project may carry"})
+            return self.refuse("too_many_captions", too_many_captions(len(captions)))
         ordered = sorted(captions, key=lambda caption: (caption["start"], caption["end"]))
         project["captions"] = [dict(caption) for caption in ordered]
         if (style := style_to_store(body.get("style"), project["caption_style"])) is not None:
@@ -448,11 +484,10 @@ class CaptionedAlfred(FakeAlfred):
 
     def deliver(self, render: dict[str, Any], destination: str | None) -> httpx.Response:
         if render["state"] != "rendered":
-            return httpx.Response(409, json={"detail": NO_OUTPUT_DETAIL})
+            return self.refuse("render_not_finished")
         chosen = destination or render["destination"] or "local"
         if chosen != "local":
-            return httpx.Response(502, json={
-                "detail": f"unknown destination {chosen!r}; known: ['bucket', 'local']"})
+            return self.refuse("destination_unknown", unknown_destination(chosen))
         render["destination"] = chosen
         return httpx.Response(200, json={"destination": chosen,
                                          "location": f"/render/{render['id']}/download"})

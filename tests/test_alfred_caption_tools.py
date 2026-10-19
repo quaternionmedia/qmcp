@@ -29,11 +29,15 @@ from tests.alfred_stub import (
     NO_SPEECH_ERROR,
     NOT_QUEUED_DETAIL,
     NOT_QUEUED_ERROR,
+    REFUSALS,
     RUNNING_DETAIL,
     URL,
     CaptionedAlfred,
     FakeAlfred,
     connect,
+    said,
+    too_many_captions,
+    unknown_destination,
 )
 
 HEARD = [
@@ -196,6 +200,17 @@ def test_a_job_alfred_could_not_queue_is_said_as_that_not_as_no_audio_engine(fak
         f"(503): {NOT_QUEUED_DETAIL}")
     assert (refused.value.status, refused.value.detail) == (503, NOT_QUEUED_DETAIL)
     assert alfred.alfred_captions({"project_id": P1})["job"]["error"] == NOT_QUEUED_ERROR
+
+
+def test_the_stand_in_refuses_in_alfred_s_words_and_codes():
+    """Each refusal is kept under its own code; the sentence for no audio
+    engine is the health report's, both being one function's in alfred; and
+    the sentences the stand-in words itself, naming what was asked, are
+    alfred's. Mutation: reword one of them -- red."""
+    assert all(refusal["body"]["code"] == code for code, refusal in REFUSALS.items())
+    assert said("audio_engine_missing") == NO_ENGINE_DETAIL
+    assert too_many_captions(1001) == said("too_many_captions")
+    assert unknown_destination("nowhere") == said("destination_unknown")
 
 
 # Every reason alfred gives for having no audio engine to ask, as its
