@@ -4,24 +4,21 @@ Everything on this page runs. It is executed by the ordinary test command, so
 an example that stops being true fails the build rather than sitting here
 misleading somebody.
 
-alfred, the video editor of page 10, can caption a project: its audio engine
-transcribes the project's saved timeline, alfred keeps the captions on the
-project, and a render can burn them into the picture. qmcp reaches that through
-three more tools -- `alfred_captions`, `alfred_captions_transcribe` and
-`alfred_captions_set` -- and delivers a finished render with a fourth,
-`alfred_render_deliver`; `docs/integrations/alfred.md` is their reference.
-Words a speech engine got wrong stay in every copy of a captioned video, so the
-caption flow puts the transcript to a person before anything is rendered with
-it, and the render to a person before it goes anywhere. This page runs the
-flow's steps.
+alfred, page 10's video editor, can caption a project: its audio engine
+transcribes the saved timeline, alfred keeps the captions on the project, and a
+render can burn them into the picture. qmcp reaches that with
+`alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set`, and
+delivers a finished render with `alfred_render_deliver`;
+`docs/integrations/alfred.md` is their reference. A misheard word stays in
+every copy of a captioned video. So the caption flow puts the transcript to a
+person before anything is rendered with it, and the render before it goes
+anywhere. This page runs the flow's steps.
 
 ## A qmcp server, and alfred stood in for
 
-As on page 10, the server is a real one on an ephemeral port over a database
-made for this page, and alfred is a handler answering each route the tools use
-as alfred's API does. This one holds one project's captions, starts with no
-audio engine, finishes a transcription the first time it is looked at, and
-keeps every request:
+The server and the handler are as on page 10. This handler holds one
+project's captions, starts with no audio engine, finishes a transcription the
+first time it is looked at, and keeps every request:
 
     >>> import json
     >>> import tempfile
@@ -36,10 +33,10 @@ keeps every request:
     >>> HEARD = [{"start": 0.0, "end": 2.4, "text": "Welcome to the interview."},
     ...          {"start": 2.4, "end": 5.0, "text": "This is all fred's caption demo."}]
 
-What alfred answers for its health with no audio engine set, for a project
-never captioned, and when it refuses, is read from the files qmcp's tests hold
-their stand-in alfred to, each alfred's own answer. This project has a caption
-style saved, switched off:
+Three of its answers are alfred's own, read from the files qmcp's tests hold
+their stand-in alfred to: its health with no audio engine set, a project never
+captioned, and its refusals. This project has a caption style saved, switched
+off:
 
     >>> health = json.loads(Path("tests/alfred_health.json").read_text(encoding="utf-8"))
     >>> fresh = json.loads(Path("tests/alfred_captions.json").read_text(encoding="utf-8"))
@@ -98,22 +95,22 @@ style saved, switched off:
 
 ## An alfred without an audio engine says so
 
-`alfred_health` passes on alfred's report, which says whether the audio engine
-alfred transcribes with is configured and answering, and why not:
+`alfred_health` passes on alfred's report, which says whether alfred's audio
+engine is configured and answering, and why not:
 
     >>> client.invoke_tool("alfred_health", {}).result["audio_engine"]
     {'configured': False, 'ok': False, 'detail': 'No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).'}
 
-Asked to transcribe anyway, alfred refuses, and the tool's error opens with
-what that means before alfred's own words:
+Asked to transcribe anyway, alfred refuses. The tool's error says what that
+means, then gives alfred's words:
 
     >>> print(client.invoke_tool("alfred_captions_transcribe", {"project_id": PROJECT}).error)
     Tool execution failed: alfred has no audio engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).
 
-alfred answers 503 for a transcription its broker would not take as well. It
-names each refusal with a code beside its sentence, and the code is what the
-tool tells them apart by; an alfred from before codes is read by its wording. A
-caller in Python finds the code on the tool's error:
+alfred also answers 503 when its broker would not take the job. It names each
+refusal with a code beside its sentence, and the tool tells them apart by the
+code, or by the wording from an alfred that sends none. A caller in Python
+finds the code on the tool's error:
 
     >>> try:
     ...     alfred.alfred_captions_transcribe({"project_id": PROJECT})
@@ -122,9 +119,9 @@ caller in Python finds the code on the tool's error:
     503 audio_engine_missing
 
 The caption flow, `examples/flows/alfred_caption_render.py`, runs the steps in
-`qmcp.cookbook.alfred_captions`, one Metaflow step each, with every call to
-alfred a tool invocation through the server under one correlation id. Its
-first step ends there, asking nobody anything:
+`qmcp.cookbook.alfred_captions`, one per Metaflow step. Each call to alfred is
+a tool invocation through the server, under one correlation id. Without an
+engine, its first step ends the run, asking nobody anything:
 
     >>> from qmcp.cookbook import alfred_captions as flow
     >>> from qmcp.cookbook import alfred_render
@@ -158,9 +155,9 @@ The transcript goes to a person as an approval, with what each answer does:
     ...                   correlation_id="alfred-caption-render-page-11")
 
 The engine heard "alfred" as "all fred". The person corrects the line with
-`alfred_captions_set`, and approves. Only the captions changed, so the tool
-sends back the style alfred holds with them, and a route that stores both
-cannot reset it:
+`alfred_captions_set` and approves. Only the captions are given, so the tool
+sends back the style alfred holds, and a route that stores both cannot reset
+it:
 
     >>> fixed = [HEARD[0], {**HEARD[1], "text": "This is alfred's caption demo."}]
     >>> stored = client.invoke_tool("alfred_captions_set",
@@ -170,8 +167,8 @@ cannot reset it:
     >>> json.loads([r for r in sent if r.method == "PUT"][-1].content)["style"]
     {'enabled': False, 'fontsize': 48.0, 'color': None, 'bg': None, 'position': None, 'align': None, 'font': None}
 
-As on page 10, the answer is given before the wait begins, and the wait reads
-the request once it has left the pending listing:
+As on page 10, the answer comes before the wait, which reads the request once
+it has left the pending listing:
 
     >>> _ = client.submit_human_response(review["request_id"], "approve",
     ...                                  responded_by="editor@example.com")
@@ -182,9 +179,9 @@ the request once it has left the pending listing:
 
 The render is queued with the captions alfred holds now, the correction among
 them. The project's caption style is switched off for its everyday renders, so
-the flow asks for the captions explicitly, and the style goes with them
-switched on. They go to alfred as alfred stores them: alfred turns them into
-clips on the timeline, not qmcp:
+the flow asks for the captions explicitly, and the style goes switched on. They
+go as alfred stores them; alfred, not qmcp, turns them into clips on the
+timeline:
 
     >>> queued = alfred_render.queue_render(invoke, PROJECT, captions=True)
     >>> queued["render_id"], queued["captions"]
@@ -193,8 +190,8 @@ clips on the timeline, not qmcp:
     >>> body["captions"] == fixed, body["caption_style"]
     (True, {'enabled': True, 'fontsize': 48.0, 'color': None, 'bg': None, 'position': None, 'align': None, 'font': None})
 
-It is followed as page 10's render was, and put to a person with its link.
-This run was asked to deliver, so the request says that approving delivers it:
+It is followed as on page 10 and put to a person with its link. This run was
+asked to deliver, so the request says approving delivers it:
 
     >>> waited = alfred_render.wait_for_render(invoke, RENDER, sleep=lambda seconds: None)
     >>> approval = flow.approval_request(queued, waited, "page-11", deliver=True)
@@ -209,9 +206,9 @@ This run was asked to deliver, so the request says that approving delivers it:
 
 ## Delivered, because the run was asked to
 
-Approval delivers it only when the flow runs with `--deliver True`; without it,
-approval ends the run and nothing is delivered. alfred chooses the destination
-when the run names none, and the tool makes the location it answers absolute:
+Approval delivers only when the flow runs with `--deliver True`; without it,
+approval ends the run. alfred chooses the destination when the run names none,
+and the tool makes the location it answers absolute:
 
     >>> delivered = flow.deliver_render(invoke, RENDER)
     >>> print(flow.summary(PROJECT, transcribed, "approve", queued, waited, answer, delivered))
@@ -219,8 +216,8 @@ when the run names none, and the tool makes the location it answers absolute:
 
 ## In qmcp's record
 
-Every call to alfred is an invocation the server recorded, the flow's under its
-correlation id. Sorted, because the listing orders by creation time alone:
+The server recorded every call to alfred, the flow's under its correlation id.
+Sorted, because the listing orders by creation time alone:
 
     >>> rows = client.list_invocations(limit=50)
     >>> for row in sorted((r["tool_name"], r["status"]) for r in rows
@@ -240,8 +237,8 @@ correlation id. Sorted, because the listing orders by creation time alone:
 ## What this page does not claim
 
 That alfred transcribes anything, or that its audio engine hears what was said:
-the handler answers as told, and the tools against a running alfred with an
-engine are a person's check (`docs/integrations/alfred.md`). Nor does the page
-run the Metaflow flow; its steps are the ones above, and
-`tests/test_alfred_caption_flow.py` runs the flow file's own steps, over a
-stand-in for Metaflow, through each way a run can end.
+the handler answers as told, and a running alfred with an engine is a person's
+check (`docs/integrations/alfred.md`). Nor does it run the Metaflow flow. Its
+steps are the ones above, and `tests/test_alfred_caption_flow.py` runs the flow
+file's own steps, over a stand-in for Metaflow, through each way a run can
+end.

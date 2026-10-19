@@ -4,20 +4,19 @@ Everything on this page runs. It is executed by the ordinary test command, so
 an example that stops being true fails the build rather than sitting here
 misleading somebody.
 
-alfred is a self-hosted video editor whose renders are made on its server.
-qmcp drives it through five tools -- `alfred_projects`, `alfred_templates`,
-`alfred_render_enqueue`, `alfred_render_status` and `alfred_health` -- each a
-request or two to alfred's HTTP API; `docs/integrations/alfred.md` is their
-reference. This page invokes them as an agent does, through a qmcp server, and
-then runs the steps of the approval flow: queue a project's render, follow it,
-and put the result to a person, who decides.
+alfred is a self-hosted video editor that renders on its server. qmcp drives
+it with tools, each a request or two to alfred's HTTP API;
+`docs/integrations/alfred.md` is their reference. This page invokes
+`alfred_projects`, `alfred_render_enqueue` and `alfred_render_status` through a
+qmcp server, as an agent does. Then it runs the approval flow's steps: queue a
+project's render, follow it, and put the result to a person, who decides.
 
 ## A qmcp server, and alfred stood in for
 
-The server is a real one, on an ephemeral port over a database made for this
-page. alfred is a handler that answers each route the tools use as alfred's API
-does, and keeps every request, so the page can show what alfred was sent. It
-logs one account in and accepts only the token it issued:
+The server is real, on an ephemeral port over a database made for this page.
+alfred is a handler that answers each route the tools use as alfred's API does.
+It keeps every request, so the page can show what alfred was sent. It logs one
+account in and accepts only the token it issued:
 
     >>> import json
     >>> import tempfile
@@ -41,9 +40,8 @@ logs one account in and accepts only the token it issued:
     >>> states = iter(["queued", "rendering", "rendered"])
     >>> sent = []
 
-When it refuses, it answers as alfred's code does, from the file qmcp's tests
-hold their stand-in alfred to: a status, and a body with alfred's sentence and
-the code beside it:
+It refuses as alfred's code does, from the file qmcp's tests hold their
+stand-in alfred to: a status, and a body with alfred's sentence and its code:
 
     >>> refusals = json.loads(Path("tests/alfred_refusals.json").read_text(encoding="utf-8"))
     >>> refusals["frame_size_out_of_range"]
@@ -76,8 +74,8 @@ the code beside it:
     ...     return httpx.Response(404, json={"detail": "Not Found"})
 
 The tools reach alfred through `qmcp.tools.alfred.client`, which builds a client
-from the `QMCP_ALFRED_*` settings. Here it hands out one built over the handler
-instead, and the page puts the original back at its end:
+from the `QMCP_ALFRED_*` settings. Here it hands out one built over the handler,
+and the page puts the original back at its end:
 
     >>> configured = alfred.client
     >>> standin = AlfredClient(
@@ -100,10 +98,9 @@ a form rather than on the timeline has no clips:
 
 ## A refusal is in alfred's own words
 
-A render alfred refuses comes back as the invocation's error, carrying alfred's
-`detail`, and the server records the invocation as failed. The code beside it
-stays on the `AlfredError` the tool raises, for a caller to switch on; page 11
-shows the caption tool doing so:
+A render alfred refuses comes back as the invocation's error, in alfred's
+`detail`, and the server records the invocation as failed. The code stays on
+the `AlfredError` the tool raises, for a caller to switch on, as page 11 shows:
 
     >>> refused = client.invoke_tool(
     ...     "alfred_render_enqueue", {"project_id": "6a78b0420eea42d905943615", "width": 9000})
@@ -113,7 +110,7 @@ shows the caption tool doing so:
     >>> client.get_invocation(refused.invocation_id)["status"]
     'failed'
 
-A project with no timeline is refused before anything is sent to be rendered:
+A project with no timeline is refused before a render is queued:
 
     >>> print(client.invoke_tool(
     ...     "alfred_render_enqueue", {"project_id": "6a770760de7add77551a53df"}).error)
@@ -122,7 +119,7 @@ A project with no timeline is refused before anything is sent to be rendered:
 ## Queued, followed, and put to a person
 
 The approval flow, `examples/flows/alfred_render.py`, runs these steps from
-`qmcp.cookbook.alfred_render`, one Metaflow step each. Every call to alfred is a
+`qmcp.cookbook.alfred_render`, one per Metaflow step. Each call to alfred is a
 tool invocation through the server, under one correlation id:
 
     >>> from qmcp.cookbook import alfred_render as flow
@@ -139,19 +136,18 @@ tool invocation through the server, under one correlation id:
     quality: None
     captions: 0
 
-The size and rate are the project's saved ones, and `quality` left as None is
-alfred's default. The project holds no captions, so none went with it. The
-timeline went to alfred exactly as alfred stored it,
-`"fadeOut": None` included -- no fade, where a missing `fadeOut` would be the
-engine's default one:
+The size and rate are the project's saved ones; `quality` None is alfred's
+default. The project holds no captions, so none went. The timeline went to
+alfred exactly as alfred stored it, `"fadeOut": None` included: no fade, where
+a missing `fadeOut` would be the engine's default:
 
     >>> body = json.loads([r for r in sent if r.url.path == "/render"][-1].content)
     >>> body["edl"] == TIMELINE, body["width"], body["height"]
     (True, 1280, 720)
 
 Following it reads its status until it settles; the page does not sleep between
-reads. alfred hands out a path signed for a few minutes, and the tool makes it
-a link a person can open, with the moment it stops working read from the link:
+reads. alfred hands out a path signed for a few minutes. The tool makes it a
+link a person can open, and reads from the link when it stops working:
 
     >>> waited = flow.wait_for_render(invoke, queued["render_id"], sleep=lambda seconds: None)
     >>> waited.outcome
@@ -169,10 +165,9 @@ The approval carries the link, and says how to get a fresh one:
     Approve the render of 'Timeline demo'? Watch it at http://alfred.test/render/6a7900000000000000000001/download?exp=1893456000&sig=c2ln -- the link works until 2030-01-01T00:00:00+00:00; alfred_render_status for render 6a7900000000000000000001 issues a fresh one.
     >>> flow.ask(client, request, timeout_seconds=600, correlation_id="alfred-render-page-10")
 
-A person answers on the queue -- here before the wait begins, which the wait
-sees on its first look. The wait watches the pending listing and reads the
-request once, after it has left the listing, because reading a request is what
-expires it:
+A person answers on the queue, here before the wait begins, so the wait sees
+the answer on its first look. The wait watches the pending listing and reads
+the request once it has left, because reading a request is what expires it:
 
     >>> _ = client.submit_human_response(request["request_id"], "approve",
     ...                                  responded_by="editor@example.com")
@@ -182,8 +177,8 @@ expires it:
 
 ## In qmcp's record
 
-Every call to alfred is an invocation the server recorded, the flow's under its
-correlation id. Sorted, because the listing orders by creation time alone:
+The server recorded every call to alfred, the flow's under its correlation id.
+Sorted, because the listing orders by creation time alone:
 
     >>> rows = client.list_invocations(limit=20)
     >>> for row in sorted((r["tool_name"], r["status"]) for r in rows
@@ -212,7 +207,7 @@ alfred was logged in to once, and its token reused for every request after:
 ## What this page does not claim
 
 That alfred renders anything, or that its link opens a video: the handler
-answers as told, and the tools against a running alfred are a person's check
-(`docs/integrations/alfred.md`). Nor does the page run the Metaflow flow, which
-cannot be imported where `fcntl` is missing; its steps are the ones above, and
+answers as told, and a running alfred is a person's check
+(`docs/integrations/alfred.md`). Nor does it run the Metaflow flow, which
+cannot be imported where `fcntl` is missing. Its steps are the ones above, and
 the examples smoke test imports the flow where Metaflow runs.
