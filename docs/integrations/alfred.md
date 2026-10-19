@@ -115,17 +115,21 @@ transcribed. A transcription that finishes stores a style that says nothing of
 **`alfred_captions_transcribe`** asks alfred to transcribe the project's
 saved timeline and answers with the job alfred started; alfred stores the
 captions on the project when it is done, and `alfred_captions` follows it.
-alfred answers 503 for two reasons, which its `detail` tells apart: it has no
-audio engine it can ask -- none configured, or a setting it cannot use, the
-detail naming the engine or the `ALFRED_AUDIO_ENGINE_*` setting -- or its
-broker would not take the job, when the detail opens `The transcription could
-not be queued` and alfred records the job as failed. It answers 409 while a
-transcription of the project runs. The error opens with `alfred has no audio
-engine`, `alfred could not queue the transcription` or `a transcription is
-already running` (`NO_AUDIO_ENGINE`, `TRANSCRIPTION_NOT_QUEUED` and
-`TRANSCRIPTION_RUNNING` in `qmcp.tools.alfred`), then alfred's own refusal. A
-503 whose detail says neither, such as a proxy in front of alfred answers while
-alfred is down, is passed on as it came.
+alfred answers 503 for two reasons: it has no audio engine it can ask -- none
+configured, or a setting it cannot use -- or its broker would not take the job,
+which alfred then records as failed. It answers 409 while a transcription of
+the project runs. alfred names each with a `code` beside its `detail`:
+`audio_engine_missing`, `transcription_not_queued` and `transcription_running`,
+and the code is what tells them apart (`TRANSCRIPTION_REFUSALS` in
+`qmcp.tools.alfred`). An alfred from before codes sends the detail alone, and
+its wording tells them apart instead: a detail naming the engine or an
+`ALFRED_AUDIO_ENGINE_*` setting, or one opening `The transcription could not be
+queued`. The error opens with `alfred has no audio engine`, `alfred could not
+queue the transcription` or `a transcription is already running`
+(`NO_AUDIO_ENGINE`, `TRANSCRIPTION_NOT_QUEUED` and `TRANSCRIPTION_RUNNING`),
+then alfred's own refusal. A refusal with any other code, or with no code and
+wording that says neither -- such as a proxy in front of alfred answers while
+alfred is down -- is passed on as it came.
 
 **`alfred_captions_set`** is a person's correction. alfred checks each caption
 it is sent -- it starts at 0 or later, ends after it starts, and has text, at
@@ -158,6 +162,14 @@ without `audio_engine`, and the tool passes that on as it is.
 A tool that cannot do what it was asked raises. The server then answers the
 invocation with `result: null` and `error: "Tool execution failed: <message>"`,
 and records it as failed.
+
+A refusal alfred's own code made carries a `code` beside its `detail`, saying
+what it means in a word that stays the same when the sentence is reworded --
+alfred's `docs/api/errors.md` lists them. The message carries the sentence; the
+`AlfredError` the tool raises carries both, as `detail` and `code`, for a
+caller in Python to switch on. `code` is None for a refusal without one: from an
+alfred that predates codes, FastAPI's validation list, a route alfred does not
+have, or a proxy's page.
 
 | Cause | The message |
 |---|---|

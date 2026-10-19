@@ -10,9 +10,10 @@ tool's input and output, and the errors.
 
 Nothing from alfred or its render engine is imported; every call is HTTP. A
 request alfred refuses raises `AlfredError` carrying alfred's own `detail`,
-which the server records as the invocation's error. Between calls the tools
-keep one thing: the client, with alfred's token, so a call does not log in
-again while the token works.
+which the server records as the invocation's error, and the `code` alfred
+puts beside it, when it sends one. Between calls the tools keep one thing: the
+client, with alfred's token, so a call does not log in again while the token
+works.
 """
 
 from __future__ import annotations
@@ -55,26 +56,42 @@ NOT_CONFIGURED = (
 # How `alfred_captions_transcribe` opens the refusals a transcription can meet,
 # which `qmcp.cookbook.alfred_captions` tells apart through the error the
 # server records. alfred answers 503 for two reasons (its routes/captions.py):
-# no audio engine it can ask, its detail naming the engine or an
-# ALFRED_AUDIO_ENGINE_* setting; and a job its broker would not take, its
-# detail opening with QUEUE_REFUSED. It answers 409 while one of the project's
-# transcriptions is running. A 503 saying neither is passed on unopened.
+# no audio engine it can ask, and a job its broker would not take; and 409
+# while one of the project's transcriptions is running. alfred names each with
+# a `code` beside its `detail` (alfred's docs/api/errors.md), and the code
+# decides: TRANSCRIPTION_REFUSALS. An alfred from before codes sends the detail
+# alone, read as it words them: the engine or an ALFRED_AUDIO_ENGINE_* setting
+# named for no audio engine, an opening of QUEUE_REFUSED for a job not queued.
+# A refusal with any other code, or with none that says neither, is passed on
+# unopened.
 NO_AUDIO_ENGINE = "alfred has no audio engine"
 TRANSCRIPTION_NOT_QUEUED = "alfred could not queue the transcription"
 TRANSCRIPTION_RUNNING = "a transcription is already running"
 QUEUE_REFUSED = "The transcription could not be queued"
+
+# alfred's code for each of those refusals, and the opening it is given.
+TRANSCRIPTION_REFUSALS: dict[str, str] = {
+    "audio_engine_missing": NO_AUDIO_ENGINE,
+    "transcription_not_queued": TRANSCRIPTION_NOT_QUEUED,
+    "transcription_running": TRANSCRIPTION_RUNNING,
+}
 
 
 class AlfredError(RuntimeError):
     """alfred could not be asked, or refused what it was asked.
 
     `status` is alfred's HTTP status when it answered, and `detail` its `detail`.
+    `code` is the `code` alfred puts beside its `detail` to say what the refusal
+    means; None from an alfred that sends none, and for a refusal alfred's own
+    code did not make, such as FastAPI's validation list or a proxy's page.
     """
 
-    def __init__(self, message: str, *, status: int | None = None, detail: Any = None) -> None:
+    def __init__(self, message: str, *, status: int | None = None, detail: Any = None,
+                 code: str | None = None) -> None:
         super().__init__(message)
         self.status = status
         self.detail = detail
+        self.code = code
 
 
 class AlfredNotConfiguredError(AlfredError):
@@ -269,6 +286,7 @@ class AlfredClient:
                 f"({response.status_code}): {_text(detail)}",
                 status=response.status_code,
                 detail=detail,
+                code=_code(response),
             )
         self._keep(_access_token(response, "/auth/jwt/login"), issued_now=True)
 
@@ -314,7 +332,8 @@ class AlfredClient:
                 message += f"; {self._unauthorized()}"
             elif response.status_code == 404 and detail == "Not Found":
                 message += self._who_answers()
-            raise AlfredError(message, status=response.status_code, detail=detail)
+            raise AlfredError(message, status=response.status_code, detail=detail,
+                              code=_code(response))
         try:
             return response.json()
         except ValueError:
@@ -366,6 +385,16 @@ def _detail(response: httpx.Response) -> Any:
     if isinstance(body, dict) and "detail" in body:
         return body["detail"]
     return body
+
+
+def _code(response: httpx.Response) -> str | None:
+    """The `code` alfred puts beside a refusal's `detail`, or None when there is none."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    code = body.get("code") if isinstance(body, dict) else None
+    return code if isinstance(code, str) and code else None
 
 
 def _text(detail: Any) -> str:
@@ -759,9 +788,15 @@ def alfred_captions(params: dict[str, Any]) -> dict[str, Any]:
     return captions_view(project_id, _expect(client().get(path), dict, "GET", path))
 
 
-def transcription_refusal(status: int | None, detail: Any) -> str | None:
-    """How `alfred_captions_transcribe` opens alfred's refusal with `status` and
-    `detail`; None for one it passes on as it came."""
+def transcription_refusal(status: int | None, detail: Any,
+                          code: str | None = None) -> str | None:
+    """How `alfred_captions_transcribe` opens alfred's refusal with `status`,
+    `detail` and `code`; None for one it passes on as it came.
+
+    The code decides when alfred sends one. Only a refusal without one is read
+    by its status and wording, as an alfred from before codes words it."""
+    if code is not None:
+        return TRANSCRIPTION_REFUSALS.get(code)
     if status == 409:
         return TRANSCRIPTION_RUNNING
     if status != 503 or not isinstance(detail, str):
@@ -789,11 +824,12 @@ def alfred_captions_transcribe(params: dict[str, Any]) -> dict[str, Any]:
     try:
         started = client().request("POST", path)
     except AlfredError as refused:
-        opening = transcription_refusal(refused.status, refused.detail)
+        opening = transcription_refusal(refused.status, refused.detail, refused.code)
         if opening is None:
             raise
         raise AlfredError(
-            f"{opening}: {refused}", status=refused.status, detail=refused.detail
+            f"{opening}: {refused}", status=refused.status, detail=refused.detail,
+            code=refused.code,
         ) from refused
     started = _expect(started, dict, "POST", path)
     return {"project_id": str(project_id), "job": started.get("job")}
@@ -880,6 +916,7 @@ __all__ = [
     "NO_AUDIO_ENGINE",
     "QUEUE_REFUSED",
     "TRANSCRIPTION_NOT_QUEUED",
+    "TRANSCRIPTION_REFUSALS",
     "TRANSCRIPTION_RUNNING",
     "AlfredClient",
     "AlfredConfig",

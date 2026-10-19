@@ -17,6 +17,7 @@ import qmcp.tools.alfred as alfred
 from qmcp.tools.alfred import (
     NO_AUDIO_ENGINE,
     TRANSCRIPTION_NOT_QUEUED,
+    TRANSCRIPTION_REFUSALS,
     TRANSCRIPTION_RUNNING,
     AlfredError,
 )
@@ -163,9 +164,16 @@ def test_transcribing_starts_a_job_and_returns_it(fake):
     assert request.content == b""  # alfred is asked to transcribe what it saved
 
 
-def test_no_audio_engine_is_said_first_and_alfred_s_detail_kept(fake):
+# alfred names its refusals with a code beside the detail; an alfred from
+# before codes sends the detail alone. Each refusal is told apart either way.
+ALFREDS = pytest.mark.parametrize("codes", [True, False], ids=["codes", "before codes"])
+
+
+@ALFREDS
+def test_no_audio_engine_is_said_first_and_alfred_s_detail_kept(fake, codes):
     """Mutation: let alfred's 503 through as it came -- red, the flow could not
     tell it from any other refusal."""
+    fake.codes = codes
     fake.add_project(P1, "Talk")
     fake.without_an_audio_engine()
     with pytest.raises(AlfredError) as refused:
@@ -174,10 +182,13 @@ def test_no_audio_engine_is_said_first_and_alfred_s_detail_kept(fake):
         f"{NO_AUDIO_ENGINE}: alfred refused POST /project/{P1}/captions/transcribe (503): "
         f"{NO_ENGINE_DETAIL}")
     assert (refused.value.status, refused.value.detail) == (503, NO_ENGINE_DETAIL)
+    assert refused.value.code == ("audio_engine_missing" if codes else None)
 
 
-def test_a_running_transcription_is_said_first_and_alfred_s_detail_kept(fake):
+@ALFREDS
+def test_a_running_transcription_is_said_first_and_alfred_s_detail_kept(fake, codes):
     """Mutation: let alfred's 409 through as it came -- red."""
+    fake.codes = codes
     fake.add_project(P1, "Talk")
     alfred.alfred_captions_transcribe({"project_id": P1})
     with pytest.raises(AlfredError) as refused:
@@ -186,11 +197,14 @@ def test_a_running_transcription_is_said_first_and_alfred_s_detail_kept(fake):
         f"{TRANSCRIPTION_RUNNING}: alfred refused POST /project/{P1}/captions/transcribe "
         f"(409): {RUNNING_DETAIL}")
     assert refused.value.status == 409
+    assert refused.value.code == ("transcription_running" if codes else None)
 
 
-def test_a_job_alfred_could_not_queue_is_said_as_that_not_as_no_audio_engine(fake):
+@ALFREDS
+def test_a_job_alfred_could_not_queue_is_said_as_that_not_as_no_audio_engine(fake, codes):
     """alfred's other 503: its broker would not take the job, which alfred then
     holds as failed. Mutation: open every 503 with NO_AUDIO_ENGINE -- red."""
+    fake.codes = codes
     fake.add_project(P1, "Talk")
     fake.broker = False
     with pytest.raises(AlfredError) as refused:
@@ -199,7 +213,50 @@ def test_a_job_alfred_could_not_queue_is_said_as_that_not_as_no_audio_engine(fak
         f"{TRANSCRIPTION_NOT_QUEUED}: alfred refused POST /project/{P1}/captions/transcribe "
         f"(503): {NOT_QUEUED_DETAIL}")
     assert (refused.value.status, refused.value.detail) == (503, NOT_QUEUED_DETAIL)
+    assert refused.value.code == ("transcription_not_queued" if codes else None)
     assert alfred.alfred_captions({"project_id": P1})["job"]["error"] == NOT_QUEUED_ERROR
+
+
+def refusing(code: str, detail: str):
+    """A transcribe route answering alfred's refusal `code`, worded `detail`."""
+    return lambda request: httpx.Response(REFUSALS[code]["status"],
+                                          json={"detail": detail, "code": code})
+
+
+@pytest.mark.parametrize("code,opening", [
+    ("transcription_not_queued", TRANSCRIPTION_NOT_QUEUED),
+    ("audio_engine_missing", NO_AUDIO_ENGINE),
+])
+def test_the_code_decides_whatever_the_wording_says(fake, code, opening):
+    """Each refusal worded as the other is: the code is what is read. Mutation:
+    read the wording before the code -- red."""
+    worded = {"transcription_not_queued": NO_ENGINE_DETAIL,
+              "audio_engine_missing": NOT_QUEUED_DETAIL}[code]
+    fake.route("POST", f"/project/{P1}/captions/transcribe", refusing(code, worded))
+    with pytest.raises(AlfredError) as refused:
+        alfred.alfred_captions_transcribe({"project_id": P1})
+    assert str(refused.value).startswith(f"{opening}: alfred refused POST ")
+    assert (refused.value.code, refused.value.detail) == (code, worded)
+
+
+def test_a_code_qmcp_does_not_know_is_passed_on_unopened(fake):
+    """A refusal from a newer alfred, worded as no audio engine is. Mutation:
+    read the wording of a refusal whose code qmcp does not know -- red."""
+    fake.route("POST", f"/project/{P1}/captions/transcribe",
+               lambda request: httpx.Response(
+                   503, json={"detail": NO_ENGINE_DETAIL, "code": "audio_engine_asleep"}))
+    with pytest.raises(AlfredError) as refused:
+        alfred.alfred_captions_transcribe({"project_id": P1})
+    assert str(refused.value) == (f"alfred refused POST /project/{P1}/captions/transcribe "
+                                  f"(503): {NO_ENGINE_DETAIL}")
+    assert refused.value.code == "audio_engine_asleep"
+
+
+def test_the_codes_qmcp_reads_are_alfred_s():
+    """Held to alfred's own refusals, `tests/alfred_refusals.json`. Mutation:
+    spell one of TRANSCRIPTION_REFUSALS' codes otherwise -- red."""
+    assert set(TRANSCRIPTION_REFUSALS) <= set(REFUSALS)
+    assert all(REFUSALS[code]["status"] in (409, 503) for code in TRANSCRIPTION_REFUSALS)
 
 
 def test_the_stand_in_refuses_in_alfred_s_words_and_codes():
@@ -254,6 +311,7 @@ def test_another_refusal_is_alfred_s_own(fake):
         alfred.alfred_captions_transcribe({"project_id": UNKNOWN})
     assert str(refused.value) == (f"alfred refused POST /project/{UNKNOWN}/captions/transcribe "
                                   "(404): Item not found")
+    assert refused.value.code == "not_found"
 
 
 def test_an_alfred_without_captions_is_named_by_what_answers(monkeypatch):

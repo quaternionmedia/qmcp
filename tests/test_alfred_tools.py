@@ -24,7 +24,16 @@ from qmcp.tools.alfred import (
     AlfredError,
     AlfredNotConfiguredError,
 )
-from tests.alfred_stub import EMAIL, HEALTH, PASSWORD, URL, FakeAlfred, connect, jwt
+from tests.alfred_stub import (
+    EMAIL,
+    HEALTH,
+    PASSWORD,
+    REFUSALS,
+    URL,
+    FakeAlfred,
+    connect,
+    jwt,
+)
 
 
 @pytest.fixture
@@ -274,15 +283,32 @@ def test_without_an_account_a_401_says_which_settings_to_set(fake):
 # --- what a refusal says -----------------------------------------------------
 
 
-def test_a_string_detail_is_surfaced_with_the_status(fake):
-    """Mutation: leave alfred's detail out of the message -- red."""
-    fake.route("POST", "/render", lambda r: httpx.Response(
-        422, json={"detail": "quality must be one of draft, standard, high, not 'ultra'"}))
+def test_a_string_detail_is_surfaced_with_the_status_and_the_code_kept(fake):
+    """alfred's refusal as alfred answers it (`tests/alfred_refusals.json`): the
+    message is its sentence, and its code is kept on the error. Mutation: leave
+    alfred's detail out of the message, or drop the code -- red."""
+    unknown = REFUSALS["unknown_quality"]
+    fake.route("POST", "/render",
+               lambda r: httpx.Response(unknown["status"], json=unknown["body"]))
     with pytest.raises(AlfredError) as refused:
         connect(fake).post("/render", {"edl": {"clips": []}})
     assert str(refused.value) == ("alfred refused POST /render (422): quality must be one of "
                                   "draft, standard, high, not 'ultra'")
-    assert refused.value.status == 422
+    assert (refused.value.status, refused.value.code) == (422, "unknown_quality")
+
+
+@pytest.mark.parametrize("answer", [
+    httpx.Response(422, json={"detail": [{"loc": ["body", "edl"], "msg": "field required"}]}),
+    httpx.Response(422, json={"detail": "quality must be one of draft, standard, high"}),
+    httpx.Response(503, text="no available server"),
+    httpx.Response(409, json={"detail": "busy", "code": 409}),
+], ids=["validation list", "before codes", "a proxy's page", "not a code"])
+def test_a_refusal_alfred_did_not_name_has_no_code(fake, answer):
+    """Mutation: take a code from anything but a word beside alfred's detail -- red."""
+    fake.route("POST", "/render", lambda r: answer)
+    with pytest.raises(AlfredError) as refused:
+        connect(fake).post("/render", {})
+    assert refused.value.code is None
 
 
 def test_a_validation_list_is_surfaced_as_where_and_what(fake):
@@ -467,11 +493,16 @@ def test_an_edl_without_a_clip_list_is_refused_here(tools):
         alfred.alfred_render_enqueue({"edl": {"clips": "title"}})
 
 
-def test_a_refused_render_carries_alfred_s_detail(tools):
-    tools.route("POST", "/render", lambda r: httpx.Response(
-        422, json={"detail": "clip 1 ('videos/x.mp4'): not in the media library"}))
-    with pytest.raises(AlfredError, match="clip 1 \\('videos/x.mp4'\\): not in the media"):
+def test_a_refused_render_carries_alfred_s_detail_and_code(tools):
+    """alfred's refusal of a clip the library does not hold, as alfred answers it."""
+    refused_edl = REFUSALS["edl_refused"]
+    tools.route("POST", "/render",
+                lambda r: httpx.Response(refused_edl["status"], json=refused_edl["body"]))
+    with pytest.raises(AlfredError) as refused:
         alfred.alfred_render_enqueue({"edl": {"clips": [{"name": "videos/x.mp4"}]}})
+    assert str(refused.value) == ("alfred refused POST /render (422): clip 1: 'videos/x.mp4': "
+                                  "no such file in the media library")
+    assert refused.value.code == "edl_refused"
 
 
 def test_an_answer_that_is_not_a_render_id_is_an_error(tools):
@@ -580,8 +611,10 @@ def test_an_unconfigured_alfred_is_the_invocation_s_error(client, monkeypatch):
 
 
 def test_a_refusal_reaches_the_invocation_record_with_alfred_s_detail(client, tools):
-    tools.route("POST", "/render", lambda r: httpx.Response(
-        422, json={"detail": "width must be between 16 and 7680 pixels"}))
+    """The record carries alfred's sentence, its code or not."""
+    too_wide = REFUSALS["frame_size_out_of_range"]
+    tools.route("POST", "/render",
+                lambda r: httpx.Response(too_wide["status"], json=too_wide["body"]))
     answer = client.post("/v1/tools/alfred_render_enqueue", json={
         "input": {"edl": {"clips": [{"name": "title"}]}, "width": 9000}}).json()
     assert answer["error"] == ("Tool execution failed: alfred refused POST /render (422): "
