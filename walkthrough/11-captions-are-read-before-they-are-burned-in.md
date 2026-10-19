@@ -36,13 +36,14 @@ keeps every request:
     >>> HEARD = [{"start": 0.0, "end": 2.4, "text": "Welcome to the interview."},
     ...          {"start": 2.4, "end": 5.0, "text": "This is all fred's caption demo."}]
 
-What alfred answers for its health with no audio engine set, and for a project
-never captioned, is read from the files qmcp's tests hold their stand-in alfred
-to, each alfred's own answer. This project has a caption style saved, switched
-off:
+What alfred answers for its health with no audio engine set, for a project
+never captioned, and when it refuses, is read from the files qmcp's tests hold
+their stand-in alfred to, each alfred's own answer. This project has a caption
+style saved, switched off:
 
     >>> health = json.loads(Path("tests/alfred_health.json").read_text(encoding="utf-8"))
     >>> fresh = json.loads(Path("tests/alfred_captions.json").read_text(encoding="utf-8"))
+    >>> refusals = json.loads(Path("tests/alfred_refusals.json").read_text(encoding="utf-8"))
     >>> engine = health["audio_engine"]
     >>> held = {**fresh, "style": {**fresh["style"], "fontsize": 48.0}}
     >>> sent = []
@@ -63,7 +64,8 @@ off:
     ...                 {"type": "video", "name": "videos/interview.mp4", "duration": 5.0}]}})
     ...     if asked == ("POST", f"/project/{PROJECT}/captions/transcribe"):
     ...         if not engine["configured"]:
-    ...             return httpx.Response(503, json={"detail": engine["detail"]})
+    ...             missing = refusals["audio_engine_missing"]
+    ...             return httpx.Response(missing["status"], json=missing["body"])
     ...         held["job"] = {"state": "queued", "error": None}
     ...         return httpx.Response(202, json={"job": held["job"]})
     ...     if asked == ("GET", f"/project/{PROJECT}/captions"):
@@ -107,6 +109,17 @@ what that means before alfred's own words:
 
     >>> print(client.invoke_tool("alfred_captions_transcribe", {"project_id": PROJECT}).error)
     Tool execution failed: alfred has no audio engine: alfred refused POST /project/6a78b0420eea42d905943615/captions/transcribe (503): No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).
+
+alfred answers 503 for a transcription its broker would not take as well. It
+names each refusal with a code beside its sentence, and the code is what the
+tool tells them apart by; an alfred from before codes is read by its wording. A
+caller in Python finds the code on the tool's error:
+
+    >>> try:
+    ...     alfred.alfred_captions_transcribe({"project_id": PROJECT})
+    ... except alfred.AlfredError as refused:
+    ...     print(refused.status, refused.code)
+    503 audio_engine_missing
 
 The caption flow, `examples/flows/alfred_caption_render.py`, runs the steps in
 `qmcp.cookbook.alfred_captions`, one Metaflow step each, with every call to

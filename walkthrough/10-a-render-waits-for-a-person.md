@@ -41,6 +41,14 @@ logs one account in and accepts only the token it issued:
     >>> states = iter(["queued", "rendering", "rendered"])
     >>> sent = []
 
+When it refuses, it answers as alfred's code does, from the file qmcp's tests
+hold their stand-in alfred to: a status, and a body with alfred's sentence and
+the code beside it:
+
+    >>> refusals = json.loads(Path("tests/alfred_refusals.json").read_text(encoding="utf-8"))
+    >>> refusals["frame_size_out_of_range"]
+    {'status': 422, 'body': {'detail': 'width must be between 16 and 7680 pixels', 'code': 'frame_size_out_of_range'}}
+
     >>> def answers(request):
     ...     sent.append(request)
     ...     asked = request.method, request.url.path
@@ -55,8 +63,8 @@ logs one account in and accepts only the token it issued:
     ...             return httpx.Response(200, json=project)
     ...     if asked == ("POST", "/render"):
     ...         if not 16 <= json.loads(request.content).get("width", 1920) <= 7680:
-    ...             return httpx.Response(
-    ...                 422, json={"detail": "width must be between 16 and 7680 pixels"})
+    ...             too_wide = refusals["frame_size_out_of_range"]
+    ...             return httpx.Response(too_wide["status"], json=too_wide["body"])
     ...         return httpx.Response(200, json=RENDER)
     ...     if asked == ("GET", f"/render/{RENDER}/status"):
     ...         state = next(states)
@@ -93,7 +101,9 @@ a form rather than on the timeline has no clips:
 ## A refusal is in alfred's own words
 
 A render alfred refuses comes back as the invocation's error, carrying alfred's
-`detail`, and the server records the invocation as failed:
+`detail`, and the server records the invocation as failed. The code beside it
+stays on the `AlfredError` the tool raises, for a caller to switch on; page 11
+shows the caption tool doing so:
 
     >>> refused = client.invoke_tool(
     ...     "alfred_render_enqueue", {"project_id": "6a78b0420eea42d905943615", "width": 9000})
