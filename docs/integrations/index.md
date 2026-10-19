@@ -62,27 +62,23 @@ VoiceApprovalLoop(stt=stt, tts=Pyttsx3TTS()).run_once("deploy-001")
 ### [alfred](alfred.md)
 
 Drives alfred, a self-hosted video editor, over its HTTP API. Provides:
-- `alfred_projects` and `alfred_templates`, what alfred holds
-- `alfred_render_enqueue`, a project's saved timeline or an explicit EDL queued
-  to render
-- `alfred_render_status`, a render followed to its state and a download link
-- `alfred_render_deliver`, a finished render sent to a destination alfred offers
-- `alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set`, a
+- `alfred_projects` and `alfred_templates`: what alfred holds
+- `alfred_render_enqueue`, `alfred_render_status` and `alfred_render_deliver`:
+  a saved timeline or an explicit EDL rendered, followed to a download link,
+  and sent to a destination alfred offers
+- `alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set`: a
   project's captions read, transcribed by alfred's audio engine, and corrected
-- `alfred_health`, whether alfred has a renderer running and an audio engine
+- `alfred_health`: whether alfred has a renderer running and an audio engine
   answering
-- `examples/flows/alfred_render.py`, a render put to a person for approval
-- `examples/flows/alfred_caption_render.py`, a transcript put to a person before
-  it is burned into a render, the render put to a person, and delivery on
-  approval when asked for
+- `examples/flows/alfred_render.py`: a render put to a person for approval
+- `examples/flows/alfred_caption_render.py`: the transcript put to a person
+  before it is burned in, then the render, then delivery on approval when asked
+  for
 
-Configured by the `QMCP_ALFRED_*` settings; nothing from alfred is imported.
-`walkthrough/10-a-render-waits-for-a-person.md` and
-`walkthrough/11-captions-are-read-before-they-are-burned-in.md` run it against
-an alfred stood in for.
+Configured by the `QMCP_ALFRED_*` settings; imports nothing from alfred.
 
-**Status**: Tested against a stand-in alfred; a running alfred is checked by
-hand.
+**Status**: Tested against a stand-in alfred, as walkthrough pages 10 and 11
+show; a running alfred is checked by hand.
 
 ## Decision Matrix
 

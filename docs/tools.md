@@ -225,16 +225,17 @@ All tools must:
 ## alfred Tools
 
 `alfred_projects`, `alfred_templates`, `alfred_render_enqueue`,
-`alfred_render_status`, `alfred_render_deliver`, `alfred_health`, and the
-caption tools `alfred_captions`, `alfred_captions_transcribe` and
-`alfred_captions_set` drive alfred, a self-hosted video editor, over its HTTP
-API; [integrations/alfred.md](integrations/alfred.md) is their reference. Each
-call is a request or two to alfred, made inline, with a short timeout: a
+`alfred_render_status`, `alfred_render_deliver`, `alfred_health`,
+`alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set` drive
+alfred, a self-hosted video editor, over its HTTP API;
+[integrations/alfred.md](integrations/alfred.md) is their reference.
+
+Each call is a request or two to alfred, made inline with a short timeout. A
 transcription is started by one call and followed by others, never waited for
-inside one. A delivery is the exception, waited for up to
-`QMCP_ALFRED_DELIVER_TIMEOUT`, because alfred answers it only once the whole
-render is copied or uploaded. Between calls they keep alfred's token, so a call
-does not log in again while it works.
+inside one. A delivery is the exception: it waits up to
+`QMCP_ALFRED_DELIVER_TIMEOUT`, because alfred answers only once the whole
+render is copied or uploaded. The tools keep alfred's token between calls, so a
+call does not log in again.
 
 ---
 
