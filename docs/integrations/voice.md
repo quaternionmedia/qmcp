@@ -90,6 +90,16 @@ preconditions is missing — engine unreachable, no microphone on the engine's
 machine, or synthesis failing — rather than failing partway through a
 recording.
 
+**joe serves its microphone only once it is let.** A fresh joe answers its
+media API alone: start it with `--allow microphone` (`JOE_ALLOW_MICROPHONE=1`
+in its environment), and with `--allow transcripts` (`JOE_ALLOW_TRANSCRIPTS=1`)
+as well for its page to show the conversation -- `uv run joe dev --allow microphone --allow transcripts`. joe has no
+authentication, and its `docs/security.md` says what each lets in to whatever
+reaches its port. Before anything is spoken, `human voice` asks the engine's
+health and refuses, naming the setting, when joe says its microphone is off
+(`allowed.microphone`); a joe from before those settings does not say, and is
+taken as answering.
+
 A page can start the same thing over HTTP, which is how joe's front end
 offers "Answer by voice" for what is waiting:
 
@@ -105,7 +115,7 @@ at a time. `QMCP_VOICE_ENGINE` and `QMCP_VOICE_ENGINE_URL` choose the engine.
 Both routes are served only when the server is bound to loopback: a caller
 elsewhere has no business making this machine speak and listen.
 
-**Typed to answer by voice: two commands**, one per server — `uv run joe dev`
+**Typed to answer by voice: two commands**, one per server — `uv run joe dev --allow microphone --allow transcripts`
 in joe's checkout and `uv run qmcp serve` here. Everything after that happens
 in joe's page. **Typed to talk to qmcp: the same two**, with `--converse` on the
 second; everything after that is spoken ("Talking to qmcp", below). The count is
@@ -507,8 +517,8 @@ one project, the second answerable only from what qmcp recorded of the first;
 ## Talking to qmcp
 
 ```bash
-uv run joe dev                                  # in joe's checkout: the speech engine
-uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
+uv run joe dev --allow microphone --allow transcripts   # in joe's checkout: the speech engine
+uv run qmcp serve --converse --runtime local             # here: the server, and the conversation
 ```
 
 Nothing after those two is typed, once the workstation is set up as the

@@ -694,13 +694,35 @@ def cookbook_serve(host: str, port: int | None, reload: bool) -> None:
     _run_server(host, port, reload)
 
 
+# How joe is started for a voice dialog. joe serves its microphone only once
+# it is let -- `--allow microphone`, or JOE_ALLOW_MICROPHONE=1 -- and its page
+# shows the conversation only with the transcripts let as well.
+JOE_FOR_VOICE = (
+    "`uv run joe backend --allow microphone` (JOE_ALLOW_MICROPHONE=1), with"
+    " `--allow transcripts` (JOE_ALLOW_TRANSCRIPTS=1) as well for joe's page to"
+    " show the conversation"
+)
+
+
+def _microphone_off(health) -> bool:
+    """Whether a speech engine's health answer says its microphone is off, as
+    joe's `allowed.microphone` does. An answer that does not say -- an older
+    joe's, another engine's -- is not."""
+    try:
+        allowed = health.json().get("allowed")
+    except (ValueError, AttributeError):
+        return False
+    return isinstance(allowed, dict) and allowed.get("microphone") is False
+
+
 def _voice_preflight(qmcp_url: str, engine_url: str, contract, engine: str) -> None:
     """Refuse to start a voice dialog that cannot finish, saying why.
 
     Both halves are checked before anything is spoken, so a first run with
     one of them down ends in the command that starts it rather than in a
     connection traceback -- or, worse, a prompt spoken into a room whose
-    answer can never be recorded.
+    answer can never be recorded. An engine that says its microphone is off
+    is refused for the same reason.
     """
     import httpx
 
@@ -712,17 +734,24 @@ def _voice_preflight(qmcp_url: str, engine_url: str, contract, engine: str) -> N
             " with `uv run qmcp serve`, then run this again."
         )
     try:
-        httpx.get(contract.url(engine_url, contract.health), timeout=3).raise_for_status()
+        health = httpx.get(contract.url(engine_url, contract.health), timeout=3)
+        health.raise_for_status()
     except httpx.HTTPError:
         hint = (
             " For joe, in its own checkout: `uv run joe voice setup` once to choose"
-            " the microphone, then `uv run joe backend`."
+            f" the microphone, then {JOE_FOR_VOICE}."
             if engine == "joe"
             else ""
         )
         raise SystemExit(
             f"No speech engine answers at {engine_url} ({engine}).{hint}"
             " Then run this again."
+        )
+    if _microphone_off(health):
+        hint = f" Start joe with {JOE_FOR_VOICE}." if engine == "joe" else ""
+        raise SystemExit(
+            f"The speech engine at {engine_url} ({engine}) has its microphone off,"
+            f" so nothing said could be heard.{hint} Then run this again."
         )
 
 

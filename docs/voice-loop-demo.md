@@ -29,7 +29,7 @@ and what happens. `docs/integrations/voice.md` is the reference for every step.
 |---|---|---|
 | qmcp, this repository | records each instruction, asks consent, acts, remembers | `uv run qmcp serve`, on `http://127.0.0.1:3141` |
 | the local model | reads a project's clone and answers; cannot write | the model service `qmcp localmodel` sets up |
-| joe, its own checkout | owns the microphone, transcribes with whisper, shows each turn on its page | `uv run joe dev`: the speech engine on port 8000, the page on 3000 |
+| joe, its own checkout | owns the microphone, transcribes with whisper, shows each turn on its page | `uv run joe dev --allow microphone --allow transcripts`: the speech engine on port 8000, the page on 3000, with the microphone and the transcripts let on |
 | vox, `vendor/vox` | the contract a speech engine answers, and the local synthesizer | nothing; qmcp imports it |
 | the projects' clones | what the model reads | nothing; directories beside this checkout |
 
@@ -198,8 +198,9 @@ approve is the one who judges what it found.
 Everything real, and nothing typed after the servers start:
 
 ```bash
-# in joe's checkout: the speech engine, and the page at http://localhost:3000/joe
-uv run joe dev
+# in joe's checkout: the speech engine, and the page at http://localhost:3000/joe,
+# with the microphone and the conversation's transcripts let on
+uv run joe dev --allow microphone --allow transcripts
 
 # here: the server, and the conversation beside it
 uv run qmcp serve --converse --runtime local
@@ -241,7 +242,7 @@ nothing deletes them. Onboarding is done when this tier has run once.
 
 ## Cookbook
 
-Unless a recipe says otherwise, it assumes tier 3 is running: `uv run joe dev`
+Unless a recipe says otherwise, it assumes tier 3 is running: `uv run joe dev --allow microphone --allow transcripts`
 in joe's checkout and `uv run qmcp serve --converse --runtime local` here. What
 is said to it is in quotes; what it says back is in italics.
 
@@ -548,6 +549,9 @@ and the runner image are not reproduced.
   plan` prints, and see that nothing else holds the GPU.
 - **The microphone hears nothing.** `uv run joe voice setup` in joe's checkout,
   and `docs/integrations/voice.md`, "Which microphone".
+- **joe answers 403, naming `JOE_ALLOW_MICROPHONE` or `JOE_ALLOW_TRANSCRIPTS`,**
+  or the preflight says its microphone is off. A fresh joe serves its media API
+  alone: start it with `--allow microphone --allow transcripts`.
 - **It went quiet after a consent.** An answer it could not read clearly
   leaves the consent pending -- it never guesses -- and the conversation waits
   for an answer from anywhere until the consent expires (`CONSENT_SECONDS` in

@@ -79,16 +79,17 @@ hear  <── vox: synthesis <── qmcp: summary <── local model reads the
 On one machine: this server (`uv run qmcp serve`); the local model it stands
 up (`uv run qmcp localmodel check` says whether it is installed and served);
 joe, the speech engine, which owns the microphone and runs from its own
-checkout (`uv run joe dev`); and vox, vendored at `vendor/vox`, which carries
-the contract a speech engine answers and the local synthesizer.
+checkout (`uv run joe dev --allow microphone --allow transcripts`: a fresh
+joe serves neither until let); and vox, vendored at `vendor/vox`, which
+carries the contract a speech engine answers and the local synthesizer.
 
 Once the workstation is set up -- the onboarding in `docs/voice-loop-demo.md`,
 with the local model served and joe holding a microphone -- two commands, and
 then only speech:
 
 ```bash
-uv run joe dev                                  # in joe's checkout: the speech engine
-uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
+uv run joe dev --allow microphone --allow transcripts   # in joe's checkout: the speech engine
+uv run qmcp serve --converse --runtime local             # here: the server, and the conversation
 ```
 
 qmcp says it is ready and asks what should be done. An instruction is read
