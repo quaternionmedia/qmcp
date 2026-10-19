@@ -73,8 +73,8 @@ as joe — a pending request is answered by voice. The engine side, once, in
 the engine's own checkout:
 
 ```bash
-uv run joe voice setup                     # find, save and prove your microphone
-uv run joe backend --allow microphone      # the speech engine, on port 8000, its microphone let on
+uv run joe voice setup                  # find, save and prove your microphone
+uv run joe backend --allow microphone   # the speech engine, on port 8000
 ```
 
 Then here, with the server from step 2 running:

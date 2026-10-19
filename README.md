@@ -79,9 +79,9 @@ hear  <── vox: synthesis <── qmcp: summary <── local model reads the
 On one machine: this server (`uv run qmcp serve`); the local model it stands
 up (`uv run qmcp localmodel check` says whether it is installed and served);
 joe, the speech engine, which owns the microphone and runs from its own
-checkout (`uv run joe dev --allow microphone --allow transcripts`: a fresh
-joe serves neither until let); and vox, vendored at `vendor/vox`, which
-carries the contract a speech engine answers and the local synthesizer.
+checkout with its microphone and transcripts let on; and vox, vendored at
+`vendor/vox`, which carries the contract a speech engine answers and the local
+synthesizer.
 
 Once the workstation is set up -- the onboarding in `docs/voice-loop-demo.md`,
 with the local model served and joe holding a microphone -- two commands, and
@@ -340,7 +340,7 @@ The system follows a three-plane architecture:
 - [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
 - [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
 - [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
-- [alfred Integration](docs/integrations/alfred.md) - Video renders queued, followed, approved and delivered, and captions reviewed before they are burned in
+- [alfred Integration](docs/integrations/alfred.md) - Video renders approved before delivery, captions read before they are burned in
 - [Thread Archive](docs/threads.md) - Conversations read as units of work
 - [Self-Checks](docs/self-checks.md) - Dashboard, audit, self-check and the feedback loop
 - [Deployment](docs/deployment.md) - Production deployment guide
