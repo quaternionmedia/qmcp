@@ -22,6 +22,12 @@ engine code is imported.
 |---|---|
 | `QMCP_ALFRED_URL` | Where alfred's API answers, such as `http://localhost:8000`. Unset, every tool answers that alfred is not configured. A path is kept, so `https://host/alfred` sends `/project` to `https://host/alfred/project` |
 | `QMCP_ALFRED_EMAIL`, `QMCP_ALFRED_PASSWORD` | An alfred account qmcp logs in as. Both or neither |
+
+Against a local alfred, `./al family up` in alfred's checkout starts it with
+joe as its audio engine and prints the `QMCP_ALFRED_URL` to use, and `./al
+family smoke` runs this repository's `alfred_health` tool against it -- from
+the qmcp checkout beside alfred's, or the one `ALFRED_FAMILY_QMCP` names.
+alfred's `docs/family.md` has the rest.
 | `QMCP_ALFRED_TOKEN` | A token alfred issued, sent before any login |
 | `QMCP_ALFRED_TIMEOUT` | Seconds alfred has to answer one request; the default is in `qmcp/config.py`. Opening a connection may take at most `CONNECT_TIMEOUT` (`qmcp.tools.alfred`) |
 | `QMCP_ALFRED_DELIVER_TIMEOUT` | Seconds alfred has to answer a delivery, which it answers only once it has copied or uploaded the whole render; the default, longer, is in `qmcp/config.py` |
