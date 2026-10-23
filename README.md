@@ -246,8 +246,8 @@ qmcp cookbook dev local-qc-gauntlet --change-summary "Add audit fields" --target
 # Run a cookbook flow in Docker explicitly
 qmcp cookbook docker simple-plan --goal "Deploy a web service"
 
-# Run tests with auto setup/teardown
-qmcp test [-v] [--coverage] [TEST_PATH]
+# Run tests; the configured database is left alone unless --clean is passed
+qmcp test [-v] [--coverage] [--clean] [TEST_PATH]
 ```
 
 Cookbook flows run in Docker and require Docker Desktop (Linux engine).
@@ -307,7 +307,7 @@ the last two.
 git submodule update --init vendor/vox
 uv sync --all-extras
 
-# Run tests (with auto cleanup)
+# Run tests
 uv run qmcp test -v
 
 # Run tests with coverage

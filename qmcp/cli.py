@@ -1506,27 +1506,39 @@ def info() -> None:
     click.echo(f"  Database: {settings.database_url}")
 
 
+def _clean_database(when: str) -> None:
+    """Delete the database the settings name, and say which file it was."""
+    from qmcp.db.paths import database_file
+
+    found = database_file(get_settings().database_url)
+    if found is not None and found.exists():
+        found.unlink()
+        click.echo(click.style(f"Deleted {found} {when} the run", fg="yellow"))
+
+
 @cli.command()
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.option("--coverage", is_flag=True, help="Run with coverage report")
-@click.option("--clean", is_flag=True, default=True, help="Clean database before tests (default: True)")
+@click.option("--clean/--no-clean", default=False,
+              help="delete the configured database before and after the run;"
+                   " it holds the human queue's pending requests (default: leave it)")
 @click.argument("test_path", required=False)
 def test(verbose: bool, coverage: bool, clean: bool, test_path: str | None) -> None:
-    """Run the test suite with automatic setup/teardown.
+    """Run the test suite.
 
     Optionally specify a test path like 'tests/test_hitl.py' or
     'tests/test_server.py::TestHealthEndpoint'.
+
+    The suite builds its own databases, so the configured one is left alone:
+    it is somebody's queue of unanswered requests. `--clean` deletes the file
+    the settings name -- `QMCP_DATABASE_URL`, not whatever `./qmcp.db` the
+    command happens to start beside -- before the run and again after it.
     """
     import subprocess
     import sys
-    from pathlib import Path
 
-    # Setup: Clean database file if requested
     if clean:
-        db_file = Path("qmcp.db")
-        if db_file.exists():
-            db_file.unlink()
-            click.echo(click.style("✓ Cleaned qmcp.db", fg="yellow"))
+        _clean_database("before")
 
     # Build pytest command
     cmd = [sys.executable, "-m", "pytest"]
@@ -1546,13 +1558,9 @@ def test(verbose: bool, coverage: bool, clean: bool, test_path: str | None) -> N
     # Run tests
     result = subprocess.run(cmd)
 
-    # Teardown: Clean database file after tests
     if clean:
-        db_file = Path("qmcp.db")
-        if db_file.exists():
-            db_file.unlink()
-            click.echo()
-            click.echo(click.style("✓ Cleaned qmcp.db after tests", fg="yellow"))
+        click.echo()
+        _clean_database("after")
 
     # Exit with pytest's exit code
     sys.exit(result.returncode)
