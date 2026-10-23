@@ -288,6 +288,51 @@ def test_continuity_fails_when_the_clone_is_not_remembered(monkeypatch):
     assert "the runtime never ran: no clone for 'qmcp' in qmcp's record yet" in result.output
 
 
+def _composing(*answers: str):
+    """A runtime that composes its answers, one per run, as a model does."""
+    from qmcp.integrations.agents.scripted import ScriptedRuntime
+
+    class Composing(ScriptedRuntime):
+        name = "composing"
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.answers = list(answers)
+
+        def run(self, brief, on_event=None):
+            self.text = self.answers.pop(0)
+            return super().run(brief, on_event)
+
+    return Composing()
+
+
+def test_continuity_fails_when_the_second_answer_is_the_first_said_again():
+    """What the local model did with a plain history: the follow-up was
+    answered with the first answer, word for word. Mutation: the repeat
+    verdict removed -- the check passed."""
+    from pathlib import Path
+
+    lines: list[str] = []
+    same = "The file that describes what qmcp is is README.md."
+    clone = Path(check.__file__).resolve().parents[2]
+
+    ok = check.run_continuity(echo=lines.append, runtime=_composing(same, same), clone=clone)
+
+    assert ok is False
+    assert any(f"the second answer said the first again: 'Done in qmcp. {same}'" in line
+               for line in lines), lines
+
+
+def test_continuity_passes_a_runtime_whose_second_answer_is_its_own():
+    from pathlib import Path
+
+    lines: list[str] = []
+    clone = Path(check.__file__).resolve().parents[2]
+    runtime = _composing("README.md says what qmcp is.", "It says qmcp exposes tools.")
+
+    assert check.run_continuity(echo=lines.append, runtime=runtime, clone=clone) is True
+
+
 def test_continuity_refuses_a_clone_that_is_no_rostered_project(tmp_path):
     from qmcp.integrations.agents.scripted import ScriptedRuntime
 
@@ -483,3 +528,20 @@ def test_the_session_fails_when_no_instruction_is_hinted_with_the_project_names(
 
     assert result.exit_code == 1, result.output
     assert "no instruction's take was hinted with the project names" in result.output
+
+
+def test_the_session_fails_when_the_second_answer_is_the_first_said_again():
+    """What the local model did in the spoken session with a plain history.
+    Mutation: the session's repeat verdict removed -- the session passed."""
+    lines: list[str] = []
+    same = "The file that describes what qmcp is is README.md."
+
+    assert check.run_conversation(echo=lines.append, runtime=_composing(same, same)) is False
+    assert any(f"the second answer said the first again: {same!r}" in line for line in lines), lines
+
+
+def test_the_session_passes_a_runtime_whose_second_answer_is_its_own():
+    lines: list[str] = []
+    runtime = _composing("README.md says what qmcp is.", "It says qmcp exposes tools.")
+
+    assert check.run_conversation(echo=lines.append, runtime=runtime) is True, lines

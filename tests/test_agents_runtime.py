@@ -59,8 +59,20 @@ def test_the_brief_carries_the_history_oldest_first_and_ends_with_the_instructio
     assert "   done by local: README.md, at the root." in prompt
     assert "   failed by claude-code: The file could not be read." in prompt
     assert f"in the project qmcp, in the directory {tmp_path}" in prompt
-    assert prompt.rstrip().endswith("Answer in a few sentences, and start with the answer.")
-    assert "\nNow: Which file says what qmcp is?\n" in prompt
+    assert prompt.rstrip().endswith(
+        "Answer this instruction, not an earlier one, in a few sentences,"
+        " and start with the answer.")
+    assert "\nThe instruction to carry out now: Which file says what qmcp is?\n" in prompt
+
+
+def test_the_history_is_marked_as_answered_and_as_context(tmp_path):
+    """Mutation: the plain header back ("What has been asked in this project
+    so far") -- red here, and on the local model the continuity check heard
+    the first answer again (tests/test_local_model.py)."""
+    prompt = _brief(tmp_path, [FIRST]).prompt()
+
+    assert ("They are answered already; use them as context, not as the answer:"
+            in prompt)
 
 
 def test_a_brief_with_no_history_says_so(tmp_path):
