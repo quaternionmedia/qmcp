@@ -11,7 +11,7 @@ Usage:
         --change-summary "Refactor metrics registry and add QC docs" \
         --audience "internal" \
         --llm-base-url "http://localhost:11434/v1" \
-        --llm-model "llama3.1"
+        --llm-model "qwen2.5-coder:7b"
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from qmcp.cookbook import FlowPersistence, LocalLLMConfig, MCPToolInvoker, build_local_agent
 from qmcp.cookbook.mcp_tools import ReviewerInput
+from qmcp.localmodel import MODEL as LOCAL_MODEL
 
 
 class ChangeSummary(BaseModel):
@@ -91,7 +92,7 @@ class LocalReleaseNotesFlow(FlowSpec):
     llm_model = Parameter(
         "llm-model",
         help="Local model name",
-        default=os.getenv("LLM_MODEL", "llama3.1"),
+        default=os.getenv("LLM_MODEL", LOCAL_MODEL),
     )
     llm_api_key = Parameter(
         "llm-api-key",

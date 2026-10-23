@@ -409,7 +409,7 @@ uv run python examples/flows/council_deliberation.py run \
     --question "Should we migrate from REST to GraphQL?" \
     --context "E-commerce platform with 50+ microservices" \
     --llm-base-url "http://localhost:11434/v1" \
-    --llm-model "llama3.1"
+    --llm-model "qwen2.5-coder:7b"
 ```
 
 ## The capability plane
