@@ -116,8 +116,12 @@ def run_check(check: Check, repo: Path, project: str) -> tuple[Finding, ToolInvo
         input_params={"argv": list(check.argv), "repo": repo.name},
     )
     started = time.perf_counter()
+    # `--quiet` keeps uv's own lines -- "Installed 1 package in 12ms" when it
+    # syncs first, a warning about the active environment -- out of the
+    # output, where the last of them would stand as the check's detail and in
+    # the captured run. The command's own stdout and stderr pass through.
     completed = subprocess.run(
-        ["uv", "run", *check.argv], cwd=repo,
+        ["uv", "run", "--quiet", *check.argv], cwd=repo,
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     elapsed = int((time.perf_counter() - started) * 1000)

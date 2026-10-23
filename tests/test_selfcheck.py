@@ -154,3 +154,48 @@ def test_the_tag_gate_reads_what_the_suite_captured(tmp_path):
 def test_a_check_with_no_output_still_reports_something():
     assert last_line("") == "(no output)"
     assert last_line("first\n\nlast\n") == "last"
+
+
+# --- what a check's detail is -------------------------------------------------------
+#
+# `run_check` runs its command under `uv run`, and uv writes lines of its own to
+# stderr: "Installed 1 package in 12ms" when it syncs first, a warning when
+# `VIRTUAL_ENV` names another environment. The second is the same path as the
+# first, and it can be caused on purpose, offline, on any machine.
+
+
+def _repo():
+    from pathlib import Path
+
+    return Path(__file__).resolve().parent.parent
+
+
+def test_the_detail_is_the_commands_output_and_not_a_line_uv_wrote(monkeypatch, tmp_path):
+    """Seen on a developer machine after a branch switch: walkthrough page 02
+    read "Installed 1 package in 12ms" where "all good" was printed. Mutation:
+    `--quiet` removed from the argv -- the detail was uv's warning about
+    `VIRTUAL_ENV`, appended after the command's own output."""
+    from qmcp.selfcheck import Check, run_check
+
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "another-environment"))
+    passing = Check(name="demo-ok", what="a command that succeeds",
+                    argv=("python", "-c", "print('all good')"))
+
+    finding, invocation = run_check(passing, _repo(), PROJECT)
+
+    assert finding.ok
+    assert finding.detail == "all good"
+    assert invocation.error is None
+
+
+def test_a_failing_commands_own_error_is_still_the_detail(monkeypatch, tmp_path):
+    from qmcp.selfcheck import Check, run_check
+
+    monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "another-environment"))
+    failing = Check(name="demo-fails", what="a command that fails",
+                    argv=("python", "-c", "import sys; sys.exit('it broke')"))
+
+    finding, invocation = run_check(failing, _repo(), PROJECT)
+
+    assert not finding.ok
+    assert finding.detail == invocation.error == "it broke"
