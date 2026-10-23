@@ -528,3 +528,20 @@ def test_the_session_fails_when_no_instruction_is_hinted_with_the_project_names(
 
     assert result.exit_code == 1, result.output
     assert "no instruction's take was hinted with the project names" in result.output
+
+
+def test_the_session_fails_when_the_second_answer_is_the_first_said_again():
+    """What the local model did in the spoken session with a plain history.
+    Mutation: the session's repeat verdict removed -- the session passed."""
+    lines: list[str] = []
+    same = "The file that describes what qmcp is is README.md."
+
+    assert check.run_conversation(echo=lines.append, runtime=_composing(same, same)) is False
+    assert any(f"the second answer said the first again: {same!r}" in line for line in lines), lines
+
+
+def test_the_session_passes_a_runtime_whose_second_answer_is_its_own():
+    lines: list[str] = []
+    runtime = _composing("README.md says what qmcp is.", "It says qmcp exposes tools.")
+
+    assert check.run_conversation(echo=lines.append, runtime=runtime) is True, lines

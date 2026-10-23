@@ -19,7 +19,8 @@ import pytest
 from pydantic import BaseModel
 
 from qmcp.cookbook import AgentPipeline, AgentStep, LocalLLMConfig, MCPToolInvoker
-from qmcp.instructions.check import run_continuity
+from qmcp.instructions.check import run_continuity, run_conversation
+from qmcp.instructions.converse import sibling_clones
 from qmcp.instructions.spoken import first_sentence
 from qmcp.integrations.agents import Brief, Turn
 from qmcp.integrations.agents.adapters import ollama
@@ -115,6 +116,18 @@ def test_the_continuity_check_passes_on_the_local_model() -> None:
     lines: list[str] = []
 
     ok = run_continuity(echo=lines.append, runtime=ollama.Runtime(), clone=REPO, project="qmcp")
+
+    assert ok, "\n".join(lines)
+
+
+def test_a_whole_spoken_session_runs_on_the_local_model() -> None:
+    # Before the history was marked, this session once passed with the second
+    # instruction answered by the first one's answer, and now fails on that.
+    # At other minutes the same history gives a fresh answer, so this test
+    # alone does not tell the prompts apart; the follow-up tests pin the time.
+    lines: list[str] = []
+
+    ok = run_conversation(echo=lines.append, runtime=ollama.Runtime(), clones=sibling_clones())
 
     assert ok, "\n".join(lines)
 
