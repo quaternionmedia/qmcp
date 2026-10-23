@@ -81,7 +81,7 @@ git clone <repo>
 cd qmcp
 uv sync --all-extras
 
-# Run tests (with auto cleanup)
+# Run tests
 uv run qmcp test -v
 
 # Run tests with coverage
