@@ -93,7 +93,10 @@ testpaths = ["tests", "walkthrough"]
 # Without this the walkthrough pages are collected as nothing: pytest sees a
 # directory of markdown and reports success for zero tests. Naming the path is
 # necessary and not sufficient.
-addopts = "--doctest-glob=*.md -m 'not live_anthropic'"
+#
+# `-p qmcp.testing.plugin` holds the fixtures every test and every walkthrough
+# page runs under; a conftest under `tests/` does not reach `walkthrough/`.
+addopts = "--doctest-glob=*.md -m 'not live_anthropic' -p qmcp.testing.plugin"
 markers = [
     "live_anthropic: needs pydantic-ai and ANTHROPIC_API_KEY - deselected by default, run with `-m live_anthropic`",
     "asyncio: marks tests as async (handled by pytest-asyncio)",

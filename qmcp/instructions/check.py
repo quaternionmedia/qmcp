@@ -28,7 +28,8 @@ from qmcp.instructions.dialog import (
     InstructionDialog,
 )
 from qmcp.integrations.voice.adapter import UnclearResponse, listen_for, say_options
-from qmcp.integrations.voice.check import _Recorded, throwaway_server
+from qmcp.integrations.voice.check import _Recorded
+from qmcp.testing import throwaway_server
 
 # Two names the organisation's own roster carries. The check reads the real
 # roster through the real server, so these are what resolution is tried on.

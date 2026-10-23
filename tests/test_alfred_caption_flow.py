@@ -450,7 +450,7 @@ def fake(monkeypatch) -> CaptionedAlfred:
 
 @pytest.fixture
 def server(tmp_path):
-    from qmcp.integrations.voice.check import throwaway_server
+    from qmcp.testing import throwaway_server
 
     with throwaway_server(tmp_path / "queue.db") as url:
         yield url

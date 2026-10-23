@@ -29,7 +29,7 @@ here yet, so the record names no clone and the first acts pass one:
     >>> from qmcp.db.models import Instruction, InstructionSource
     >>> from qmcp.instructions.act import act, rows_at
     >>> from qmcp.integrations.agents.scripted import ScriptedRuntime
-    >>> from qmcp.integrations.voice.check import throwaway_server
+    >>> from qmcp.testing import throwaway_server
     >>> from qmcp.spend import Budget, render
 
     >>> root = Path(tempfile.mkdtemp())

@@ -24,7 +24,7 @@ account in and accepts only the token it issued:
     >>> import httpx
     >>> import qmcp.tools.alfred as alfred
     >>> from qmcp.client import MCPClient
-    >>> from qmcp.integrations.voice.check import throwaway_server
+    >>> from qmcp.testing import throwaway_server
     >>> from qmcp.tools.alfred import AlfredClient, AlfredConfig
 
     >>> TIMELINE = {"clips": [

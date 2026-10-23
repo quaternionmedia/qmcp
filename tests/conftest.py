@@ -14,7 +14,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def _own_vocabulary_overlay(tmp_path, monkeypatch):
+def _own_vocabulary_overlay(_isolated_settings, tmp_path, monkeypatch):
     """Every test reads an empty per-user phrase file of its own. The real
     one, `~/.qmcp/voice-vocabulary.json`, holds a person's added phrases, and
     a test reading it would pass or fail by what somebody once said."""
@@ -34,32 +34,20 @@ def client(monkeypatch):
     unique_name = f"test_{uuid.uuid4().hex}"
     db_url = f"sqlite+aiosqlite:///file:{unique_name}?mode=memory&cache=shared&uri=true"
 
-    class TestSettings:
-        """Test settings with unique in-memory database."""
-
-        def __init__(self, url):
-            self.database_url = url
-            self.debug = False
-            self.host = "127.0.0.1"
-            self.port = 3333
-            self.log_level = "WARNING"
-            # Every field the app reads. Whether `create_app` sees this stand-in
-            # or the real settings depends on which test imported
-            # `qmcp.server` first, so a missing field fails in one order only.
-            self.voice_engine = "joe"
-            self.voice_engine_url = None
-            self.converse_runtime = None
-
-    test_settings = TestSettings(db_url)
-
-    # Use monkeypatch to replace the function
-    monkeypatch.setattr(qmcp.config, "get_settings", lambda: test_settings)
+    # A real Settings, so every field the app reads exists with its default;
+    # `_isolated_settings` has already taken the shell and `.env` out of it.
+    test_settings = qmcp.config.Settings(
+        database_url=db_url, host="127.0.0.1", port=3333, log_level="WARNING")
 
     import qmcp.db.engine
+    import qmcp.server
 
     # Reset engine to force new connection
     qmcp.db.engine._engine = None
-    monkeypatch.setattr(qmcp.db.engine, "get_settings", lambda: test_settings)
+    # `qmcp.server` and `qmcp.db.engine` bind `get_settings` at import, so the
+    # stand-in replaces those bindings as well as the module's own.
+    for module in (qmcp.config, qmcp.db.engine, qmcp.server):
+        monkeypatch.setattr(module, "get_settings", lambda: test_settings)
 
     # Import create_app AFTER patching
     from fastapi.testclient import TestClient

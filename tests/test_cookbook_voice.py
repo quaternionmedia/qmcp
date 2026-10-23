@@ -14,13 +14,8 @@ import qmcp.config
 import qmcp.db.engine as db_engine
 from qmcp.cli import cli
 from qmcp.integrations.voice import adapter
-from qmcp.integrations.voice.check import (
-    OFFLINE_CASES,
-    Case,
-    run_live,
-    run_offline,
-    throwaway_server,
-)
+from qmcp.integrations.voice.check import OFFLINE_CASES, Case, run_live, run_offline
+from qmcp.testing import throwaway_server
 
 
 def test_the_offline_check_passes_through_the_real_path():

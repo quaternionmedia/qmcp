@@ -343,6 +343,7 @@ The system follows a three-plane architecture:
 - [alfred Integration](docs/integrations/alfred.md) - Video renders approved before delivery, captions read before they are burned in
 - [Thread Archive](docs/threads.md) - Conversations read as units of work
 - [Self-Checks](docs/self-checks.md) - Dashboard, audit, self-check and the feedback loop
+- [Testing](docs/testing.md) - What the suite isolates, and the harness an offline check stands a qmcp up with
 - [Deployment](docs/deployment.md) - Production deployment guide
 - [Contributing](docs/contributing.md) - Development guidelines
 - [Roadmap](docs/ROADMAP.md) - Development phases
