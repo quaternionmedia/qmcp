@@ -9,7 +9,7 @@ services:
     environment:
       MCP_URL: ${MCP_URL:-http://host.docker.internal:3141}
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
-      LLM_MODEL: ${LLM_MODEL:-llama3.1}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5-coder:7b}
       LLM_API_KEY: ${LLM_API_KEY:-local}
       FLOW_DB_PATH: ${FLOW_DB_PATH:-/app/.qmcp_devflows.db}
     extra_hosts:

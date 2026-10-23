@@ -48,6 +48,7 @@ from metaflow import FlowSpec, Parameter, current, step
 from pydantic import BaseModel, Field
 
 from qmcp.cookbook import FlowPersistence, LocalLLMConfig, build_local_agent
+from qmcp.localmodel import MODEL as LOCAL_MODEL
 
 
 # =============================================================================
@@ -198,7 +199,7 @@ class CouncilDeliberationFlow(FlowSpec):
     llm_model = Parameter(
         "llm-model",
         help="Model name (default: llama3.2 for speed)",
-        default=os.getenv("LLM_MODEL", "llama3.2"),
+        default=os.getenv("LLM_MODEL", LOCAL_MODEL),
     )
     llm_api_key = Parameter(
         "llm-api-key",

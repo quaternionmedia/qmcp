@@ -56,6 +56,21 @@ as one.
 | alfred | `tests/alfred_stub.py`, behind `httpx.MockTransport` | `tests/alfred_health.json`, `alfred_captions.json` and `alfred_refusals.json`, copied from alfred |
 | the local model service | `httpx.MockTransport` answering `/api/chat` (`tests/test_agents_local.py`) | the shape the Ollama adapter reads |
 
+## On the local model
+
+`tests/test_local_model.py` runs on the model `uv run qmcp localmodel check`
+reports on this machine: `qmcp.localmodel.MODEL` served at
+`qmcp.localmodel.ENDPOINT`. A model on this machine is offline. The tests are
+marked `local_model` and deselected by default, because CI has no model:
+
+```
+uv run pytest -m local_model
+```
+
+On a machine without the model they fail and say what is missing; they do not
+skip. The runtime asks at temperature 0, so on one model the answers repeat
+from run to run.
+
 ## What a green run does not show
 
 - That anything outside the stand-ins behaves as they do. A stand-in held to a

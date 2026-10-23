@@ -96,9 +96,10 @@ testpaths = ["tests", "walkthrough"]
 #
 # `-p qmcp.testing.plugin` holds the fixtures every test and every walkthrough
 # page runs under; a conftest under `tests/` does not reach `walkthrough/`.
-addopts = "--doctest-glob=*.md -m 'not live_anthropic' -p qmcp.testing.plugin"
+addopts = "--doctest-glob=*.md -m 'not live_anthropic and not local_model' -p qmcp.testing.plugin"
 markers = [
     "live_anthropic: needs pydantic-ai and ANTHROPIC_API_KEY - deselected by default, run with `-m live_anthropic`",
+    "local_model: runs on the model `qmcp localmodel` stands up on this machine - deselected by default, run with `-m local_model`",
     "asyncio: marks tests as async (handled by pytest-asyncio)",
     "integration: marks tests that require external services (Ollama, live MCP server, etc.) - skipped by default in CI",
     "slow: marks tests that are intentionally slow",

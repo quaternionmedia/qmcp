@@ -32,7 +32,11 @@ def build_local_agent(
     """Build a PydanticAI agent targeting a local OpenAI-compatible LLM.
 
     Works with Ollama, LM Studio, vLLM, or any endpoint that implements
-    the OpenAI chat completions API.
+    the OpenAI chat completions API. The structured output is asked for in
+    the prompt and read from the reply's text (`PromptedOutput`), not through
+    the API's tool field: `qwen2.5-coder:7b`, the model `qmcp localmodel`
+    installs, writes the tool call as text instead, and an agent waiting on
+    the field fails every step after its retries.
 
     Args:
         config: Local LLM connection configuration.
@@ -44,7 +48,7 @@ def build_local_agent(
         A configured PydanticAI Agent.
     """
     from openai import AsyncOpenAI
-    from pydantic_ai import Agent
+    from pydantic_ai import Agent, PromptedOutput
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
     from pydantic_ai.settings import ModelSettings
@@ -61,7 +65,7 @@ def build_local_agent(
     return Agent(
         model=model,
         system_prompt=system_prompt + json_instruction,
-        output_type=output_type,
+        output_type=PromptedOutput(output_type),
         retries=retries,
         model_settings=ModelSettings(
             temperature=config.temperature,

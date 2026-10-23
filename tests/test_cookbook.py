@@ -101,7 +101,12 @@ class TestBuildLocalAgent:
         # Verify Agent was called with expected kwargs
         call_kwargs = mock_agent_cls.call_args
         assert call_kwargs.kwargs["system_prompt"].startswith("You are a test agent.")
-        assert call_kwargs.kwargs["output_type"] is Output
+        # Asked for in the prompt, not through the tool field the local model
+        # does not use (tests/test_local_model.py runs it against the model).
+        from pydantic_ai import PromptedOutput
+
+        assert isinstance(call_kwargs.kwargs["output_type"], PromptedOutput)
+        assert call_kwargs.kwargs["output_type"].outputs is Output
         assert call_kwargs.kwargs["retries"] == 2
 
 
