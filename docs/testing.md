@@ -21,6 +21,14 @@ Metaflow flow tests skip, because `import metaflow` needs `fcntl`.
 | `./qmcp.db`, the configured queue | never opened; each test builds its own database, in memory or under `tmp_path` |
 | port 3141, the configured port | never bound; a server a test starts listens on port 0 |
 | `~/.qmcp/voice-vocabulary.json`, a person's added phrases | an empty file of the test's own |
+| the network | refused past loopback, in the test's process and in every Python child it starts; an attempt fails the test even when the code caught the refusal (`qmcp.testing.netguard`) |
+
+The guard is installed before collection, so a module that reaches out when
+imported stops the run. A child inherits it through `PYTHONPATH`, whose first
+entry is a directory holding a `sitecustomize.py`, and records its attempts in
+a file the session reads after each test; `UV_OFFLINE=1` keeps a `uv` the
+child runs from fetching. A test marked `live_anthropic` is about a real
+service and is let through.
 
 The settings isolation is `qmcp.testing.isolate_settings(monkeypatch)`.
 `qmcp.config.get_settings` caches its first answer for the process, and
@@ -77,6 +85,9 @@ from run to run.
   copied file drifts when the original changes, and nothing here compares them.
 - A server in its own process. Every server the suite starts shares the test's
   process.
+- An attempt the guard cannot see: from a child that is not Python, a child
+  given an environment of its own making, or an extension with its own
+  resolver.
 - The flows on Windows, where they skip. A skip is not a pass.
 - `-m live_anthropic` and the `--live` forms of the cookbook checks, which a
   person runs against real services.
