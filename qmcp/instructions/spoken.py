@@ -24,9 +24,15 @@ from typing import Any
 SPOKEN_CHARS = 160
 
 # Characters a synthesizer would read aloud and a reader would not: the
-# emphasis, heading and code marks an agent's markdown carries.
+# emphasis, heading and code marks an agent's markdown carries, and the
+# language a code fence names ("```bash"), which would be read as a word.
+_FENCE = re.compile(r"```[\w+.-]*")
 _MARKS = re.compile(r"[*`#]+")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+# The number that opens a list item: the period after "1." ends no sentence,
+# or a list is said as its lead-in and "1.". A sentence that does end on a
+# bare number runs on into the next, to the cut.
+_LIST_NUMBER = re.compile(r"(?:^|\s)\d{1,2}\.$")
 
 
 def first_sentence(text: str, chars: int = SPOKEN_CHARS) -> tuple[str, bool]:
@@ -36,10 +42,11 @@ def first_sentence(text: str, chars: int = SPOKEN_CHARS) -> tuple[str, bool]:
     `chars` is cut at the last word boundary inside it. The flag is True when
     the text went on past what is returned, by a cut or by further sentences.
     """
-    flat = " ".join(_MARKS.sub("", text or "").split())
+    flat = " ".join(_MARKS.sub("", _FENCE.sub("", text or "")).split())
     if not flat:
         return "", False
-    end = _SENTENCE_END.search(flat)
+    end = next((found for found in _SENTENCE_END.finditer(flat)
+                if not _LIST_NUMBER.search(flat[:found.start()])), None)
     sentence = flat[:end.start()] if end else flat
     cut = len(sentence) < len(flat)
     if len(sentence) > chars:

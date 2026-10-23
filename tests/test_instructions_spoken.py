@@ -48,6 +48,39 @@ def test_markdown_marks_and_line_breaks_are_not_read_aloud():
         "Summary Added the health route.", True)
 
 
+# What the local model answered, run on this repository; each was said back cut
+# short before `first_sentence` knew lists and fences.
+LISTED = ("The three commands qmcp's command line defines are:\n\n"
+          "1. `uv run qmcp topology show governed --level 2`\n"
+          "2. `uv run qmcp orchestration plane`\n"
+          "3. `uv run qmcp human list`")
+FENCED = ("To run qmcp's test suite, navigate to the `tests` directory and execute the"
+          " following command:\n\n```bash\npytest\n```")
+
+
+def test_a_numbered_list_is_said_and_not_cut_at_its_first_number():
+    """Mutation: the list-number exception removed -- red, the answer was
+    said as "...defines are: 1."."""
+    assert first_sentence(LISTED) == (
+        "The three commands qmcp's command line defines are: 1. uv run qmcp topology show"
+        " governed --level 2 2. uv run qmcp orchestration plane 3. uv run qmcp human list",
+        False)
+
+
+def test_a_code_fences_language_is_not_read_aloud():
+    """Mutation: the fence pattern removed -- red, "bash" was said before the command."""
+    assert first_sentence(FENCED) == (
+        "To run qmcp's test suite, navigate to the tests directory and execute the"
+        " following command: pytest", False)
+
+
+def test_a_sentence_still_ends_after_a_number_that_opens_no_list():
+    assert first_sentence("Port 3141 is the default. QMCP_PORT changes it.") == (
+        "Port 3141 is the default.", True)
+    assert first_sentence("Done in 12.5 seconds. Nothing else.") == (
+        "Done in 12.5 seconds.", True)
+
+
 def test_nothing_says_nothing():
     assert first_sentence("") == ("", False)
     assert first_sentence("  \n ") == ("", False)
