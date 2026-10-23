@@ -194,6 +194,13 @@ unpinned install resolves a different stack -- it can drag `starlette` forward
 and break tests -- which is a property of installing outside the lock rather
 than of the dependencies.
 
+**`uv run qmcp test` runs the same suite and leaves the configured database
+alone.** That file holds pending human-in-the-loop requests -- somebody's
+unanswered approvals -- and the suite builds its own databases. `--clean` is the
+one way to delete it: it removes the file `QMCP_DATABASE_URL` names, before the
+run and again after it, with no prompt, and afterwards an empty queue is
+indistinguishable from nobody having asked for anything.
+
 **The suite runs on a runner**, in `.github/workflows/tests.yml`; it is the
 only check on a pull request that executes a test. **The runner sees things
 Windows cannot**: `import metaflow` fails there at `import fcntl`, so every
@@ -249,19 +256,12 @@ annotated and carries `Reviewed-by`, `Manually-tested`, `Automated-gate` and
 `Not-covered`. **It cannot check that any of it happened.** It reads an
 annotation a human wrote, after the tag already exists. The gate is the person.
 
-## Two commands that damage another session's work
+## A default that borrows another session's server
 
 Several sessions may share one workstation, under
-`governance/qm/handbook/async-contract.md`. Two defaults in this repository
-break that contract, both recorded as conflicts rather than fixed, so read this
-before running either.
-
-**`qmcp test` deletes the human gate queue.** `--clean` defaults to *true* and
-unlinks `./qmcp.db` before the run and again after it, with no prompt. That
-file holds pending human-in-the-loop requests -- somebody's unanswered
-approvals. Afterwards an empty queue is indistinguishable from nobody having
-asked for anything. Pass `--clean=False`, or point `QMCP_DATABASE_URL` at a
-path of your own, before you run the suite.
+`governance/qm/handbook/async-contract.md`. One default in this repository
+breaks that contract and is recorded as a conflict rather than fixed, so read
+this before starting a server.
 
 **The server binds a default port.** `port` defaults to 3141 and
 `database_url` to `sqlite+aiosqlite:///./qmcp.db`, which resolves against
