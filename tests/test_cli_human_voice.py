@@ -291,9 +291,68 @@ def test_preflight_names_the_command_when_the_engine_is_down(monkeypatch):
         _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "joe")
     assert "No speech engine answers at http://127.0.0.1:8000" in str(exc.value)
     assert "uv run joe voice setup" in str(exc.value)
-    assert "uv run joe backend" in str(exc.value)
+    assert "uv run joe backend --allow microphone" in str(exc.value)
+    assert "JOE_ALLOW_MICROPHONE=1" in str(exc.value)
 
 
 def test_preflight_passes_when_both_answer(monkeypatch):
     _refuse_urls(monkeypatch, "nowhere")
+    _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "joe")
+
+
+# joe's `GET /api/health` from fix/security-defaults on: which capabilities are
+# on. A fresh joe serves the media API alone.
+FRESH_JOE = {"status": "ok", "allowed": {"media": True, "microphone": False,
+                                         "transcripts": False, "library": False}}
+LET_JOE = {"status": "ok", "allowed": {**FRESH_JOE["allowed"], "microphone": True}}
+
+
+def _answer_health(monkeypatch, engine_health):
+    """qmcp answers; the engine's health is `engine_health`: JSON, or text."""
+    import httpx
+
+    def fake_get(url, timeout=None):
+        request = httpx.Request("GET", url)
+        if "8000" not in url:
+            return httpx.Response(200, json={"status": "ok"}, request=request)
+        if isinstance(engine_health, str):
+            return httpx.Response(200, text=engine_health, request=request)
+        return httpx.Response(200, json=engine_health, request=request)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+
+def test_preflight_refuses_a_joe_whose_microphone_is_off_and_names_the_setting(monkeypatch):
+    """Before anything is spoken: the listen it would end in is refused.
+    Mutation: ask only whether the engine answers -- red."""
+    _answer_health(monkeypatch, FRESH_JOE)
+    with pytest.raises(SystemExit) as exc:
+        _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "joe")
+    said = str(exc.value)
+    assert said.startswith("The speech engine at http://127.0.0.1:8000 (joe) has its "
+                           "microphone off")
+    assert "`uv run joe backend --allow microphone` (JOE_ALLOW_MICROPHONE=1)" in said
+    assert "`--allow transcripts` (JOE_ALLOW_TRANSCRIPTS=1)" in said
+
+
+def test_preflight_names_no_joe_setting_for_another_engine(monkeypatch):
+    _answer_health(monkeypatch, FRESH_JOE)
+    with pytest.raises(SystemExit) as exc:
+        _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "other")
+    assert "has its microphone off" in str(exc.value)
+    assert "JOE_ALLOW" not in str(exc.value)
+
+
+@pytest.mark.parametrize("engine_health", [
+    LET_JOE,
+    {"status": "ok"},
+    {"status": "ok", "allowed": "everything"},
+    ["ok"],
+    "ok",
+], ids=["microphone on", "a joe from before", "allowed not a map", "a list", "not JSON"])
+def test_preflight_passes_an_engine_that_does_not_say_its_microphone_is_off(
+        monkeypatch, engine_health):
+    """An older joe says nothing of it, and is taken as answering, as before.
+    Mutation: refuse unless `allowed.microphone` is true -- red."""
+    _answer_health(monkeypatch, engine_health)
     _REAL_PREFLIGHT("http://127.0.0.1:3141", "http://127.0.0.1:8000", _contract(), "joe")

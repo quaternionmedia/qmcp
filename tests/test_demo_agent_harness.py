@@ -40,7 +40,9 @@ def test_every_recorded_invocation_succeeded():
 
 
 def test_the_harness_registers_the_four_tools():
-    assert set(run(out=lambda *a: None)["tools"]) == set(TOOLS_EXPECTED)
+    """The four the demo calls are among the server's tools; others, such as
+    the alfred tools, are registered beside them."""
+    assert set(TOOLS_EXPECTED) <= set(run(out=lambda *a: None)["tools"])
 
 
 def test_the_demo_starts_from_an_empty_database_every_run():

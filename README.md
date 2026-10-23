@@ -79,16 +79,17 @@ hear  <── vox: synthesis <── qmcp: summary <── local model reads the
 On one machine: this server (`uv run qmcp serve`); the local model it stands
 up (`uv run qmcp localmodel check` says whether it is installed and served);
 joe, the speech engine, which owns the microphone and runs from its own
-checkout (`uv run joe dev`); and vox, vendored at `vendor/vox`, which carries
-the contract a speech engine answers and the local synthesizer.
+checkout with its microphone and transcripts let on; and vox, vendored at
+`vendor/vox`, which carries the contract a speech engine answers and the local
+synthesizer.
 
 Once the workstation is set up -- the onboarding in `docs/voice-loop-demo.md`,
 with the local model served and joe holding a microphone -- two commands, and
 then only speech:
 
 ```bash
-uv run joe dev                                  # in joe's checkout: the speech engine
-uv run qmcp serve --converse --runtime local    # here: the server, and the conversation
+uv run joe dev --allow microphone --allow transcripts   # in joe's checkout: the speech engine
+uv run qmcp serve --converse --runtime local             # here: the server, and the conversation
 ```
 
 qmcp says it is ready and asks what should be done. An instruction is read
@@ -339,6 +340,7 @@ The system follows a three-plane architecture:
 - [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
 - [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
 - [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
+- [alfred Integration](docs/integrations/alfred.md) - Video renders approved before delivery, captions read before they are burned in
 - [Thread Archive](docs/threads.md) - Conversations read as units of work
 - [Self-Checks](docs/self-checks.md) - Dashboard, audit, self-check and the feedback loop
 - [Deployment](docs/deployment.md) - Production deployment guide
@@ -351,6 +353,8 @@ See [examples/flows/](examples/flows/) for Metaflow integration examples:
 
 - **simple_plan.py** - Basic tool invocation
 - **approved_deploy.py** - HITL approval workflow
+- **alfred_render.py** - An alfred render, put to a person for approval
+- **alfred_caption_render.py** - An alfred project's transcript put to a person, then its captioned render
 - **local_agent_chain.py** - Local LLM plan -> review -> refine with SQLModel artifacts
 - **local_qc_gauntlet.py** - Local LLM QC checklist/task/gate builder
 - **local_release_notes.py** - Local LLM release notes and doc update suggestions

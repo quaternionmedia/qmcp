@@ -8,6 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Settings `qmcp.config` reads, credentials among them (QMCP_ALFRED_PASSWORD,
+# QMCP_ALFRED_TOKEN); never tracked.
+.env
+
 # SQLite databases
 *.db
 

@@ -1,0 +1,16 @@
+{
+  "api": "ok",
+  "db": "ok",
+  "renderer": {
+    "ok": true,
+    "workers": 1
+  },
+  "queue": {
+    "pending": 0
+  },
+  "audio_engine": {
+    "configured": false,
+    "ok": false,
+    "detail": "No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one)."
+  }
+}

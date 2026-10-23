@@ -1,0 +1,79 @@
+{
+  "invalid_id": {
+    "status": 422,
+    "body": {
+      "detail": "Not a valid identifier",
+      "code": "invalid_id"
+    }
+  },
+  "not_found": {
+    "status": 404,
+    "body": {
+      "detail": "Item not found",
+      "code": "not_found"
+    }
+  },
+  "audio_engine_missing": {
+    "status": 503,
+    "body": {
+      "detail": "No audio engine is configured: set ALFRED_AUDIO_ENGINE_URL to its address (docs/captions.md says how to run one).",
+      "code": "audio_engine_missing"
+    }
+  },
+  "transcription_running": {
+    "status": 409,
+    "body": {
+      "detail": "This project's timeline is already being transcribed; wait for that to finish.",
+      "code": "transcription_running"
+    }
+  },
+  "transcription_not_queued": {
+    "status": 503,
+    "body": {
+      "detail": "The transcription could not be queued: [Errno 111] Connection refused",
+      "code": "transcription_not_queued"
+    }
+  },
+  "too_many_captions": {
+    "status": 422,
+    "body": {
+      "detail": "1001 captions is more than the 1000 a project may carry",
+      "code": "too_many_captions"
+    }
+  },
+  "frame_size_out_of_range": {
+    "status": 422,
+    "body": {
+      "detail": "width must be between 16 and 7680 pixels",
+      "code": "frame_size_out_of_range"
+    }
+  },
+  "unknown_quality": {
+    "status": 422,
+    "body": {
+      "detail": "quality must be one of draft, standard, high, not 'ultra'",
+      "code": "unknown_quality"
+    }
+  },
+  "edl_refused": {
+    "status": 422,
+    "body": {
+      "detail": "clip 1: 'videos/x.mp4': no such file in the media library",
+      "code": "edl_refused"
+    }
+  },
+  "render_not_finished": {
+    "status": 409,
+    "body": {
+      "detail": "That render has no output file yet",
+      "code": "render_not_finished"
+    }
+  },
+  "destination_unknown": {
+    "status": 502,
+    "body": {
+      "detail": "unknown destination 'nowhere'; known: ['bucket', 'local']",
+      "code": "destination_unknown"
+    }
+  }
+}
