@@ -16,7 +16,7 @@ Metaflow flow tests skip, because `import metaflow` needs `fcntl`.
 
 | The machine's | What the suite does instead |
 |---|---|
-| `QMCP_*` variables in the shell that ran pytest | removed before every test (`tests/conftest.py`, `_isolated_settings`) |
+| `QMCP_*` variables in the shell that ran pytest | removed before every test and walkthrough page (`qmcp.testing.plugin`, loaded from `addopts`) |
 | a `.env` in the working directory | not read |
 | `./qmcp.db`, the configured queue | never opened; each test builds its own database, in memory or under `tmp_path` |
 | port 3141, the configured port | never bound; a server a test starts listens on port 0 |

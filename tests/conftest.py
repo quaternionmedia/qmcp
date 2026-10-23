@@ -14,19 +14,6 @@ if str(_REPO_ROOT) not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def _isolated_settings(monkeypatch):
-    """Every test reads the settings it sets and nothing else: no `QMCP_*`
-    variable from the shell that ran pytest, and no `.env` from the directory
-    it ran in (`qmcp.testing.isolate_settings`)."""
-    from qmcp.config import get_settings
-    from qmcp.testing import isolate_settings
-
-    isolate_settings(monkeypatch)
-    yield
-    get_settings.cache_clear()
-
-
-@pytest.fixture(autouse=True)
 def _own_vocabulary_overlay(_isolated_settings, tmp_path, monkeypatch):
     """Every test reads an empty per-user phrase file of its own. The real
     one, `~/.qmcp/voice-vocabulary.json`, holds a person's added phrases, and

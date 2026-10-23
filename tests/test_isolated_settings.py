@@ -1,9 +1,10 @@
 """A test reads the settings it sets, and nothing from the machine running it.
 
-`tests/conftest.py` takes every `QMCP_*` variable and the working directory's
-`.env` out of what `qmcp.config.Settings` reads, before every test, through
-`qmcp.testing.isolate_settings`. These tests put a setting where a developer's
-machine would and show it does not arrive.
+`qmcp.testing.plugin`, loaded from `addopts`, takes every `QMCP_*` variable and
+the working directory's `.env` out of what `qmcp.config.Settings` reads, before
+every test and every walkthrough page, through `qmcp.testing.isolate_settings`.
+These tests put a setting where a developer's machine would and show it does
+not arrive.
 """
 
 from __future__ import annotations
@@ -38,6 +39,13 @@ def test_a_qmcp_variable_in_the_environment_is_removed(monkeypatch) -> None:
 
     assert get_settings().converse_runtime is None
     assert get_settings().port == Settings.model_fields["port"].default
+
+
+def test_the_isolation_is_loaded_for_every_path_pytest_is_given(pytestconfig) -> None:
+    # Mutation seen red: `-p qmcp.testing.plugin` removed from `addopts` -- the
+    # plugin was not registered, and every test that depends on the vocabulary
+    # fixture errored on a missing `_isolated_settings`.
+    assert pytestconfig.pluginmanager.has_plugin("qmcp.testing.plugin")
 
 
 def test_the_client_fixture_settings_are_the_ones_the_server_reads(client) -> None:
