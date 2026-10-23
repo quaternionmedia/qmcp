@@ -312,7 +312,7 @@ def test_a_rendered_project_reaches_a_person_and_their_answer_ends_the_run(
     tools are invoked over HTTP, so every call to alfred is in the server's
     record under the run's correlation id, and the approval is answered on the
     real queue."""
-    from qmcp.integrations.voice.check import throwaway_server
+    from qmcp.testing import throwaway_server
 
     fake = FakeAlfred()
     fake.route("GET", "/project/p1", {"_id": "p1", "name": "Demo",

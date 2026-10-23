@@ -26,7 +26,7 @@ first time it is looked at, and keeps every request:
     >>> import httpx
     >>> import qmcp.tools.alfred as alfred
     >>> from qmcp.client import MCPClient
-    >>> from qmcp.integrations.voice.check import throwaway_server
+    >>> from qmcp.testing import throwaway_server
     >>> from qmcp.tools.alfred import AlfredClient, AlfredConfig
 
     >>> PROJECT, RENDER = "6a78b0420eea42d905943615", "6a7900000000000000000002"
