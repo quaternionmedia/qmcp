@@ -207,7 +207,7 @@ runtime that ran it:
     >>> turn.instruction, turn.runtime, turn.outcome
     ('Pin rad godot to the vectors.', 'scripted', 'pinned to 2c10fd1')
     >>> print("\n".join(another.briefs[0].prompt().splitlines()[2:4]))
-    What has been asked in this project so far, from qmcp's record, oldest first:
+    Earlier instructions in this project, from qmcp's record, oldest first. They are answered already; use them as context, not as the answer:
     1. ... asked: Pin rad godot to the vectors.
 
 The record says which turns were carried and what chose the clone, so a reader

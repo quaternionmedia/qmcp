@@ -373,7 +373,9 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
     answered `approve` by a script standing in for the person; the runtime is
     whatever is passed, and with `local` it is the model on this machine
     reading `clone`. Returns True when both instructions ran, the second
-    carried the first, and each summary was the last thing said.
+    carried the first, each summary was the last thing said, and -- on a
+    runtime that composes its answers -- the second answer is not the first
+    said again.
     """
     from vox import HttpSTT
     from vox.adapters.joe import JOE
@@ -385,6 +387,7 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
     from qmcp.instructions import roster_names
     from qmcp.instructions.act import RULE_CWD, RULE_RECORD, act
     from qmcp.instructions.spoken import say, summarise
+    from qmcp.integrations.agents import SCRIPTED
     from qmcp.spend import Budget
 
     clone = Path(clone).resolve()
@@ -408,7 +411,7 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
         echo(f"runtime: {runtime.name}, reading {clone}; each consent is answered by a script")
 
         ok = True
-        first_id = None
+        first_id = first_summary = None
         for number, ask in enumerate((FIRST_ASK, SECOND_ASK)):
             text = ask.format(project=project)
             log: list[tuple[str, str]] = []
@@ -453,7 +456,7 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
                                     f"{(recorded.get('outcome_text') or '').strip()[:200]}")
                 rule = (recorded.get("detail") or {}).get("clone", {}).get("rule")
                 if number == 0:
-                    first_id = done.instruction_id
+                    first_id, first_summary = done.instruction_id, summary
                     if rule != RULE_CWD:
                         problems.append(f"the clone was chosen by {rule!r}, not the one passed")
                 else:
@@ -461,6 +464,11 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
                         problems.append(f"carried {done.carried!r}, expected the first instruction")
                     if rule != RULE_RECORD:
                         problems.append(f"the clone was chosen by {rule!r}, not remembered")
+                    # A scripted runtime says what it is scripted to; one that
+                    # composes its answer and says the first again was handed
+                    # the history and answered the old question.
+                    if runtime.name != SCRIPTED and summary == first_summary:
+                        problems.append(f"the second answer said the first again: {summary!r}")
                 if tts.spoken[-1:] != [summary]:
                     problems.append("the summary was not the last thing said")
 

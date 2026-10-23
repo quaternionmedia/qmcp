@@ -66,12 +66,18 @@ class Brief:
         """The brief as one prompt, rendered here so every runtime reads the
         same words. It starts with the place and the history and ends with the
         instruction, and asks for the answer first, because the first sentence
-        is what is said back aloud."""
+        is what is said back aloud.
+
+        The history is marked as answered and the instruction as the one to
+        answer. Told the history plainly, `qwen2.5-coder:7b` at temperature 0
+        answered a follow-up with the earlier answer word for word, and that
+        sentence was said back as the answer to the new question."""
         where = f"the project {self.project}" if self.project else "this project"
         lines = [f"You are working in {where}, in the directory {self.cwd}."]
         if self.history:
-            lines += ["", "What has been asked in this project so far, from qmcp's record,"
-                          " oldest first:"]
+            lines += ["", "Earlier instructions in this project, from qmcp's record, oldest"
+                          " first. They are answered already; use them as context, not as"
+                          " the answer:"]
             for number, turn in enumerate(self.history, start=1):
                 when = f"{turn.at[:16].replace('T', ' ')} " if turn.at else ""
                 lines.append(f"{number}. {when}asked: {turn.instruction}")
@@ -82,8 +88,9 @@ class Brief:
                 lines.append(f"   {turn.status}{by}: {outcome or '(nothing reported)'}")
         else:
             lines += ["", "Nothing has been asked in this project before."]
-        lines += ["", f"Now: {self.instruction}", "",
-                  "Answer in a few sentences, and start with the answer."]
+        lines += ["", f"The instruction to carry out now: {self.instruction}", "",
+                  "Answer this instruction, not an earlier one, in a few sentences,"
+                  " and start with the answer."]
         return "\n".join(lines)
 
 
