@@ -146,3 +146,41 @@ def test_a_follow_up_is_answered_and_not_the_earlier_answer_said_again(first, se
     assert (earlier.exit_code, follow_up.exit_code) == (0, 0)
     # Word for word is the failure: two right answers can open alike.
     assert " ".join(follow_up.text.split()) != " ".join(earlier.text.split())
+
+
+# --- what it finds in a repository -----------------------------------------------
+#
+# Ten questions about this repository, each with an answer a substring settles.
+# Measured on qwen2.5-coder:7b at temperature 0, the same on two runs: 6 of 10.
+# It missed the CLI's file (it named "the `qmcp` command"), the model
+# `qmcp localmodel` installs, the `echo` tool (it said there is none), and the
+# directory of doctest pages (it said `tests`). The floor records that score;
+# raising it is a change to the runtime's read protocol, measured on these.
+
+RETRIEVAL = [
+    ("What port does the qmcp server listen on by default?", "3141"),
+    ("Which file defines qmcp's command line interface?", "cli.py"),
+    ("Which qmcp command backs up its database?", "db backup"),
+    ("What database does qmcp use by default?", "sqlite"),
+    ("Which environment variable changes the port qmcp listens on?", "qmcp_port"),
+    ("Which model does `qmcp localmodel` install?", "qwen2.5-coder"),
+    ("What web framework is qmcp's HTTP server built with?", "fastapi"),
+    ("Which file holds qmcp's settings?", "config.py"),
+    ("Which built-in qmcp tool returns its input unchanged?", "echo"),
+    ("Which directory holds the pages pytest runs as doctests?", "walkthrough"),
+]
+RETRIEVAL_FLOOR = 6
+
+
+def test_the_local_model_finds_at_least_what_it_found_when_measured() -> None:
+    runtime = ollama.Runtime()
+    missed = []
+    for question, expected in RETRIEVAL:
+        outcome = runtime.run(Brief(instruction=question, cwd=REPO, project="qmcp"))
+        if expected not in outcome.text.lower():
+            missed.append(f"{question} -- wanted {expected!r}, said {outcome.text[:120]!r}")
+    score = len(RETRIEVAL) - len(missed)
+
+    assert score >= RETRIEVAL_FLOOR, (
+        f"{score} of {len(RETRIEVAL)}, below the floor of {RETRIEVAL_FLOOR}:\n"
+        + "\n".join(missed))
