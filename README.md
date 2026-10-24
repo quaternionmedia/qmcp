@@ -35,16 +35,24 @@ these tools without being told about them in advance. Built with FastAPI.
 
 ## Quick Start
 
+Needs git and [uv](https://docs.astral.sh/uv/), which installs the Python 3.13
+the project asks for. Optional: Docker, for the flow image; Ollama serving
+`qwen2.5-coder:7b`, for the local model (`uv run qmcp localmodel check`); joe,
+for the voice loop (`docs/voice-loop-demo.md`).
+
 ```bash
-# Install dependencies
-uv sync
+git clone --recurse-submodules https://github.com/quaternionmedia/qmcp.git
+cd qmcp
+uv sync --all-extras
+uv run pytest tests walkthrough -q
 
 # Start the server
 uv run qmcp serve
-
-# Or with development reload
-uv run qmcp serve --reload
 ```
+
+In a clone made without `--recurse-submodules`, run `git submodule update
+--init` before the sync: `vendor/vox` is a path dependency, and `governance/qm`
+holds what the suite and the instruction roster read.
 
 See `quickstart.md` for a copy-paste walkthrough.
 
@@ -131,8 +139,10 @@ Adoption checklist:
 - Wire `/metrics` into your monitoring stack.
 
 Onboarding path:
-1. `git submodule update --init vendor/vox` — `vox` is a path dependency in the
-   default set, and any sync on a fresh clone fails without it.
+1. `git submodule update --init` -- both submodules: `vendor/vox`, a path
+   dependency any sync on a fresh clone fails without, and `governance/qm`,
+   which the suite's address vectors, the instruction roster and
+   `qmcp preflight` read.
 2. `uv sync --all-extras`
 3. Run the end-to-end tutorial below.
 4. `uv run qmcp serve` for local exploration.
@@ -150,7 +160,7 @@ This tutorial mirrors the end-to-end test
 
 Copy and paste:
 ```bash
-git submodule update --init vendor/vox
+git submodule update --init
 uv sync --all-extras
 uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
 ```
@@ -308,15 +318,12 @@ the last two.
 ## Development
 
 ```bash
-# Install dev dependencies (the vox submodule first; a sync without it fails)
-git submodule update --init vendor/vox
+# Install dev dependencies (the submodules first; a sync without vox fails)
+git submodule update --init
 uv sync --all-extras
 
 # Run tests
 uv run qmcp test -v
-
-# Run tests with coverage
-uv run qmcp test --coverage
 
 # Run linter
 uv run ruff check .
