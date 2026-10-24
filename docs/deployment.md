@@ -5,8 +5,8 @@ This guide covers deploying QMCP in various environments.
 ## Quick Start (Development)
 
 ```bash
-# Clone and install
-git clone <repo-url>
+# Clone and install (the submodules too: vendor/vox is a path dependency)
+git clone --recurse-submodules https://github.com/quaternionmedia/qmcp.git
 cd qmcp
 uv sync
 

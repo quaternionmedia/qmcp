@@ -6,14 +6,15 @@ end-to-end workflow.
 ## 1) Install and run the end-to-end HITL test
 
 ```bash
-git submodule update --init vendor/vox
+git submodule update --init
 uv sync --all-extras
 uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
 ```
 
 The submodule line comes first because `vox` is a path dependency in the
 default set: on a fresh clone with the submodule empty, any `uv sync` exits
-2 before installing anything.
+2 before installing anything. It also fetches `governance/qm`, which the
+suite's address vectors and the instruction roster read.
 
 ## 2) Start the server
 

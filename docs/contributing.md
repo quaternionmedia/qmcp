@@ -14,10 +14,12 @@ This document defines how changes should be made safely.
 
 Start here after cloning the repo:
 
-1. `git submodule update --init vendor/vox` — `vox` is a path dependency in the
-   default set; on a fresh clone the next step exits 2 without this.
+1. `git submodule update --init` -- both submodules: `vendor/vox`, a path
+   dependency any sync on a fresh clone fails without, and `governance/qm`,
+   which the suite's address vectors, the instruction roster and
+   `qmcp preflight` read.
 2. `uv sync --all-extras`
-3. `uv run pytest`
+3. `uv run pytest tests walkthrough -q`
 4. Run the end-to-end HITL tutorial (mirrors
    `tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow`):
 
@@ -77,15 +79,12 @@ These often indicate architectural drift.
 
 ```bash
 # Clone and install
-git clone <repo>
+git clone --recurse-submodules https://github.com/quaternionmedia/qmcp.git
 cd qmcp
 uv sync --all-extras
 
 # Run tests
 uv run qmcp test -v
-
-# Run tests with coverage
-uv run qmcp test --coverage
 
 # Run specific test file
 uv run qmcp test tests/test_hitl.py

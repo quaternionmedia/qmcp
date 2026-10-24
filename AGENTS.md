@@ -185,8 +185,9 @@ what was actually verified.
 ## Setting up, and running the suite
 
 ```
+git submodule update --init
 uv sync --all-extras
-uv run pytest -q
+uv run pytest tests walkthrough -q
 ```
 
 **Install through the lock.** `uv sync`, never `uv pip install <package>`. An
