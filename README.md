@@ -321,7 +321,9 @@ uv run qmcp test --coverage
 # Run linter
 uv run ruff check .
 
-# Run the workflows under .github/workflows locally (a pass is evidence, not proof)
+# Run the workflows under .github/workflows locally (a pass is evidence, not proof).
+# On Windows after a change to pyproject.toml, run the runner by path instead;
+# AGENTS.md says why.
 uv run qmcp preflight --event pull_request --base-ref main
 ```
 
