@@ -57,6 +57,23 @@ def test_loopback_is_let_through() -> None:
     assert netguard.taken() == []
 
 
+def test_the_machines_own_service_ports_are_refused_on_loopback_too() -> None:
+    # Mutation seen red: `install` called by the plugin with no
+    # `machine_ports` -- the connection to qmcp's default port went out to
+    # whatever listens there; here nothing did, and it timed out unrecorded.
+    from qmcp.localmodel import ENDPOINT
+    from qmcp.testing.plugin import machine_ports
+
+    ports = machine_ports()
+    assert set(ports) == {3141, 8000}
+    assert netguard.refusal("127.0.0.1", int(ENDPOINT.rsplit(":", 1)[1])) is None
+    for port in ports:
+        with socket.socket() as sock, pytest.raises(ConnectionRefusedError, match="netguard"):
+            sock.settimeout(1)
+            sock.connect(("127.0.0.1", port))
+    assert netguard.taken() == [f"connect ('127.0.0.1', {port})" for port in ports]
+
+
 def test_a_name_reserved_to_resolve_nowhere_is_refused_and_not_recorded() -> None:
     with pytest.raises(socket.gaierror, match="netguard"):
         socket.getaddrinfo("alfred.test", 80)
@@ -74,6 +91,7 @@ def test_the_session_hands_its_children_the_guard() -> None:
     # inherited environment carried no guard.
     assert os.environ["PYTHONPATH"].split(os.pathsep)[0] == str(netguard.SITE)
     assert os.path.isfile(os.environ[netguard.LOG])
+    assert "3141" in os.environ[netguard.PORTS].split(",")
     assert os.environ["UV_OFFLINE"] == "1"
 
 
@@ -89,6 +107,20 @@ def test_a_python_child_is_guarded_and_records_in_its_log(tmp_path) -> None:
     assert child.returncode != 0
     assert "netguard" in child.stderr
     assert log.read_text(encoding="utf-8").startswith("lookup example.com pid=")
+
+
+def test_a_python_child_is_refused_the_machines_service_ports(tmp_path) -> None:
+    # Mutation seen red: the child's `sitecustomize.py` installing with no
+    # ports -- the child dialed 3141 and was answered by the operating system,
+    # not refused by the guard.
+    log = tmp_path / "child.log"
+    child = subprocess.run(
+        [sys.executable, "-c",
+         "import socket; s = socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', 3141))"],
+        env=netguard.child_environment(log), capture_output=True, text=True, timeout=60)
+
+    assert "netguard: port 3141" in child.stderr
+    assert log.read_text(encoding="utf-8").startswith("connect ('127.0.0.1', 3141) pid=")
 
 
 INNER = '''

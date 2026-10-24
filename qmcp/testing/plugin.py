@@ -6,9 +6,10 @@ conftest would not reach `walkthrough/`: its pages are collected as doctests
 from a directory with no conftest of its own.
 
 Two guarantees. A test reads only the settings it sets. And nothing reaches
-past loopback -- not the test's process, not a Python child it starts -- or
-the test fails, naming what was attempted (`qmcp.testing.netguard`). A test
-marked `live_anthropic` is about a real service and is let through.
+past loopback, or into a service this machine runs on loopback -- not from the
+test's process, not from a Python child it starts -- or the test fails, naming
+what was attempted (`qmcp.testing.netguard`). A test marked `live_anthropic`
+is about a real service and is let through.
 """
 
 from __future__ import annotations
@@ -28,10 +29,27 @@ ONLINE_MARKERS = ("live_anthropic",)
 """The markers that let a test past the guard."""
 
 
+def machine_ports() -> tuple[int, ...]:
+    """The loopback ports a test may not dial: qmcp's default, where somebody's
+    queue answers, and the speech engine's, where a microphone opens. Read from
+    the code that names them, so a changed default moves here with it.
+
+    The local model service's port is not one of them. A model on this machine
+    is offline, and a test that runs one is an offline test."""
+    from urllib.parse import urlparse
+
+    from vox.adapters.joe import DEFAULT_URL
+
+    from qmcp.config import Settings
+
+    ports = {Settings.model_fields["port"].default, urlparse(DEFAULT_URL).port}
+    return tuple(sorted(port for port in ports if port))
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Guard the session before collection imports anything, and hand the
     guard to every Python child through the environment."""
-    netguard.install()
+    netguard.install(machine_ports=machine_ports())
     log = Path(tempfile.mkdtemp(prefix="qmcp-netguard-")) / "attempts.log"
     log.touch()
     config.stash[_LOG] = log
