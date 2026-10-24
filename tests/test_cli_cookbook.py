@@ -236,3 +236,44 @@ def test_cookbook_run_requires_flags() -> None:
 
     assert result.exit_code != 0
     assert "Missing required flow arguments" in result.output
+
+
+# The flow image's sync builds vox from vendor/vox, a path dependency, so the
+# build context must carry it. Seen failing on Docker before it did: "Failed to
+# generate package metadata for vox ... Distribution not found at
+# file:///app/vendor/vox".
+
+
+def test_the_flow_image_build_context_carries_vox(monkeypatch) -> None:
+    """Mutation seen red: the vendor/vox copytree removed -- the context held
+    no vox, as the image build found."""
+    seen: dict[str, object] = {}
+
+    def fake_run(cmd, cwd):
+        context = Path(cmd[-1])
+        seen["vox"] = (context / "vendor" / "vox" / "pyproject.toml").is_file()
+        seen["vox_git"] = (context / "vendor" / "vox" / ".git").exists()
+        dockerfile = (context / "docker" / "flows.Dockerfile").read_text(encoding="utf-8")
+        seen["vox_before_sync"] = (
+            dockerfile.index("COPY vendor/vox") < dockerfile.index("RUN uv sync"))
+
+    monkeypatch.setattr(cli, "_ensure_docker_available", lambda: None)
+    monkeypatch.setattr(cli, "_run_cmd", fake_run)
+
+    cli._build_flow_runner_image(Path(__file__).resolve().parents[1], "qmcp-flow-runner:test")
+
+    assert seen == {"vox": True, "vox_git": False, "vox_before_sync": True}
+
+
+def test_the_flow_image_is_refused_without_vox_checked_out(monkeypatch, tmp_path) -> None:
+    repo = Path(__file__).resolve().parents[1]
+    for name in ("pyproject.toml", "uv.lock", "README.md"):
+        (tmp_path / name).write_text("", encoding="utf-8")
+    (tmp_path / "docker").mkdir()
+    (tmp_path / "docker" / "flows.Dockerfile").write_text(
+        (repo / "docker" / "flows.Dockerfile").read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(cli, "_ensure_docker_available", lambda: None)
+    monkeypatch.setattr(cli, "_run_cmd", lambda cmd, cwd: pytest.fail("a build was started"))
+
+    with pytest.raises(cli.click.ClickException, match="git submodule update --init vendor/vox"):
+        cli._build_flow_runner_image(tmp_path, "qmcp-flow-runner:test")
