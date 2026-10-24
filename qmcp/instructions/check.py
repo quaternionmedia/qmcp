@@ -358,7 +358,11 @@ def run_loop(echo: Callable[[str], None] = print, cases=LOOP_CASES) -> bool:
 # --- the continuity, on a real runtime ------------------------------------------------
 
 
-FIRST_ASK = "Which file in {project} says what {project} is? Name the file and quote what it says."
+# The second answer must be one the first cannot also be: the first names a
+# file and the second says what it is for, so a second answer that is the
+# first word for word answered the old question.
+FIRST_ASK = ("Which file in {project} says what {project} is?"
+             " Answer with the file's path and nothing else.")
 SECOND_ASK = "In one sentence, what did that file say {project} is for?"
 
 
