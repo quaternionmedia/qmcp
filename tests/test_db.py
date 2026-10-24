@@ -190,3 +190,35 @@ class TestHumanResponse:
             resp = result.scalar_one()
             assert resp.response == "approve"
             assert resp.responded_by == "alice@example.com"
+
+
+def test_the_server_creates_its_own_tables_and_not_the_cookbooks(tmp_path, monkeypatch):
+    """`SQLModel.metadata` holds the cookbook's flow tables once anything has
+    imported the cookbook. Found by tests/test_integration_migrated_database.py,
+    which failed only in the full suite: a server started after the cookbook
+    was imported wrote `flowrun`, `agentrun`, `mcpinvocation` and `artifact`
+    into its database. Mutation: `init_db` back on `SQLModel.metadata` -- red."""
+    import asyncio
+    import sqlite3
+
+    import qmcp.cookbook.persistence  # noqa: F401 -- registering the flow tables is the point
+    import qmcp.db.engine as engine_module
+    from qmcp.config import Settings
+    from qmcp.db.registry import server_table_names
+
+    database = tmp_path / "server.db"
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{database.as_posix()}")
+    monkeypatch.setattr(engine_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(engine_module, "_engine", None)
+
+    async def start_and_stop() -> None:
+        await engine_module.init_db()
+        await engine_module.close_db()
+
+    asyncio.run(start_and_stop())
+    with sqlite3.connect(database) as connection:
+        tables = {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+    assert tables & {"flowrun", "agentrun", "mcpinvocation", "artifact", "checklistitem"} == set()
+    assert server_table_names() <= tables
