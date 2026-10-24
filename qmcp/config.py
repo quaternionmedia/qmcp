@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # Database settings (Phase 2)
     database_url: str = "sqlite+aiosqlite:///./qmcp.db"
 
+    # Which server this is (`qmcp/instance.py`): `qmcp serve` sets `run_file`
+    # so the serving process leaves a run-file in `run_dir` (default
+    # ~/.qmcp/run), and `session` is the label a person starting it declares.
+    run_file: bool = False
+    run_dir: str | None = None
+    session: str | None = None
+
     # Logging
     log_level: str = "INFO"
 

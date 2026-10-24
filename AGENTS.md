@@ -271,17 +271,20 @@ annotation a human wrote, after the tag already exists. The gate is the person.
 
 Several sessions may share one workstation, under
 `governance/qm/handbook/async-contract.md`. One default in this repository
-breaks that contract and is recorded as a conflict rather than fixed, so read
-this before starting a server.
+breaks that contract unless it is overridden, so read this before starting a
+server.
 
 **The server binds a default port.** `port` defaults to 3141 and
 `database_url` to `sqlite+aiosqlite:///./qmcp.db`, which resolves against
-whatever directory the process started in. So two clones have two different
-queues that both answer `/health` identically, and `cookbook dev` prints
-"MCP server already running" and *uses* whatever answered -- silently
-borrowing another session's server and reporting it as success. Choose a port,
-pass it explicitly, and ask the server what it is before believing anything
-you measure against it.
+whatever directory the process started in, so two clones hold two different
+queues. Start one of your own with `uv run qmcp serve --port 0`: the system
+picks the port, and the server leaves a run-file in `~/.qmcp/run/`
+(`QMCP_RUN_DIR`) naming its port, its resolved database and its start time.
+Ask a server what it is before believing anything you measure against it:
+`/health` states its port, start time, pid, the session it was started for
+(`QMCP_SESSION`) and a fingerprint of its database, which `qmcp/instance.py`
+computes. `cookbook dev` uses a server that already answers only when that
+fingerprint is its own checkout's database.
 
 ## One read in this API is a write
 

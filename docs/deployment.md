@@ -24,6 +24,8 @@ uv run qmcp serve --reload
 | `QMCP_PORT` | `3141` | Server port |
 | `QMCP_DEBUG` | `false` | Enable debug mode |
 | `QMCP_DATABASE_URL` | `sqlite+aiosqlite:///./qmcp.db` | Database connection |
+| `QMCP_RUN_DIR` | `~/.qmcp/run` | Where `qmcp serve` leaves its run-file |
+| `QMCP_SESSION` | unset | A label the server states on `/health` and in its run-file |
 
 ### Running with Uvicorn
 
