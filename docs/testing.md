@@ -30,6 +30,12 @@ a file the session reads after each test; `UV_OFFLINE=1` keeps a `uv` the
 child runs from fetching. A test marked `live_anthropic` is about a real
 service and is let through.
 
+Loopback is let through except on two ports: qmcp's default, where somebody's
+queue answers, and the speech engine's, where a microphone opens. A test that
+needs either starts its own on port 0. The local model service's port is let
+through: a model on this machine is offline, and a test that runs one is an
+offline test.
+
 The settings isolation is `qmcp.testing.isolate_settings(monkeypatch)`.
 `qmcp.config.get_settings` caches its first answer for the process, and
 `qmcp.server` and `qmcp.db.engine` bind it at import, so the `client` fixture
