@@ -25,11 +25,12 @@ Every command here is `uv run qmcp <command>`; `uv run qmcp --help` lists
 them. Starting `serve` while a healthy server already holds the port says so
 and exits, rather than failing at the bind.
 
-For Docker-based flows, use the cookbook wrapper. It binds 127.0.0.1; a flow
-container on Linux reaches it only with `--host 0.0.0.0`, and then so can
-anyone on the network -- the server asks nobody who they are:
+For Docker-based flows, use the cookbook wrapper. It binds 127.0.0.1, which a
+container on Docker Desktop reaches. On a Linux engine a container reaches it
+only with `--host 0.0.0.0`, and then so can anyone on the network -- the
+server asks nobody who they are:
 ```bash
-uv run qmcp cookbook serve --host 0.0.0.0
+uv run qmcp cookbook serve
 ```
 
 On Windows, a running server holds `Scripts/qmcp.exe`. A sync that has to
@@ -126,6 +127,6 @@ after it spoken: qmcp asks what should be done, and a person answers.
 - Read `docs/overview.md` for architecture boundaries.
 - Read `docs/agentframework/overview.md` for agent schema and mixin status.
 - Run example flows in `examples/flows/`.
-- Run `qmcp cookbook dev simple-plan --server-host 0.0.0.0` to start the server and flow together.
+- Run `qmcp cookbook dev simple-plan` to start the server and flow together (add `--server-host 0.0.0.0` on a Linux engine).
 - Or run `qmcp cookbook run simple-plan` (requires Docker Desktop).
 - Other recipes: `qmcp cookbook run approved-deploy --service "api-gateway"`.
