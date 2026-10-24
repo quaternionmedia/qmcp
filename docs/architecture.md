@@ -208,3 +208,15 @@ These may be explored only if the architecture remains intact.
 - Everything is testable
 
 If any invariant is violated, stop and refactor.
+
+### Where the code stands against these
+
+Two invariants are departed from today, and which side moves is not settled:
+
+- **Server does not orchestrate.** `qmcp serve --converse` starts the spoken
+  conversation as a process beside the server, and `POST
+  /v1/instructions/{id}/act` starts an act. The server launches and tracks
+  both; the control flow runs in those processes, not in a request.
+- **Tools are stateless.** The `alfred_*` tools log in once and keep alfred's
+  token between calls, renewing it as it nears expiry
+  (`docs/integrations/alfred.md`).

@@ -17,7 +17,7 @@ This document outlines the phased implementation plan for building a production-
 - ✅ Structured logging with structlog
 - ✅ Request tracing middleware (correlation IDs)
 - ✅ Prometheus-compatible metrics endpoint
-- ✅ 4 built-in tools
+- ✅ 4 built-in tools, and 9 `alfred_*` tools that drive alfred's projects, renders and captions
 - ✅ Agent framework schemas + mixins
 - ✅ PydanticAI integration for agent execution
 - ✅ A test suite that runs under `uv run pytest -q` and in `tests.yml`; a reader who wants the count runs it
@@ -63,7 +63,7 @@ This document outlines the phased implementation plan for building a production-
 - [x] Server starts via `uv run qmcp serve`
 - [x] `GET /v1/tools` returns tool list
 - [x] `POST /v1/tools/echo` returns echoed input
-- [x] Basic tests pass (15/15)
+- [x] Basic tests pass
 
 ---
 
@@ -122,7 +122,7 @@ This document outlines the phased implementation plan for building a production-
 - [x] Can submit response (validates against options if provided)
 - [x] Can poll and receive request status + response
 - [x] Expired requests are detected and marked
-- [x] 15 HITL-specific tests passing
+- [x] HITL-specific tests pass
 
 ---
 
@@ -156,20 +156,20 @@ This document outlines the phased implementation plan for building a production-
 - [x] Python client library with full API coverage
 - [x] Example flow calls MCP tools
 - [x] Example flow demonstrates HITL
-- [x] 16 client tests passing
+- [x] Client tests pass
 
 ---
 
 ## Phase 5: Production Hardening ✅ COMPLETE
 
-**Goal**: Make the system production-ready.
+**Goal**: Make the server observable: structured logs, request tracing and metrics.
 
 ### Deliverables
 
 1. **Observability**
    ```
    qmcp/
-   ├── logging.py      # Structured logging with structlog
+   ├── log.py          # Structured logging with structlog
    ├── middleware.py   # Request tracing middleware
    └── metrics.py      # Prometheus-compatible metrics
    ```
@@ -261,7 +261,7 @@ This document outlines the phased implementation plan for building a production-
 - [x] PydanticAI agents can be created from QMCP model configs
 - [x] QMCPToolset connects agents to QMCP server
 - [x] HITL support through toolset
-- [x] 15 integration tests passing
+- [x] Integration tests pass
 
 ---
 
@@ -370,17 +370,17 @@ are documented in
 
 One pull request each, in this order; each is useful before the next exists.
 
-- [ ] **Free-text answers by voice.** `run_once` asks every request as a closed choice and gives a request without `options` the options approve and reject, so an `input` request answered "yes" records `approve`. A request without options takes the transcript as its answer, read back once for confirmation
-- [ ] **An instruction inbox.** `/v1/instructions` (POST, GET), loopback-only as the voice routes are, records an utterance, the project it resolved to, and its source. Recording executes nothing. Resolution reuses `consolidate`'s roster matching, and an ambiguous or unmatched name is asked back as a closed choice rather than guessed. joe's page offers it beside "Answer by voice"
-- [ ] **Acting on an instruction.** A worker takes an instruction, declares its spend, asks consent on the human queue -- the existing voice approval -- and hands a runtime a brief: the instruction, the clone, and the project's earlier instructions and outcomes from qmcp's record. `local`, the model `qmcp.localmodel` stands up, reads the clone with tools that cannot write and spends nothing; a coding assistant's command line sits behind the same contract and is given the same brief; no runtime resumes a conversation of its own. The clone is given once and remembered for the project
-- [ ] **The result, spoken.** The outcome is recorded against the instruction and spoken as a short summary; the full result stays in the record. Progress uses the announcement states joe's conversation panel already reads
+- [x] **Free-text answers by voice.** (#58) `run_once` asks every request as a closed choice and gives a request without `options` the options approve and reject, so an `input` request answered "yes" records `approve`. A request without options takes the transcript as its answer, read back once for confirmation
+- [x] **An instruction inbox.** (#61) `/v1/instructions` (POST, GET), loopback-only as the voice routes are, records an utterance, the project it resolved to, and its source. Recording executes nothing. Resolution reuses `consolidate`'s roster matching, and an ambiguous or unmatched name is asked back as a closed choice rather than guessed. joe's page offers it beside "Answer by voice"
+- [x] **Acting on an instruction.** (#62) A worker takes an instruction, declares its spend, asks consent on the human queue -- the existing voice approval -- and hands a runtime a brief: the instruction, the clone, and the project's earlier instructions and outcomes from qmcp's record. `local`, the model `qmcp.localmodel` stands up, reads the clone with tools that cannot write and spends nothing; a coding assistant's command line sits behind the same contract and is given the same brief; no runtime resumes a conversation of its own. The clone is given once and remembered for the project
+- [x] **The result, spoken.** (#63) The outcome is recorded against the instruction and spoken as a short summary; the full result stays in the record. Progress uses the announcement states joe's conversation panel already reads
 
 ### Acceptance Criteria
 
 - [ ] An instruction spoken at joe's page appears in `/v1/instructions` with its project, and nothing runs until consent is given
-- [ ] A refused or unanswered consent spends nothing, and a walkthrough shows it
-- [ ] A second instruction in a project is told what the first one found, by a different runtime, after every process has restarted -- the history is in the record, not in the runtime
-- [ ] A cookbook check in the shape of `qmcp cookbook voice` runs the path offline on vox's deterministic engine, and has been seen to go red
+- [x] A refused or unanswered consent spends nothing, and a walkthrough shows it (`walkthrough/09`)
+- [ ] A second instruction in a project is told what the first one found, by a different runtime, after every process has restarted -- the history is in the record, not in the runtime. Shown with a change of runtime in one process (`tests/test_instructions_act.py`); across a restart, not yet
+- [x] A cookbook check in the shape of `qmcp cookbook voice` runs the path offline on vox's deterministic engine, and has been seen to go red (`qmcp cookbook instruct`)
 
 ### Constraints going in
 
@@ -425,7 +425,7 @@ habit is something the record shows, not something designed in advance.
 
 ## Current Sprint
 
-Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work, Phase 10 is built on open pull requests, and Phase 11 follows its use. QMCP is a production-ready MCP server with PydanticAI integration and composable workflow building blocks:
+Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work, Phase 10 is built (#58, #61, #62, #63), and Phase 11 follows its use. Outside the phases, qmcp drives alfred's projects, renders and captions with a person's approval (#85, `docs/integrations/alfred.md`). QMCP is an MCP server with PydanticAI integration and composable workflow building blocks; it authenticates nobody, so it serves loopback unless told otherwise:
 
 **Phase Summary:**
 | Phase | Description |
@@ -452,8 +452,8 @@ Each phase's tests run with the whole suite under `uv run pytest -q`; the count 
 
 **Next Steps (Future Work):**
 - Topology runtime execution (Pipeline, Council, etc.) with PydanticAI built-in -- Phase 9's execution route is the governed way in. Shipped separately: the consent-gated, read-only voice runner for saved designs (`qmcp.integrations.agents.topology_design`); the framework `BaseTopology.run` is still a stub
-- CI/CD pipeline (GitHub Actions)
-- HumanInLoopMixin HITL API integration
+- Continuous delivery. The workflows under `.github/workflows` test every pull request and gate a version tag; nothing deploys
+- HumanInLoopMixin HITL API integration; until then the mixin refuses a tool that needs approval
 - AsyncRunner implementation
 - Add authentication/authorization
 - Webhook notifications for HITL
