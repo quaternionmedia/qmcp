@@ -102,22 +102,21 @@ class ReasoningConfig(MixinConfig):
 
 ### HumanInLoopMixin
 
-Integrates with QMCP's human approval system.
+Names the tools that need a person's approval. It is not connected to the
+human queue, so it cannot ask: `on_tool_call` raises `PermissionError` for a
+tool in `require_approval_for` rather than letting it run unapproved. A
+consent that is asked on the queue and answered is `qmcp.governed`'s
+(`docs/human_in_loop.md`).
 
 ```python
 class HumanInLoopConfig(MixinConfig):
-    require_approval_for: list[str] = []  # Actions requiring approval
+    require_approval_for: list[str] = []  # Tools refused until approval can be asked
     approval_timeout_seconds: int = 3600
     allow_modification: bool = True
     escalation_on_timeout: str = "abort"  # abort, continue, default
 ```
 
 **Dependencies:** `tool_use`
-
-**Methods:**
-```python
-await mixin.request_input(prompt, input_type="text", options=None)
-```
 
 ### StructuredOutputMixin
 

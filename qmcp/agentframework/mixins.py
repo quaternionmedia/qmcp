@@ -429,11 +429,18 @@ class HumanInLoopMixin(BaseMixin):
     async def on_tool_call(
         self, tool_name: str, arguments: dict[str, Any]
     ) -> dict[str, Any] | None:
+        """Refuse a tool that needs approval: this mixin cannot yet ask for one.
+
+        Nothing connects it to the human queue, so a tool named in
+        `require_approval_for` is refused rather than run unapproved. A
+        consent that is asked and answered is `qmcp.governed`'s.
+        """
         if tool_name not in self.hitl_config.require_approval_for:
             return None
-
-        # TODO: integrate with QMCP human-in-the-loop API.
-        return None
+        raise PermissionError(
+            f"Tool '{tool_name}' needs a person's approval, and this agent has no way to"
+            " ask for one: HumanInLoopMixin is not connected to the human queue"
+        )
 
 
 class StructuredOutputConfig(MixinConfig):
