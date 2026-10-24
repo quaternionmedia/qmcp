@@ -16,12 +16,13 @@ The server is intentionally "boring":
 import sys
 import time
 from contextlib import asynccontextmanager
+from typing import Any
 from datetime import UTC, datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from sqlmodel import select
 
-from qmcp import __version__
+from qmcp import __version__, instance
 from qmcp.config import get_settings
 from qmcp.db import HumanRequest, HumanResponse, ToolInvocation, get_session, init_db
 from qmcp.db.engine import close_db
@@ -83,11 +84,18 @@ async def lifespan(app: FastAPI):
     logger.info("database_init", database_url=settings.database_url)
     await init_db()
     logger.info("database_ready")
+    app.state.instance = instance.describe(settings)
+    run_file = None
+    if getattr(settings, "run_file", False):
+        run_file = instance.write_run_file(app.state.instance, instance.run_dir(settings))
+        logger.info("run_file_written", path=str(run_file))
     conversation = start_conversation(app, settings)
     yield
     # Shutdown
     if conversation:
         app.state.voice_runs.stop()
+    if run_file is not None:
+        instance.remove_run_file(run_file)
     await close_db()
     logger.info("server_shutdown")
 
@@ -196,9 +204,11 @@ def create_app() -> FastAPI:
 
     # Health check
     @app.get("/health")
-    async def health() -> dict[str, str]:
-        """Health check endpoint."""
-        return {"status": "healthy", "version": __version__}
+    async def health(request: Request) -> dict[str, Any]:
+        """Health check endpoint, and which server this is (`qmcp/instance.py`)."""
+        stated = getattr(request.app.state, "instance", None)
+        return {"status": "healthy", "version": __version__,
+                **(stated.public() if stated is not None else {})}
 
     # Metrics endpoint (Prometheus format)
     @app.get("/metrics", include_in_schema=False)

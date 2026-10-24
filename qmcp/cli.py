@@ -278,6 +278,29 @@ def _server_health_url(server_host: str, server_port: int) -> str:
     return f"http://{host}:{server_port}/health"
 
 
+def _foreign_server(health_url: str) -> str | None:
+    """Why the qmcp answering at `health_url` is not this checkout's, or None.
+
+    Two clones answer /health alike, and a server over another database is
+    another session's queue. The identity it states (`qmcp/instance.py`) is
+    matched against this checkout's configured database before it is used.
+    """
+    import httpx
+
+    from qmcp.instance import database_fingerprint
+
+    try:
+        body = httpx.get(health_url, timeout=1.0).json()
+    except Exception:
+        return "it did not say which server it is"
+    stated = body.get("database_fingerprint")
+    if stated is None:
+        return "it does not say which database it serves"
+    if stated != database_fingerprint(get_settings().database_url):
+        return "it serves another database"
+    return None
+
+
 def _is_server_healthy(health_url: str) -> bool:
     try:
         import httpx
@@ -832,23 +855,50 @@ def _warn_if_exposed(host: str) -> None:
 
 
 def _run_server(host: str | None, port: int | None, reload: bool) -> None:
+    """Serve, leaving a run-file that says which server this is.
+
+    `--port 0` binds a port the system picks, as a server two sessions might
+    both start must (`qmcp/instance.py`): the socket is bound here, its port
+    is handed to the app through `QMCP_PORT`, and uvicorn serves on it.
+    """
+    import socket
+
     settings = get_settings()
 
     actual_host = host or settings.host
-    actual_port = port or settings.port
+    actual_port = port if port is not None else settings.port
     _warn_if_exposed(actual_host)
 
-    serving = _qmcp_already_serving(actual_host, actual_port)
-    if serving is not None:
-        raise SystemExit(
-            f"qmcp {serving} already serves http://{actual_host}:{actual_port},"
-            " and every CLI command talks to it over HTTP -- a second server"
-            " is not needed. To run another beside it, pass a different"
-            " --port."
-        )
+    bound = None
+    if actual_port == 0:
+        if reload:
+            raise click.UsageError("--reload restarts on a fixed port; give --port with it.")
+        bound = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        bound.bind((actual_host, 0))
+        actual_port = bound.getsockname()[1]
+    else:
+        serving = _qmcp_already_serving(actual_host, actual_port)
+        if serving is not None:
+            raise SystemExit(
+                f"qmcp {serving} already serves http://{actual_host}:{actual_port},"
+                " and every CLI command talks to it over HTTP -- a second server"
+                " is not needed. To run another beside it, pass a different"
+                " --port, or --port 0 for one the system picks."
+            )
+
+    # The app reads its port and whether to leave a run-file from the
+    # settings; a reloaded worker inherits both through the environment.
+    os.environ["QMCP_HOST"] = actual_host
+    os.environ["QMCP_PORT"] = str(actual_port)
+    os.environ["QMCP_RUN_FILE"] = "1"
+    get_settings.cache_clear()
 
     click.echo(f"Starting QMCP server on {actual_host}:{actual_port}")
 
+    if bound is not None:
+        config = uvicorn.Config("qmcp.server:app", log_level=settings.log_level.lower())
+        uvicorn.Server(config).run(sockets=[bound])
+        return
     uvicorn.run(
         "qmcp.server:app",
         host=actual_host,
@@ -1176,7 +1226,13 @@ def cookbook_dev(
     try:
         if start_server:
             if _is_server_healthy(health_url):
-                click.echo(click.style("MCP server already running.", fg="yellow"))
+                foreign = _foreign_server(health_url)
+                if foreign:
+                    raise click.ClickException(
+                        f"A qmcp already answers at {health_url}, and {foreign}: it is"
+                        " not this checkout's. Pass --server-port for one of its own.")
+                click.echo(click.style("MCP server already running, over this checkout's"
+                                       " database.", fg="yellow"))
             else:
                 _warn_if_exposed(server_host)
                 server_process = _start_server_process(
