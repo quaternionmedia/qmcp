@@ -3,6 +3,8 @@
 import pytest
 
 from qmcp.agentframework.mixins import (
+    HumanInLoopConfig,
+    HumanInLoopMixin,
     MemoryConfig,
     MemoryEntry,
     MemoryMixin,
@@ -264,3 +266,26 @@ class TestStructuredOutputMixin:
 
         with pytest.raises(ValueError, match="Missing required field"):
             await mixin.on_response(response)
+
+
+class TestHumanInLoopMixin:
+    """A tool named in `require_approval_for` is refused, never run unapproved.
+
+    The mixin has no way to ask a person, so a configured approval that it let
+    through would be a gate that silently stands open.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_needs_approval_is_refused(self):
+        """Mutation: the refusal replaced by `return None` -- red, the call
+        went through with no approval asked."""
+        mixin = HumanInLoopMixin(HumanInLoopConfig(require_approval_for=["deploy"]))
+
+        with pytest.raises(PermissionError, match="'deploy' needs a person's approval"):
+            await mixin.on_tool_call("deploy", {"env": "prod"})
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_needs_none_goes_ahead(self):
+        mixin = HumanInLoopMixin(HumanInLoopConfig(require_approval_for=["deploy"]))
+
+        assert await mixin.on_tool_call("calculator", {"x": 1}) is None
