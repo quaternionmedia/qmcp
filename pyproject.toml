@@ -101,7 +101,7 @@ markers = [
     "live_anthropic: needs pydantic-ai and ANTHROPIC_API_KEY - deselected by default, run with `-m live_anthropic`",
     "local_model: runs on the model `qmcp localmodel` stands up on this machine - deselected by default, run with `-m local_model`",
     "asyncio: marks tests as async (handled by pytest-asyncio)",
-    "integration: marks tests that require external services (Ollama, live MCP server, etc.) - skipped by default in CI",
+    "integration: crosses a real socket between real components on this machine, offline - runs in the default suite",
     "slow: marks tests that are intentionally slow",
 ]
 
