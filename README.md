@@ -221,7 +221,9 @@ qmcp dashboard --database run.db --json   > harness.json  # what has run
 # Start the server
 qmcp serve [--host HOST] [--port PORT] [--reload]
 
-# Start the server for Docker-based flows
+# Start the server for Docker-based flows. It binds 127.0.0.1; a flow
+# container on Linux needs --host 0.0.0.0, which lets anyone who can reach
+# this machine call its tools and answer its human requests.
 qmcp cookbook serve [--host 0.0.0.0] [--port PORT] [--reload]
 
 # List registered tools
@@ -233,15 +235,16 @@ qmcp info
 # Run a cookbook flow in Docker
 qmcp cookbook simple-plan --goal "Deploy a web service"
 
-# Start the server + run a cookbook flow (unified dev)
-qmcp cookbook dev simple-plan --goal "Deploy a web service"
+# Start the server + run a cookbook flow (unified dev); the server it starts
+# must be off loopback for the container, so that is asked for explicitly
+qmcp cookbook dev simple-plan --goal "Deploy a web service" --server-host 0.0.0.0
 
 # Run a cookbook flow via the generic runner
 qmcp cookbook run simple-plan --goal "Deploy a web service"
 
 # Run other cookbook recipes (flow args are passed through)
 qmcp cookbook run approved-deploy --service "api-gateway" --environment "staging"
-qmcp cookbook dev local-qc-gauntlet --change-summary "Add audit fields" --target-area "metrics, logging"
+qmcp cookbook dev local-qc-gauntlet --change-summary "Add audit fields" --target-area "metrics, logging" --server-host 0.0.0.0
 
 # Run a cookbook flow in Docker explicitly
 qmcp cookbook docker simple-plan --goal "Deploy a web service"
