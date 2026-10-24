@@ -853,6 +853,11 @@ def _build_flow_runner_image(repo_root: Path, image_tag: str) -> None:
     for filename in required_files:
         if not (repo_root / filename).exists():
             raise click.ClickException(f"Required file missing: {repo_root / filename}.")
+    vox = repo_root / "vendor" / "vox"
+    if not (vox / "pyproject.toml").is_file():
+        raise click.ClickException(
+            f"vendor/vox is not checked out at {vox}; the image builds it."
+            " `git submodule update --init vendor/vox` fetches it.")
 
     with tempfile.TemporaryDirectory(prefix="qmcp-flow-build-") as temp_dir:
         temp_root = Path(temp_dir)
@@ -864,6 +869,12 @@ def _build_flow_runner_image(repo_root: Path, image_tag: str) -> None:
             repo_root / "qmcp",
             temp_root / "qmcp",
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        )
+        # vox is a path dependency, built from vendor/vox by the image's sync.
+        shutil.copytree(
+            vox,
+            temp_root / "vendor" / "vox",
+            ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo"),
         )
 
         _run_cmd(
