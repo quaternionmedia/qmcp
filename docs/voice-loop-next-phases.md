@@ -70,8 +70,8 @@ describe where voice orchestration runs.
   documented ports against the current configuration.
 - Explain the three separate meanings of “vocabulary”: qmcp conversation
   commands, project terms supplied as optional transcription hints, and joe
-  commands that edit a take. Do not imply that users can teach persistent
-  commands by speaking.
+  commands that edit a take. A person can add phrases of their own to some
+  conversation commands (Phase 4, built); nothing else is taught by speaking.
 - Keep machine-specific measurements dated and in their historical handoff.
   Put reusable setup instructions in the maintained onboarding/reference
   pages; avoid copying volatile PR state into them.
@@ -141,7 +141,14 @@ success-shaped result or silently discard working-tree changes.
 
 ## New capabilities, after cleanup
 
-### Phase 4 — Design persistent vocabulary authoring
+### Phase 4 — Design persistent vocabulary authoring (built, #81)
+
+Built in #81: phrases a person adds go to a per-user overlay,
+`~/.qmcp/voice-vocabulary.json`, outside any checkout; every change is
+journalled and the last can be undone; a phrase that already means something
+is refused; consent answers are not editable; and the package's own phrases
+cannot be removed. `tests/test_vocabulary_authoring.py` holds each of these.
+The plan below is kept as the plan it was built to.
 
 **Goal:** let a person propose a new phrase without conflating transcript
 correction, transcription hints, and executable operations.
