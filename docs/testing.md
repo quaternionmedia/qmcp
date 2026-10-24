@@ -78,6 +78,17 @@ real socket this way: the client library against a server, the alfred tools
 logging in from `QMCP_ALFRED_*`, and a server over a database the migration
 chain built. They run in the default suite.
 
+## A server in its own process
+
+`qmcp.testing.process.server_process(database, run_dir, session)` starts
+`qmcp serve --port 0` as the command a person types, finds it through the
+run-file it leaves (`qmcp/instance.py`), checks that `/health` on that port
+states the same identity, and stops it with Ctrl-Break (SIGINT elsewhere), so
+it shuts down cleanly. `tests/test_integration_server_process.py` uses it to
+show that the human queue and an instruction's history survive a restart, and
+that `qmcp_mcp.py`, run on stdio as an assistant runs it, reads a server in
+another process.
+
 ## On the local model
 
 `tests/test_local_model.py` runs on the model `uv run qmcp localmodel check`
@@ -97,8 +108,9 @@ from run to run.
 
 - That anything outside the stand-ins behaves as they do. A stand-in held to a
   copied file drifts when the original changes, and nothing here compares them.
-- A server in its own process. Every server the suite starts shares the test's
-  process.
+- `qmcp serve --converse` in a process of its own. Its takes would have to be
+  scripted across a process boundary, which the speech engine's one-transcript
+  stand-in cannot do without timing; it is shown in process instead.
 - An attempt the guard cannot see: from a child that is not Python, a child
   given an environment of its own making, or an extension with its own
   resolver.

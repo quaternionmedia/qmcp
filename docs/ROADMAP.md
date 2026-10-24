@@ -379,7 +379,7 @@ One pull request each, in this order; each is useful before the next exists.
 
 - [ ] An instruction spoken at joe's page appears in `/v1/instructions` with its project, and nothing runs until consent is given
 - [x] A refused or unanswered consent spends nothing, and a walkthrough shows it (`walkthrough/09`)
-- [ ] A second instruction in a project is told what the first one found, by a different runtime, after every process has restarted -- the history is in the record, not in the runtime. Shown with a change of runtime in one process (`tests/test_instructions_act.py`); across a restart, not yet
+- [ ] A second instruction in a project is told what the first one found, by a different runtime, after every process has restarted -- the history is in the record, not in the runtime. Shown across a restart of the server, with a different runtime taking the second (`tests/test_integration_server_process.py`); the process that acts did not restart
 - [x] A cookbook check in the shape of `qmcp cookbook voice` runs the path offline on vox's deterministic engine, and has been seen to go red (`qmcp cookbook instruct`)
 
 ### Constraints going in
