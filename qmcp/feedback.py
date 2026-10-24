@@ -173,8 +173,12 @@ def diagnostics_findings(panel: Path) -> list[Finding]:
 
 
 def gate_findings(harness: Path) -> list[Finding]:
-    """The harness's gates, read as findings."""
-    code, out = _read(["uv", "run", "pytest", "-q", "--no-header"], harness)
+    """The harness's gates, read as findings.
+
+    `--quiet` keeps uv's own lines -- "Installed 1 package" after a sync -- out
+    of the output, where the last of them would stand as the suite's summary.
+    """
+    code, out = _read(["uv", "run", "--quiet", "pytest", "-q", "--no-header"], harness)
     if code == 0:
         return [Finding("gates", "suite", "pass",
                         out.strip().splitlines()[-1] if out.strip() else "")]
