@@ -416,52 +416,6 @@ class TestListServerInvocations:
 
 
 # ---------------------------------------------------------------------------
-# submit_human_response
-# ---------------------------------------------------------------------------
-
-
-class TestSubmitHumanResponse:
-    def test_successful_response(self):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 201
-        mock_resp.json.return_value = {"id": "resp-1", "request_id": "req-1"}
-        mock_resp.raise_for_status = MagicMock()
-
-        with patch("qmcp_mcp.httpx.post", return_value=mock_resp):
-            result = mcp_mod.submit_human_response("req-1", "approve")
-
-        assert result["id"] == "resp-1"
-
-    def test_not_found(self):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 404
-
-        with patch("qmcp_mcp.httpx.post", return_value=mock_resp):
-            result = mcp_mod.submit_human_response("bad-id", "approve")
-
-        assert "error" in result
-
-    def test_expired(self):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 410
-
-        with patch("qmcp_mcp.httpx.post", return_value=mock_resp):
-            result = mcp_mod.submit_human_response("old-req", "approve")
-
-        assert "error" in result
-        assert "expired" in result["error"]
-
-    def test_already_responded(self):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 409
-
-        with patch("qmcp_mcp.httpx.post", return_value=mock_resp):
-            result = mcp_mod.submit_human_response("dup-req", "approve")
-
-        assert "error" in result
-
-
-# ---------------------------------------------------------------------------
 # list_human_requests
 # ---------------------------------------------------------------------------
 
@@ -547,3 +501,22 @@ class TestRunTests:
 
         assert "error" in result
         assert "timed out" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# the human queue is read here, never answered
+# ---------------------------------------------------------------------------
+
+
+def test_the_mcp_server_can_list_the_human_queue_and_has_no_tool_that_answers_it():
+    """An assistant handed a tool that answers could approve its own request,
+    under any name it chose. Mutation: `submit_human_response` registered
+    again -- red."""
+    import asyncio
+
+    names = {tool.name for tool in asyncio.run(mcp_mod.mcp.list_tools())}
+
+    assert "list_human_requests" in names
+    answering = {name for name in names
+                 if "respon" in name or "answer" in name or "approv" in name}
+    assert answering == set()
