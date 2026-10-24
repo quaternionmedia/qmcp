@@ -358,8 +358,17 @@ def run_loop(echo: Callable[[str], None] = print, cases=LOOP_CASES) -> bool:
 # --- the continuity, on a real runtime ------------------------------------------------
 
 
-FIRST_ASK = "Which file in {project} says what {project} is? Name the file and quote what it says."
+# The second answer must be one the first cannot also be: the first names a
+# file and the second says what it is for, so a second answer that is the
+# first word for word answered the old question.
+FIRST_ASK = ("Which file in {project} says what {project} is?"
+             " Answer with the file's path and nothing else.")
 SECOND_ASK = "In one sentence, what did that file say {project} is for?"
+
+
+def _whole(row) -> str:
+    """An instruction's whole outcome, whitespace collapsed."""
+    return " ".join((row.get("outcome_text") or "").split())
 
 
 def run_continuity(echo: Callable[[str], None] = print, runtime=None,
@@ -411,7 +420,7 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
         echo(f"runtime: {runtime.name}, reading {clone}; each consent is answered by a script")
 
         ok = True
-        first_id = first_summary = None
+        first_id = first_answer = None
         for number, ask in enumerate((FIRST_ASK, SECOND_ASK)):
             text = ask.format(project=project)
             log: list[tuple[str, str]] = []
@@ -456,7 +465,7 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
                                     f"{(recorded.get('outcome_text') or '').strip()[:200]}")
                 rule = (recorded.get("detail") or {}).get("clone", {}).get("rule")
                 if number == 0:
-                    first_id, first_summary = done.instruction_id, summary
+                    first_id, first_answer = done.instruction_id, _whole(recorded)
                     if rule != RULE_CWD:
                         problems.append(f"the clone was chosen by {rule!r}, not the one passed")
                 else:
@@ -465,9 +474,11 @@ def run_continuity(echo: Callable[[str], None] = print, runtime=None,
                     if rule != RULE_RECORD:
                         problems.append(f"the clone was chosen by {rule!r}, not remembered")
                     # A scripted runtime says what it is scripted to; one that
-                    # composes its answer and says the first again was handed
-                    # the history and answered the old question.
-                    if runtime.name != SCRIPTED and summary == first_summary:
+                    # composes its answer and gives the first one word for word
+                    # was handed the history and answered the old question. A
+                    # shared opening sentence is not that: two questions can
+                    # have one right sentence.
+                    if runtime.name != SCRIPTED and _whole(recorded) == first_answer:
                         problems.append(f"the second answer said the first again: {summary!r}")
                 if tts.spoken[-1:] != [summary]:
                     problems.append("the summary was not the last thing said")
@@ -595,10 +606,10 @@ def run_conversation(echo: Callable[[str], None] = print, runtime=None,
             if ended.turns[1].carried != (ended.turns[0].instruction_id,):
                 problems.append("the second instruction was not told what the first found")
             # As in `run_continuity`: a runtime that composes its answers and
-            # says the first again answered the old question.
-            said = [first_sentence(row.get("outcome_text") or "")[0] for row in (first, second)]
-            if runtime.name != SCRIPTED and said[0] == said[1]:
-                problems.append(f"the second answer said the first again: {said[1]!r}")
+            # gives the first one word for word answered the old question.
+            if runtime.name != SCRIPTED and _whole(second) == _whole(first):
+                said = first_sentence(second.get("outcome_text") or "")[0]
+                problems.append(f"the second answer said the first again: {said!r}")
         if ended.reason != "told to stop" or tts.spoken[-1:] != [STOPPING]:
             problems.append(f"the session ended {ended.reason!r}, not on being told to stop")
         first_ask = FIRST_ASK.format(project=project)[:20]

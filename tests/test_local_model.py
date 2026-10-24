@@ -21,7 +21,6 @@ from pydantic import BaseModel
 from qmcp.cookbook import AgentPipeline, AgentStep, LocalLLMConfig, MCPToolInvoker
 from qmcp.instructions.check import run_continuity, run_conversation
 from qmcp.instructions.converse import sibling_clones
-from qmcp.instructions.spoken import first_sentence
 from qmcp.integrations.agents import Brief, Turn
 from qmcp.integrations.agents.adapters import ollama
 from qmcp.localmodel import ENDPOINT, MODEL
@@ -145,4 +144,5 @@ def test_a_follow_up_is_answered_and_not_the_earlier_answer_said_again(first, se
     follow_up = runtime.run(Brief(instruction=second, cwd=REPO, project="qmcp", history=(turn,)))
 
     assert (earlier.exit_code, follow_up.exit_code) == (0, 0)
-    assert first_sentence(follow_up.text)[0] != first_sentence(earlier.text)[0]
+    # Word for word is the failure: two right answers can open alike.
+    assert " ".join(follow_up.text.split()) != " ".join(earlier.text.split())

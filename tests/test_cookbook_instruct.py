@@ -545,3 +545,28 @@ def test_the_session_passes_a_runtime_whose_second_answer_is_its_own():
     runtime = _composing("README.md says what qmcp is.", "It says qmcp exposes tools.")
 
     assert check.run_conversation(echo=lines.append, runtime=runtime) is True, lines
+
+
+SHARED = "QMCP is the server that exposes tools and stops for a human when a step needs one."
+
+
+def test_continuity_passes_two_answers_that_open_with_the_same_sentence():
+    """Seen on the local model: asked to quote the file, then what the file says
+    qmcp is for, it opened both answers with the quoted sentence -- right both
+    times. Mutation seen red: the verdict comparing first sentences again --
+    it failed a runtime that answered both questions."""
+    from pathlib import Path
+
+    lines: list[str] = []
+    clone = Path(check.__file__).resolve().parents[2]
+    runtime = _composing(f"{SHARED} README.md says so, in its opening lines.",
+                         f"{SHARED} That is what it is for.")
+
+    assert check.run_continuity(echo=lines.append, runtime=runtime, clone=clone) is True, lines
+
+
+def test_the_session_passes_two_answers_that_open_with_the_same_sentence():
+    lines: list[str] = []
+    runtime = _composing(f"{SHARED} README.md says so.", f"{SHARED} That is what it is for.")
+
+    assert check.run_conversation(echo=lines.append, runtime=runtime) is True, lines
