@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
 
 from qmcp.config import get_settings
 
@@ -31,13 +30,18 @@ def get_engine():
 
 
 async def init_db() -> None:
-    """Initialize the database, creating all tables.
+    """Initialize the database, creating the server's tables.
 
-    Call this on application startup.
+    Call this on application startup. Only the server's tables
+    (`qmcp.db.registry`): `SQLModel.metadata` also holds the cookbook's flow
+    tables once anything in the process has imported the cookbook, and those
+    belong in a flow's own database, not in the server's.
     """
+    from qmcp.db.registry import server_metadata
+
     engine = get_engine()
     async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+        await conn.run_sync(server_metadata().create_all)
 
 
 async def close_db() -> None:
