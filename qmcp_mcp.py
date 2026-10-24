@@ -4,6 +4,10 @@ Exposes tools for running flows, querying the persistence database,
 interacting with the live qmcp server, and running tests — all accessible
 from any MCP client (Claude Desktop, Claude Code, etc.).
 
+It can list the human queue and cannot answer it. An answer to a human
+request is a person's -- by voice, `qmcp human respond`, or a page -- and an
+assistant handed a tool that answers could approve its own request.
+
 Usage (stdio transport):
     uv run python qmcp_mcp.py
 
@@ -446,44 +450,6 @@ def list_server_invocations(
         return [{"error": f"Cannot connect to {server_url}"}]
     except Exception as exc:
         return [{"error": str(exc)}]
-
-
-@mcp.tool()
-def submit_human_response(
-    request_id: str,
-    response: str,
-    responded_by: str | None = None,
-    server_url: str = DEFAULT_SERVER_URL,
-) -> dict[str, Any]:
-    """Submit a human response to a pending HITL request on the qmcp server.
-
-    Args:
-        request_id: The HITL request ID to respond to.
-        response: The response value (must match allowed options if set).
-        responded_by: Optional identifier for who is responding.
-        server_url: Base URL of the qmcp server.
-
-    Returns:
-        The created response record or an error dict.
-    """
-    payload: dict[str, Any] = {"request_id": request_id, "response": response}
-    if responded_by:
-        payload["responded_by"] = responded_by
-
-    try:
-        r = httpx.post(f"{server_url}/v1/human/responses", json=payload, timeout=10.0)
-        if r.status_code == 404:
-            return {"error": f"Request '{request_id}' not found"}
-        if r.status_code == 410:
-            return {"error": f"Request '{request_id}' has expired"}
-        if r.status_code == 409:
-            return {"error": "Request has already been responded to"}
-        r.raise_for_status()
-        return r.json()
-    except httpx.ConnectError:
-        return {"error": f"Cannot connect to {server_url}"}
-    except Exception as exc:
-        return {"error": str(exc)}
 
 
 @mcp.tool()
