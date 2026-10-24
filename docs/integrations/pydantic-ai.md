@@ -62,6 +62,14 @@ async with QMCPToolset("http://localhost:3141") as toolset:
     result = await agent.run("Use the echo tool to say hello")
 ```
 
+The toolset is a PydanticAI `AbstractToolset`: the agent sees the server's
+tools, and each call is made on the server and recorded there under the
+toolset's `correlation_id`. `tests/test_integration_pydantic_ai_toolset.py`
+runs an agent on PydanticAI's `TestModel` through it against a server on
+port 0. A model must call tools through its API's tool field to use it;
+`qwen2.5-coder:7b`, the model `qmcp localmodel` installs, writes the call as
+text instead.
+
 ### Fluent Builder API
 
 ```python

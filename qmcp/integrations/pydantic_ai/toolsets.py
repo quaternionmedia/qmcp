@@ -8,22 +8,28 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 
 from qmcp.client.mcp_client import default_base_url
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
 try:
     from pydantic_ai.tools import ToolDefinition as PAIToolDefinition
+    from pydantic_ai.toolsets import AbstractToolset
+    from pydantic_ai.toolsets.abstract import ToolsetTool
+    from pydantic_core import SchemaValidator, core_schema
 
+    # The arguments go to the server as they came, and the server validates
+    # them against the tool's own schema -- as PydanticAI's ExternalToolset
+    # passes its tools' arguments through.
+    _ARGS = SchemaValidator(schema=core_schema.any_schema())
     PYDANTIC_AI_AVAILABLE = True
+    _Toolset = AbstractToolset
 except ImportError:
     PYDANTIC_AI_AVAILABLE = False
     PAIToolDefinition = None  # type: ignore
+    _Toolset = object  # type: ignore
 
 
 def _check_pydantic_ai() -> None:
@@ -36,7 +42,7 @@ def _check_pydantic_ai() -> None:
 
 
 @dataclass
-class QMCPToolset:
+class QMCPToolset(_Toolset):
     """A PydanticAI toolset that connects to a QMCP MCP server.
 
     This toolset allows PydanticAI agents to use tools exposed by a QMCP server,
@@ -74,8 +80,13 @@ class QMCPToolset:
     tool_prefix: str = ""
     timeout: float = 30.0
     correlation_id: str | None = None
+    toolset_id: str | None = None
+    """The toolset's id among an agent's toolsets (`AbstractToolset.id`)."""
+    max_retries: int = 1
+    """How often the agent may retry a call the server refused."""
     _client: httpx.AsyncClient = field(init=False, repr=False)
     _tools: list[dict[str, Any]] = field(default_factory=list, init=False, repr=False)
+    _entered: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         _check_pydantic_ai()
@@ -85,14 +96,29 @@ class QMCPToolset:
             timeout=self.timeout,
         )
 
+    @property
+    def id(self) -> str | None:
+        return self.toolset_id
+
     async def __aenter__(self) -> QMCPToolset:
-        """Enter async context and fetch tool definitions."""
-        await self._fetch_tools()
+        """Enter async context and fetch tool definitions.
+
+        Entries are counted: an agent enters its toolsets for every run, inside
+        the caller's own `async with`, and the client is closed only when the
+        outermost one exits.
+        """
+        if self._entered == 0:
+            if self._client.is_closed:
+                self._client = httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
+            await self._fetch_tools()
+        self._entered += 1
         return self
 
     async def __aexit__(self, *args: Any) -> None:
-        """Exit async context and close HTTP client."""
-        await self._client.aclose()
+        """Exit async context, closing the HTTP client on the outermost exit."""
+        self._entered -= 1
+        if self._entered == 0:
+            await self._client.aclose()
 
     async def _fetch_tools(self) -> None:
         """Fetch tool definitions from the QMCP server."""
@@ -105,27 +131,25 @@ class QMCPToolset:
     # PydanticAI AbstractToolset interface
     # -------------------------------------------------------------------------
 
-    async def get_tools(self) -> Sequence[PAIToolDefinition]:
-        """Return tool definitions for PydanticAI.
+    async def get_tools(self, ctx: Any = None) -> dict[str, ToolsetTool]:
+        """The server's tools, by the name the agent calls them.
 
         This method is called by PydanticAI to discover available tools.
         """
         if not self._tools:
             await self._fetch_tools()
 
-        definitions = []
+        found = {}
         for tool in self._tools:
             name = f"{self.tool_prefix}{tool['name']}" if self.tool_prefix else tool["name"]
-
-            # Convert QMCP schema to PydanticAI format
             definition = PAIToolDefinition(
                 name=name,
                 description=tool.get("description", ""),
-                parameters_json_schema=tool.get("input_schema", {}),
+                parameters_json_schema=tool.get("input_schema") or {"type": "object"},
             )
-            definitions.append(definition)
-
-        return definitions
+            found[name] = ToolsetTool(toolset=self, tool_def=definition,
+                                      max_retries=self.max_retries, args_validator=_ARGS)
+        return found
 
     async def call_tool(
         self,
