@@ -44,11 +44,26 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      # The sweep states are copied across the seam between qmcp and dossier,
+      # and tests/test_sweep.py checks the copies agree. It looks for dossier
+      # in the directories above it -- the repository root included -- and
+      # skips where there is none, which a run that may not skip cannot afford.
+      # dossier is public.
+      - uses: actions/checkout@v4
+        with:
+          repository: quaternionmedia/dossier
+          path: dossier
+
       - uses: astral-sh/setup-uv@v5
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # Every extra, from the lock. Without them the tests that need metaflow,
+      # mcp, openai or pydantic-ai skip, and a skip voids the claim.
+      - name: Install through the lock, with every extra
+        run: uv sync --all-extras --frozen
 
       - name: Validation passes, and says so without a skip
         run: |
