@@ -191,9 +191,7 @@ if __name__ == "__main__":
 
 ### Install Dependencies
 
-```bash
-uv add sqlmodel aiosqlite
-```
+`sqlmodel` and `aiosqlite` are qmcp's own dependencies; `uv sync` installs them.
 
 ### Run Tests
 
@@ -216,7 +214,7 @@ agent = AgentType(
 )
 
 # Option 2: Full model configuration (for production)
-from qmcp.agentframework import ModelConfig, ModelProvider, ModelFamily, ModelTier
+from qmcp.agentframework.models import ModelConfig, ModelProvider, ModelFamily, ModelTier
 
 model = ModelConfig(
     model_id="claude-sonnet-4-20250514",

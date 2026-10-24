@@ -32,12 +32,13 @@ as zero is making a claim the harness declined to make.
 The dashboard reads the database directly and read-only, not the HTTP API, so
 it answers when the server is down. The topologies it lists come from the
 module, not from `/v1/topology`, for the same reason; they are what this build
-can serve, and `uv run qm dashboard` is the view that knows whether anything is
-listening.
+can serve, and `qm dashboard` -- the governance corpus's command, run from its
+submodule as `uv run --project governance/qm qm dashboard` -- is the view that
+knows whether anything is listening.
 
 **Every row is addressed.** An invocation is a bare UUID inside the database;
 as `<owner>/<repo>/invocation/<id>` it is a row dossier can point at, a delta
-can link to and `qm divergence` can compare. Each question in the human queue
+can link to and the corpus's `qm divergence` can compare. Each question in the human queue
 crosses the same way, as `<owner>/<repo>/ask/<id>` with its prompt, its
 options and its answer if it has one. Answered questions are kept: what was
 asked and what was said are the audit trail.

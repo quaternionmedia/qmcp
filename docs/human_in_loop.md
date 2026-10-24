@@ -91,9 +91,7 @@ GET /v1/human/requests?status=pending&request_type=approval&limit=50
       "expires_at": "2026-01-18T23:00:00Z"
     }
   ],
-  "total": 1,
-  "limit": 50,
-  "offset": 0
+  "count": 1
 }
 ```
 

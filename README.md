@@ -185,7 +185,7 @@ with MCPClient(base_url="http://localhost:3141") as client:
         prompt="Approve deployment?",
         options=["approve", "reject"]
     )
-    response = client.wait_for_response("approval-001", timeout=3600)
+    response = client.wait_for_human_response("approval-001", timeout=3600)
 ```
 
 See [docs/client.md](docs/client.md) for full API documentation.
