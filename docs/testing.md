@@ -91,7 +91,16 @@ uv run pytest -m local_model
 
 On a machine without the model they fail and say what is missing; they do not
 skip. The runtime asks at temperature 0, so on one model the answers repeat
-from run to run.
+from run to run -- given the same prompt.
+
+The continuity and spoken-session tests are given a prompt that is not the
+same from minute to minute: each earlier instruction carries the time it was
+recorded. At some minutes `qwen2.5-coder:7b` answers the follow-up ("what did
+that file say qmcp is for?") with its earlier answer word for word ("... is
+README.md"), and the test fails. That is the model repeating itself, and the
+test is right to fail on it. Marking the history as answered and as context
+cut such repeats from 2 of 24 to 0 of 24 on the follow-up pairs, which fix the
+time; it did not make them impossible.
 
 ## What a green run does not show
 
