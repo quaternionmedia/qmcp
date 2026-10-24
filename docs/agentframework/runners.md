@@ -81,7 +81,7 @@ class MyRunner(BaseRunner):
 ## Not built
 
 Generating a flow from a topology, a `metaflow_helpers` module for flow steps,
-and a `qmcp agents` command group are planned and do not exist. The flows in
+and an `agents` command group for qmcp are planned and do not exist. The flows in
 `examples/flows/` are written by hand. The commands that exist for agents and
 topologies are `qmcp council` and `qmcp topology`; `uv run qmcp --help` lists
 them.
