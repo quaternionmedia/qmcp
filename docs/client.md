@@ -41,16 +41,15 @@ The main client class for MCP server interaction.
 
 ```python
 MCPClient(
-    base_url: str = "http://localhost:3141",
+    base_url: str | None = None,
     timeout: float = 30.0,
-    http_client: Optional[httpx.Client] = None
 )
 ```
 
 **Parameters:**
-- `base_url` – MCP server URL (default: `http://localhost:3141`)
+- `base_url` – MCP server URL (default: this machine's configured host and
+  port, `QMCP_HOST` and `QMCP_PORT` -- `http://127.0.0.1:3141` unless set)
 - `timeout` – Request timeout in seconds (default: `30.0`)
-- `http_client` – Optional custom httpx client for testing
 
 ### Health Check
 
@@ -104,7 +103,8 @@ Invokes a tool and returns the result.
 
 **Raises:**
 - `ToolNotFoundError` – Tool doesn't exist
-- `ToolInvocationError` – Tool execution failed
+
+A tool that runs and fails is not raised: its message is in `ToolResult.error`.
 
 **Example:**
 ```python
@@ -204,8 +204,9 @@ def submit_human_response(
 Submits a human response to a request.
 
 **Raises:**
-- `HumanRequestNotFoundError` – Request doesn't exist
+- `MCPClientError` – Request doesn't exist
 - `HumanRequestExpiredError` – Request has expired
+- `httpx.HTTPStatusError` – The response is not one of the request's options (400)
 
 **Example:**
 ```python
@@ -220,20 +221,22 @@ response = client.submit_human_response(
 #### Wait for Response (Blocking)
 
 ```python
-def wait_for_response(
+def wait_for_human_response(
     self,
     request_id: str,
-    timeout: float = 3600,
-    poll_interval: float = 2.0
+    poll_interval: float = 5.0,
+    timeout: float | None = None,
 ) -> HumanResponse
 ```
 
-Blocks until a response is received or timeout.
+Blocks until a response is received or timeout. It polls
+`GET /v1/human/requests/{id}`, and that read marks a request past its expiry
+as expired -- it writes (AGENTS.md, *One read in this API is a write*).
 
 **Parameters:**
 - `request_id` – Request to wait for
-- `timeout` – Max wait time in seconds
-- `poll_interval` – Time between polls
+- `poll_interval` – Seconds between polls
+- `timeout` – Max wait in seconds (default: wait until answered or expired)
 
 **Raises:**
 - `TimeoutError` – No response within timeout
@@ -249,7 +252,7 @@ request = client.create_human_request(
 )
 
 try:
-    response = client.wait_for_response(
+    response = client.wait_for_human_response(
         "review-pr-42",
         timeout=600,  # 10 minutes
         poll_interval=5.0
@@ -356,12 +359,10 @@ class HumanResponse:
 
 ```python
 from qmcp.client import (
-    MCPClientError,           # Base exception
-    ToolNotFoundError,        # Tool doesn't exist
-    ToolInvocationError,      # Tool execution failed
-    HumanRequestNotFoundError, # Request doesn't exist
-    HumanRequestExpiredError, # Request has expired
-    HumanRequestConflictError # Request ID already exists
+    MCPClientError,             # Base exception; also a request that doesn't exist
+    ToolNotFoundError,          # Tool doesn't exist
+    HumanRequestExpiredError,   # Request has expired
+    HumanRequestConflictError,  # Request ID already exists
 )
 ```
 

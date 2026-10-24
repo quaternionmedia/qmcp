@@ -8,15 +8,16 @@ It can list the human queue and cannot answer it. An answer to a human
 request is a person's -- by voice, `qmcp human respond`, or a page -- and an
 assistant handed a tool that answers could approve its own request.
 
-Usage (stdio transport):
-    uv run python qmcp_mcp.py
+Usage (stdio transport; `mcp` is the `mcp` extra):
+    uv run --extra mcp python qmcp_mcp.py
 
 Claude Code / Claude Desktop config:
     {
       "mcpServers": {
         "qmcp-repo": {
           "command": "uv",
-          "args": ["run", "--project", "<path to your qmcp clone>", "python", "qmcp_mcp.py"],
+          "args": ["run", "--project", "<path to your qmcp clone>", "--extra", "mcp",
+                   "python", "qmcp_mcp.py"],
           "cwd": "<path to your qmcp clone>"
         }
       }

@@ -42,47 +42,45 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install uv
-RUN pip install uv
+RUN pip install --no-cache-dir uv
 
-# Copy project files
-COPY pyproject.toml .
-COPY qmcp/ qmcp/
+# The lock, the readme the package metadata names, and vox, a path dependency
+COPY pyproject.toml uv.lock README.md ./
+COPY vendor/vox ./vendor/vox
+COPY qmcp ./qmcp
 
-# Install dependencies
-RUN uv sync --no-dev
+RUN uv sync --frozen --no-dev
 
-# Expose port
-EXPOSE 3333
+EXPOSE 3141
 
-# Run server
-CMD ["uv", "run", "qmcp", "serve", "--host", "0.0.0.0"]
+# Off loopback inside the container, so the published port reaches it. The
+# server asks nobody who they are: publish the port only where that is safe.
+CMD ["uv", "run", "--no-sync", "qmcp", "serve", "--host", "0.0.0.0", "--port", "3141"]
 ```
 
-Build and run:
+Build and run, with the database on a volume and the port published to this
+machine only:
 
 ```bash
 docker build -t qmcp .
-docker run -p 3333:3333 qmcp
+docker run -p 127.0.0.1:3141:3141 -v qmcp-data:/app/data   -e QMCP_DATABASE_URL=sqlite+aiosqlite:////app/data/qmcp.db qmcp
 ```
 
 ### Docker Compose
 
 ```yaml
-version: '3.8'
 services:
   qmcp:
     build: .
     ports:
-      - "3333:3333"
+      - "127.0.0.1:3141:3141"
     environment:
-      - QMCP_HOST=0.0.0.0
-      - QMCP_PORT=3333
-      - QMCP_DEBUG=false
+      - QMCP_DATABASE_URL=sqlite+aiosqlite:////app/data/qmcp.db
     volumes:
       - qmcp-data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3141/health"]
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3141/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -90,6 +88,9 @@ services:
 volumes:
   qmcp-data:
 ```
+
+The database is the human queue: on the volume it outlives the container, and
+`qmcp db backup` copies it with the server running.
 
 ## Observability
 
@@ -162,7 +163,7 @@ curl http://localhost:3141/metrics
 scrape_configs:
   - job_name: 'qmcp'
     static_configs:
-      - targets: ['qmcp:3333']
+      - targets: ['qmcp:3141']
     metrics_path: '/metrics'
 ```
 
@@ -250,7 +251,9 @@ sqlite3.OperationalError: database is locked
 OSError: [Errno 98] Address already in use
 ```
 - Change port with `--port` flag
-- Kill existing process: `lsof -i :3333`
+- See what holds it: `lsof -i :3141` (Linux, macOS) or
+  `Get-NetTCPConnection -LocalPort 3141` (Windows), and move yourself rather
+  than stop a server you did not start
 
 ### Debug Mode
 

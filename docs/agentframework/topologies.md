@@ -301,8 +301,8 @@ the arbiter takes the final decision when consensus fails, and
 false the council is advisory: the arbiter synthesizes, a split is reported as
 a split, and the plane declares it separately in `OPTIONS` -- a proposal for
 an ordinary question, still refused an attested act, because a consensus is a
-conclusion a machine reached. `uv run qmcp council create --no-arbiter-override`
-creates one, and a saved design's `capability` block says which it is read as.
+conclusion a machine reached. `uv run qmcp council create --name <name>
+--no-arbiter-override` creates one, and a saved design's `capability` block says which it is read as.
 
 The saved-design voice runner runs only the advisory council, in the order its
 `speaking_order` gives the selected components, and reports a synthesis without
