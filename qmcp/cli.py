@@ -69,6 +69,24 @@ def _run_cmd(cmd: list[str], cwd: Path) -> None:
         ) from exc
 
 
+def _docker_reaches_host_loopback() -> bool:
+    """Whether a container reaches a server bound to this machine's loopback.
+
+    Docker Desktop relays `host.docker.internal` through the host's loopback,
+    so a server on 127.0.0.1 is enough and nothing need be exposed. A Linux
+    engine routes it to the bridge's gateway, where a loopback-bound server
+    does not answer. Anything that does not say Docker Desktop is the second.
+    """
+    try:
+        found = subprocess.run(
+            ["docker", "info", "--format", "{{.OperatingSystem}}"],
+            check=True, capture_output=True, text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+    return "Docker Desktop" in found.stdout
+
+
 def _ensure_docker_available() -> None:
     try:
         subprocess.run(
@@ -685,8 +703,9 @@ def cookbook_docker() -> None:
     "-h",
     default="127.0.0.1",
     show_default=True,
-    help="Host to bind to. A flow container on Linux reaches the host only off"
-         " loopback (--host 0.0.0.0), and then so can anyone on the network.",
+    help="Host to bind to. A container on Docker Desktop reaches it on loopback;"
+         " on a Linux engine only off it (--host 0.0.0.0), and then so can anyone"
+         " on the network.",
 )
 @click.option("--port", "-p", default=None, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
@@ -1089,8 +1108,9 @@ def run_cookbook_recipe(
     "--server-host",
     default="127.0.0.1",
     show_default=True,
-    help="Host to bind the MCP server. A flow container on Linux reaches it only"
-         " off loopback (--server-host 0.0.0.0), and then so can anyone on the network.",
+    help="Host to bind the MCP server. A container on Docker Desktop reaches it on"
+         " loopback; on a Linux engine only off it (--server-host 0.0.0.0), and then so"
+         " can anyone on the network.",
 )
 @click.option(
     "--server-port",
@@ -1138,11 +1158,13 @@ def cookbook_dev(
     settings = get_settings()
     server_port = server_port or settings.port
 
-    if start_server and server_host in {"127.0.0.1", "localhost"}:
+    if (start_server and server_host in {"127.0.0.1", "localhost"}
+            and not _docker_reaches_host_loopback()):
         raise click.ClickException(
-            "Docker flows cannot reach a server bound to localhost. Pass --server-host"
-            " 0.0.0.0, and anyone who can reach this machine can then call the server's"
-            " tools and answer its human requests while the flow runs."
+            "A container on this Docker engine cannot reach a server bound to localhost"
+            " (Docker Desktop can; a Linux engine cannot). Pass --server-host 0.0.0.0,"
+            " and anyone who can reach this machine can then call the server's tools"
+            " and answer its human requests while the flow runs."
         )
 
     health_url = _server_health_url(server_host, server_port)

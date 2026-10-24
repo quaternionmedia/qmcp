@@ -162,10 +162,11 @@ def test_serving_on_loopback_warns_of_nothing(monkeypatch) -> None:
 
 
 def test_a_flow_that_starts_a_server_asks_before_exposing_it(monkeypatch) -> None:
-    """A container on Linux reaches the host only off loopback, so the server
-    a flow starts must be bound there -- and only when asked. Mutation:
+    """A container on a Linux engine reaches the host only off loopback, so the
+    server a flow starts must be bound there -- and only when asked. Mutation:
     `--server-host` defaulting to 0.0.0.0 again -- the command went on to start
     an exposed server, and the refusal never came."""
+    monkeypatch.setattr(cli, "_docker_reaches_host_loopback", lambda: False)
     monkeypatch.setattr(cli, "_find_repo_root", lambda: Path(__file__).resolve().parents[1])
     monkeypatch.setattr(cli, "_start_server_process",
                         lambda **kwargs: pytest.fail("a server was started"))
@@ -277,3 +278,47 @@ def test_the_flow_image_is_refused_without_vox_checked_out(monkeypatch, tmp_path
 
     with pytest.raises(cli.click.ClickException, match="git submodule update --init vendor/vox"):
         cli._build_flow_runner_image(tmp_path, "qmcp-flow-runner:test")
+
+
+# Docker Desktop relays `host.docker.internal` through the host's loopback:
+# seen here, a container on Docker Desktop 29.9.1 read /health from a server
+# bound to 127.0.0.1. A Linux engine does not.
+
+
+def test_on_docker_desktop_a_flows_server_stays_on_loopback(monkeypatch) -> None:
+    """Mutation seen red: the Desktop check removed from the refusal -- the
+    command refused a loopback server Docker Desktop reaches."""
+    started: dict[str, object] = {}
+    monkeypatch.setattr(cli, "_docker_reaches_host_loopback", lambda: True)
+    monkeypatch.setattr(cli, "_find_repo_root", lambda: Path(__file__).resolve().parents[1])
+    monkeypatch.setattr(cli, "_is_server_healthy", lambda url: False)
+    monkeypatch.setattr(cli, "_start_server_process",
+                        lambda **kwargs: started.update(kwargs) or object())
+    monkeypatch.setattr(cli, "_wait_for_server", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cli, "_run_flow_docker", lambda **kwargs: None)
+
+    result = CliRunner().invoke(cli.cli, [
+        "cookbook", "dev", "simple-plan", "--goal", "Ship a service",
+        "--no-build", "--no-sync", "--keep-server"])
+
+    assert result.exit_code == 0, result.output
+    assert started["host"] == "127.0.0.1"
+    assert "Listening on" not in result.output
+
+
+@pytest.mark.parametrize(("answer", "reaches"), [
+    ("Docker Desktop", True),
+    ("Ubuntu 24.04.1 LTS", False),
+    (None, False),
+])
+def test_whether_docker_reaches_loopback_is_read_from_docker(monkeypatch, answer, reaches):
+    import subprocess
+
+    def fake_run(cmd, **kwargs):
+        if answer is None:
+            raise FileNotFoundError("docker")
+        return subprocess.CompletedProcess(cmd, 0, stdout=answer + "\n")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli._docker_reaches_host_loopback() is reaches
