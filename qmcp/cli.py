@@ -683,14 +683,15 @@ def cookbook_docker() -> None:
 @click.option(
     "--host",
     "-h",
-    default="0.0.0.0",
+    default="127.0.0.1",
     show_default=True,
-    help="Host to bind to for Docker-based flows.",
+    help="Host to bind to. A flow container on Linux reaches the host only off"
+         " loopback (--host 0.0.0.0), and then so can anyone on the network.",
 )
 @click.option("--port", "-p", default=None, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload for development")
 def cookbook_serve(host: str, port: int | None, reload: bool) -> None:
-    """Start the MCP server with Docker-friendly defaults."""
+    """Start the MCP server for Docker-based flows."""
     _run_server(host, port, reload)
 
 
@@ -795,11 +796,28 @@ def _qmcp_already_serving(host: str, port: int) -> str | None:
     return None
 
 
+def _warn_if_exposed(host: str) -> None:
+    """Say so when a server is about to listen beyond this machine.
+
+    The server asks nobody who they are: off loopback, anyone who can reach
+    this machine can call its tools and answer its human requests.
+    """
+    from qmcp.server import is_loopback
+
+    if not is_loopback(host):
+        click.echo(click.style(
+            f"Listening on {host}: anyone who can reach this machine can call this"
+            " server's tools and answer its human requests -- it asks nobody who they"
+            " are. Bind 127.0.0.1 unless something off this machine must reach it.",
+            fg="red"), err=True)
+
+
 def _run_server(host: str | None, port: int | None, reload: bool) -> None:
     settings = get_settings()
 
     actual_host = host or settings.host
     actual_port = port or settings.port
+    _warn_if_exposed(actual_host)
 
     serving = _qmcp_already_serving(actual_host, actual_port)
     if serving is not None:
@@ -1058,9 +1076,10 @@ def run_cookbook_recipe(
 )
 @click.option(
     "--server-host",
-    default="0.0.0.0",
+    default="127.0.0.1",
     show_default=True,
-    help="Host to bind the MCP server for Docker access.",
+    help="Host to bind the MCP server. A flow container on Linux reaches it only"
+         " off loopback (--server-host 0.0.0.0), and then so can anyone on the network.",
 )
 @click.option(
     "--server-port",
@@ -1110,7 +1129,9 @@ def cookbook_dev(
 
     if start_server and server_host in {"127.0.0.1", "localhost"}:
         raise click.ClickException(
-            "Docker flows cannot reach a server bound to localhost. Use --server-host 0.0.0.0."
+            "Docker flows cannot reach a server bound to localhost. Pass --server-host"
+            " 0.0.0.0, and anyone who can reach this machine can then call the server's"
+            " tools and answer its human requests while the flow runs."
         )
 
     health_url = _server_health_url(server_host, server_port)
@@ -1124,6 +1145,7 @@ def cookbook_dev(
             if _is_server_healthy(health_url):
                 click.echo(click.style("MCP server already running.", fg="yellow"))
             else:
+                _warn_if_exposed(server_host)
                 server_process = _start_server_process(
                     repo_root=repo_root,
                     host=server_host,

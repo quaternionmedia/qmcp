@@ -224,6 +224,9 @@ uv run qmcp human respond <request id> approve      # or reject
 
 It is also the `alfred-render` recipe: `uv run qmcp cookbook run alfred-render
 --project-id <id>`, or `run_recipe_local` from the MCP server in `qmcp_mcp.py`.
+The recipe runs in a container, which reaches a server on this machine only
+when it is started off loopback -- `uv run qmcp cookbook serve --host 0.0.0.0`
+-- and the server is then open to anyone on the network while it runs.
 `run --help` lists the parameters and their defaults. Its steps are in
 `qmcp.cookbook.alfred_render`. Every call to alfred goes through the tools
 above, under the correlation id `alfred-render-<run id>`.

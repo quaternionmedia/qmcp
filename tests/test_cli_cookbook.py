@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 import qmcp.cli as cli
@@ -124,7 +125,57 @@ def test_cookbook_serve_defaults(monkeypatch) -> None:
     result = runner.invoke(cli.cli, ["cookbook", "serve"])
 
     assert result.exit_code == 0
-    assert called == {"host": "0.0.0.0", "port": None, "reload": False}
+    assert called == {"host": "127.0.0.1", "port": None, "reload": False}
+
+
+# The server asks nobody who they are, so off loopback anyone who can reach the
+# machine can call its tools and answer its human requests. Mutations seen red:
+# `cookbook serve`'s default back on 0.0.0.0 -- the defaults test above; the
+# warning's `is_loopback` test inverted -- both tests below.
+
+
+def _serving(monkeypatch) -> dict[str, object]:
+    bound: dict[str, object] = {}
+    monkeypatch.setattr(cli, "_qmcp_already_serving", lambda host, port: None)
+    monkeypatch.setattr(cli.uvicorn, "run", lambda app, **kwargs: bound.update(kwargs))
+    return bound
+
+
+def test_serving_off_loopback_says_what_is_exposed(monkeypatch) -> None:
+    bound = _serving(monkeypatch)
+
+    result = CliRunner().invoke(cli.cli, ["cookbook", "serve", "--host", "0.0.0.0"])
+
+    assert result.exit_code == 0, result.output
+    assert bound["host"] == "0.0.0.0"
+    assert "Listening on 0.0.0.0: anyone who can reach this machine" in result.stderr
+
+
+def test_serving_on_loopback_warns_of_nothing(monkeypatch) -> None:
+    bound = _serving(monkeypatch)
+
+    result = CliRunner().invoke(cli.cli, ["cookbook", "serve"])
+
+    assert result.exit_code == 0, result.output
+    assert bound["host"] == "127.0.0.1"
+    assert result.stderr == ""
+
+
+def test_a_flow_that_starts_a_server_asks_before_exposing_it(monkeypatch) -> None:
+    """A container on Linux reaches the host only off loopback, so the server
+    a flow starts must be bound there -- and only when asked. Mutation:
+    `--server-host` defaulting to 0.0.0.0 again -- the command went on to start
+    an exposed server, and the refusal never came."""
+    monkeypatch.setattr(cli, "_find_repo_root", lambda: Path(__file__).resolve().parents[1])
+    monkeypatch.setattr(cli, "_start_server_process",
+                        lambda **kwargs: pytest.fail("a server was started"))
+
+    result = CliRunner().invoke(cli.cli, [
+        "cookbook", "dev", "simple-plan", "--goal", "Ship a service",
+        "--no-build", "--no-sync"])
+
+    assert result.exit_code != 0
+    assert "Pass --server-host 0.0.0.0, and anyone who can reach this machine" in result.output
 
 
 def test_build_flow_shell_command_sync_modes() -> None:
