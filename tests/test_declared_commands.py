@@ -6,7 +6,10 @@ P17 asks that the black box be reached through a loop somebody can issue by
 name, and a docstring naming a missing command describes that loop without it
 being there.
 
-It scans `qmcp/`, `docs/`, the README and the quickstart. `tests/` is
+It scans `qmcp/`, `docs/`, the README and the quickstart, for `uv run qmcp
+...` anywhere and, in a page, for a command given bare in code -- a fenced
+line or an inline span that starts `qmcp ...`. A page's Python blocks are
+read too: every `from qmcp... import ...` they show must import. `tests/` is
 excluded: this file names commands that do not resolve, and a scan that read
 it would match its own exemption list (`governance/qm` item 10, "a text scan
 matching the docstring that forbade it"). A claim made in a test is therefore
@@ -95,12 +98,30 @@ def _pages() -> list[Path]:
     return found
 
 
+# A page also gives a command bare -- `qmcp cookbook dev simple-plan`, the
+# `uv run` left to the reader -- in a fenced block or an inline span. Prose
+# names the package qmcp too, so only code is read: a fenced line that starts
+# with the command, or an inline span that does.
+FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.M | re.S)
+BARE_LINE = re.compile(r"^[ \t]*qmcp ((?:[a-z][a-z-]*)(?:[ \t]+[a-z][a-z-]*)?)", re.M)
+BARE_SPAN = re.compile(r"`qmcp ((?:[a-z][a-z-]*)(?:[ \t]+[a-z][a-z-]*)?)")
+
+
+def _bare(text: str):
+    for block in FENCE.findall(text):
+        yield from BARE_LINE.finditer(block)
+    yield from BARE_SPAN.finditer(text)
+
+
 def declared() -> list[tuple[Path, str]]:
     """Every command this repository names, with the file that named it."""
     found = []
     for path in _pages():
         text = path.read_text(encoding="utf-8", errors="replace")
-        for match in CLAIM.finditer(text):
+        matches = list(CLAIM.finditer(text))
+        if path.suffix == ".md":
+            matches += list(_bare(text))
+        for match in matches:
             parts = [p for p in match.group(1).split() if STOP.match(p)]
             if parts:
                 found.append((path, " ".join(parts)))
@@ -173,3 +194,66 @@ def test_the_governed_seam_is_reachable_by_name() -> None:
     """P17's loop is a command somebody types, or it is a description of one."""
     assert resolves("topology show") is None
     assert resolves("topology gallery") is None
+
+
+# --- the imports a page shows ----------------------------------------------------
+#
+# A page that shows `from qmcp.x import y` is read as "this works". Every such
+# line in a Python block of a page a reader reaches is imported here, and every
+# name it lists must be there. Design records under docs/adrs/ hold code that
+# was planned rather than built, and are not read.
+
+PYTHON_FENCE = re.compile(r"^```python\n(.*?)^```", re.M | re.S)
+
+
+def _import_statements(block: str):
+    """Each `from qmcp... import ...` statement in a block, joined across lines."""
+    lines = iter(block.splitlines())
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith(("from qmcp", "import qmcp")):
+            continue
+        statement = stripped.split("#")[0]
+        while "(" in statement and ")" not in statement:
+            statement += " " + next(lines, ")").split("#")[0].strip()
+        yield statement
+
+
+def shown_imports() -> list[tuple[Path, str]]:
+    found = []
+    for path in _pages():
+        if path.suffix != ".md" or "adrs" in path.parts:
+            continue
+        for block in PYTHON_FENCE.findall(path.read_text(encoding="utf-8", errors="replace")):
+            found.extend((path, statement) for statement in _import_statements(block))
+    return found
+
+
+def test_the_import_scan_finds_something() -> None:
+    assert len(shown_imports()) > 5
+
+
+def test_every_import_a_page_shows_imports() -> None:
+    """Mutation seen red: overview.md's model types imported from
+    `qmcp.agentframework` again, as the page had them until the reference
+    pages were checked against the code -- the four names were reported
+    missing."""
+    import ast
+    import importlib
+
+    broken = []
+    for path, statement in shown_imports():
+        where = path.relative_to(ROOT).as_posix()
+        node = ast.parse(statement).body[0]
+        try:
+            if isinstance(node, ast.ImportFrom):
+                module = importlib.import_module(node.module)
+                missing = [a.name for a in node.names if not hasattr(module, a.name)]
+                if missing:
+                    broken.append(f"{where}: {statement} -- no {', '.join(missing)}")
+            else:
+                for alias in node.names:
+                    importlib.import_module(alias.name)
+        except ImportError as exc:
+            broken.append(f"{where}: {statement} -- {exc}")
+    assert not broken, "\n".join(broken)
