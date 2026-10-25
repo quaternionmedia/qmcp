@@ -113,6 +113,15 @@ test is right to fail on it. Marking the history as answered and as context
 cut such repeats from 2 of 24 to 0 of 24 on the follow-up pairs, which fix the
 time; it did not make them impossible.
 
+One test restarts every qmcp process between two instructions. Each is
+recorded on a `server_process` of its own and carried out by a process of its
+own, its consent answered over HTTP from the test. The first outcome names a
+commit; the second instruction, on the local model and given no clone, asks
+for it, and the clone does not hold it. With the runtime handed no history,
+and the record still saying the first was carried, it goes red: the model
+answers that it found nothing. The model service is the one process it does
+not restart; its chat endpoint keeps no conversation between requests.
+
 ## What a green run does not show
 
 - That anything outside the stand-ins behaves as they do. A stand-in held to a
