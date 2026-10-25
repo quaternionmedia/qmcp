@@ -12,12 +12,17 @@ missing rather than skip -- a skip is not a pass.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import httpx
 import pytest
 from pydantic import BaseModel
 
+from qmcp.client import MCPClient
 from qmcp.cookbook import AgentPipeline, AgentStep, LocalLLMConfig, MCPToolInvoker
 from qmcp.instructions.check import run_continuity, run_conversation
 from qmcp.instructions.converse import sibling_clones
@@ -25,6 +30,7 @@ from qmcp.integrations.agents import Brief, Turn
 from qmcp.integrations.agents.adapters import ollama
 from qmcp.localmodel import ENDPOINT, MODEL
 from qmcp.testing import throwaway_server
+from qmcp.testing.process import server_process
 
 pytestmark = pytest.mark.local_model
 
@@ -146,6 +152,104 @@ def test_a_follow_up_is_answered_and_not_the_earlier_answer_said_again(first, se
     assert (earlier.exit_code, follow_up.exit_code) == (0, 0)
     # Word for word is the failure: two right answers can open alike.
     assert " ".join(follow_up.text.split()) != " ".join(earlier.text.split())
+
+
+# --- every process restarted between two instructions ------------------------------
+
+
+# What the first instruction finds: a commit nothing in the clone names, so a
+# second answer that names it was told it by qmcp's record. `--runtime
+# scripted` answers only "done, as scripted", which a model paraphrased from
+# the instruction alone ("reported that the project builds successfully"), so
+# the first act is `act` itself, in a process of its own, with a scripted
+# runtime that says this.
+FOUND = "The build passed at commit 2c10fd1."
+
+ACT_SCRIPTED = """
+import sys
+from qmcp.client import MCPClient
+from qmcp.instructions.act import act
+from qmcp.integrations.agents.scripted import ScriptedRuntime
+from qmcp.spend import Budget
+
+instruction_id, url, clone, found = sys.argv[1:]
+with MCPClient(base_url=url) as client:
+    done = act(instruction_id, ScriptedRuntime(text=found), Budget(authorised=1),
+               client=client, cwd=clone, poll_interval=0.1)
+print(done.status)
+"""
+
+
+def _acting(database: Path, argv: list[str]) -> subprocess.Popen:
+    """A process that acts on an instruction, over `database`."""
+    return subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+        errors="replace",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8",
+             "QMCP_DATABASE_URL": f"sqlite+aiosqlite:///{database.as_posix()}"})
+
+
+def _approve(client: MCPClient, acting: subprocess.Popen, instruction_id: str) -> str:
+    """Answer the act's consent from here, as a person at another window does,
+    and return what the command printed once it ended."""
+    request_id = f"instruction-{instruction_id}"
+    deadline = time.monotonic() + 60
+    try:
+        while request_id not in {r.id for r in client.list_human_requests(status_filter="pending")}:
+            if acting.poll() is not None or time.monotonic() > deadline:
+                acting.kill()
+                pytest.fail(f"{instruction_id} asked no consent:\n{acting.communicate()[0]}")
+            time.sleep(0.1)
+        client.submit_human_response(request_id, "approve", responded_by="tester")
+        printed, _ = acting.communicate(timeout=600)
+    finally:
+        if acting.poll() is None:
+            acting.kill()
+    assert acting.returncode == 0, printed
+    return printed
+
+
+def test_a_second_instruction_is_told_what_the_first_found_after_every_process_restarts(
+        tmp_path) -> None:
+    """ROADMAP Phase 10: "A second instruction in a project is told what the
+    first one found, by a different runtime, after every process has
+    restarted -- the history is in the record, not in the runtime."
+
+    Each instruction is recorded on a server of its own and carried out by a
+    process of its own, and the first server and the first act have both
+    exited before the second server starts. The first is acted on by a
+    scripted runtime; the second by `qmcp instructions act --runtime local`,
+    given no clone, so the clone and the first outcome reach the model only
+    through qmcp's record, and the commit it is asked for is nowhere in the
+    clone.
+    """
+    database, run_dir = tmp_path / "queue.db", tmp_path / "run"
+    clone = tmp_path / "rad-godot"
+    clone.mkdir()
+    (clone / "README.md").write_text("# rad-godot\n\nA Godot project.\n", encoding="utf-8")
+
+    with server_process(database, run_dir, session="first") as first, \
+            MCPClient(base_url=first.url) as client:
+        check = client.create_instruction("Check that rad-godot builds.", project="rad-godot")
+        _approve(client, _acting(database, [sys.executable, "-c", ACT_SCRIPTED, check["id"],
+                                            first.url, str(clone), FOUND]), check["id"])
+
+    with server_process(database, run_dir, session="second") as second, \
+            MCPClient(base_url=second.url) as client:
+        ask = client.create_instruction(
+            "At which commit did the last instruction in rad-godot say the build passed?"
+            " Answer with the commit and nothing else.", project="rad-godot")
+        printed = _approve(client, _acting(database, [
+            sys.executable, "-m", "qmcp", "instructions", "act", ask["id"], "--runtime", "local",
+            "--budget", "1", "--base-url", second.url, "--poll-interval", "0.1"]), ask["id"])
+        recorded = client.get_instruction(ask["id"])
+
+    assert second.identity["pid"] != first.identity["pid"]
+    assert (recorded["status"], recorded["runtime"]) == ("done", "local")
+    assert recorded["detail"]["continuity"] == [check["id"]]
+    assert recorded["cwd"] == str(clone)
+    assert "carrying 1 earlier instruction(s)" in printed
+    assert "2c10fd1" in recorded["outcome_text"], printed
 
 
 # --- what it finds in a repository -----------------------------------------------
