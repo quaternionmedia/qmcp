@@ -81,9 +81,10 @@ qmcp up can be surprised:
 - The HTTP API is REST in the shape of MCP's tool calls, not the Model Context
   Protocol on the wire. `qmcp_mcp.py`, in the `mcp` extra, is the only part
   that speaks the protocol.
-- The server starts processes of its own: `serve --converse` runs the standing
-  conversation beside it, and acting on an instruction runs `qmcp instructions
-  act`. Orchestration is not only in the client.
+- The server starts processes of its own, on a loopback bind: the standing
+  conversation `serve --converse` runs beside it, a spoken answer to a human
+  request, a spoken instruction, and `qmcp instructions act`. Orchestration is
+  not only in the client.
 - The cookbook command group holds both the Docker flow recipes and the
   offline checks of the voice and instruction paths.
 - `qmcp tools list` imports only the built-in tools; the server also registers

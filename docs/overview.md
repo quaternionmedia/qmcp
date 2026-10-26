@@ -112,9 +112,10 @@ SQLModel. On Windows, run them in a Linux container (Docker or k3s) and set
 - ❌ It does not display its record: dossier shows it, codecartographer draws
   its shapes, and joe's page shows the spoken conversation
 
-The server does start processes of its own: `serve --converse` runs the
-standing conversation beside it, and acting on an instruction runs the act in
-a process of its own. [`roles.md`](roles.md) draws the stack around it and
+The server does start processes of its own, only on a loopback bind: the
+standing conversation `serve --converse` runs beside it, a spoken answer to a
+human request, a spoken instruction, and the act on an instruction, which asks
+consent before it runs. [`roles.md`](roles.md) draws the stack around it and
 says what each role owns.
 
 ---
