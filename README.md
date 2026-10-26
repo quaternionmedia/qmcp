@@ -1,395 +1,52 @@
-# QMCP - Model Context Protocol Server
+# qmcp
 
-An AI assistant can only use a tool somebody has exposed to it. qmcp is the
-server that does the exposing: it publishes your tools, runs them when an
-assistant asks, records every invocation, and stops for a human when a step
-needs one.
+An AI assistant can only use a tool somebody has exposed to it, and some of
+what it does should wait for a person. qmcp is the server that keeps the
+record for both: it runs the tools assistants and flows call, holds the
+questions that wait on a person, and remembers each instruction it was given
+and what came of it, so work carries from one session to the next.
 
-It is also the local model backend of a voice-driven development loop: an
-instruction spoken at the machine is recorded against a project, the model
-this server stands up on the machine reads that project's clone after a spoken
-approval, and the answer is said back. **Continuity comes from qmcp, not the
-model**: every step is a row in this server's database, and each instruction
-is handed the project's earlier instructions and what they found, so the work
-carries across sessions and projects from the record rather than from
-whichever conversation happens to be open.
+It is a FastAPI server with its record in SQLite, listening on
+`127.0.0.1:3141` (`QMCP_PORT` moves it), with a command line for every part:
+`uv run qmcp --help`.
 
-It speaks the **Model Context Protocol**, so any client that speaks it can use
-these tools without being told about them in advance. Built with FastAPI.
+## What it is for
 
-## Features
+qmcp plays several roles in the Quaternion Media stack, and each is set up on
+its own. [`docs/roles.md`](docs/roles.md) says what each owns and what it
+leaves to another program.
 
-- ✅ **Tool Discovery** - List available tools via `/v1/tools`
-- ✅ **Tool Invocation** - Execute tools via `/v1/tools/{name}`
-- ✅ **Invocation History** - Audit trail via `/v1/invocations`
-- ✅ **Human-in-the-Loop** - Request human input via `/v1/human/*`
-- ✅ **Persistence** - SQLite with SQLModel/aiosqlite
-- ✅ **Python Client** - `qmcp.client.MCPClient` for workflows
-- ✅ **Metaflow Examples** - Ready-to-use flow templates
-- ✅ **Agent Framework** - SQLModel schemas + mixins for agent types/topologies
-- ✅ **PydanticAI Integration** - Create agents from QMCP models with full audit trail
-- ✅ **Structured Logging** - JSON logs with structlog
-- ✅ **Request Tracing** - Correlation IDs across requests
-- ✅ **Metrics** - Prometheus-compatible `/metrics` endpoint
-- ✅ **CLI Interface** - Manage via `qmcp` command
+| Set it up to | Page |
+|---|---|
+| give an assistant or a flow tools, and stop for a person | [`docs/setup/tool-server.md`](docs/setup/tool-server.md) |
+| run a repository's gates and hand the results to dossier | [`docs/setup/harness.md`](docs/setup/harness.md) |
+| speak instructions at the machine and hear what the model found | [`docs/voice-loop-demo.md`](docs/voice-loop-demo.md) |
+| declare how agents are arranged, and save a design | [`docs/agentframework/topologies.md`](docs/agentframework/topologies.md) |
+| run the cookbook's flows, alfred renders among them | [`docs/setup/flows.md`](docs/setup/flows.md) |
+| build agents whose tool calls are recorded here | [`docs/integrations/pydantic-ai.md`](docs/integrations/pydantic-ai.md) |
+| change qmcp itself | [`docs/contributing.md`](docs/contributing.md) |
 
-## Quick Start
+## Start
 
-Needs git and [uv](https://docs.astral.sh/uv/), which installs the Python 3.13
-the project asks for. Optional: Docker, for the flow image; Ollama serving
-`qwen2.5-coder:7b`, for the local model (`uv run qmcp localmodel check`); joe,
-for the voice loop (`docs/voice-loop-demo.md`).
+Needs git and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone --recurse-submodules https://github.com/quaternionmedia/qmcp.git
 cd qmcp
 uv sync --all-extras
 uv run pytest tests walkthrough -q
-
-# Start the server
 uv run qmcp serve
 ```
 
-In a clone made without `--recurse-submodules`, run `git submodule update
---init` before the sync: `vendor/vox` is a path dependency, and `governance/qm`
-holds what the suite and the instruction roster read.
-
-See `quickstart.md` for a copy-paste walkthrough.
-
-Commands worth knowing before the rest:
-
-```bash
-uv run qmcp topology show governed --level 2   # the seam a model is called through
-uv run qmcp orchestration plane                # what every shape would do, declared
-uv run qmcp human list                         # what is waiting on a person
-uv run qmcp human voice                        # answer the oldest of them by speaking
-uv run qmcp cookbook voice                     # the voice path checked end to end, no hardware
-```
-
-The first draws the one door model output reaches the human queue through;
-`docs/human_in_loop.md` says what that door does and does not enforce.
-`human voice` needs the `vox` submodule and a running speech engine;
-`cookbook voice` needs neither, and `cookbook voice --live` asks one question
-aloud through both. `docs/integrations/voice.md` is the page, and
-`quickstart.md` §5 is the shortest path.
-
-## The voice-driven loop
-
-```
-speak ──> joe: microphone, transcription ──> qmcp: recorded against a project
-                                                         │
-                                        consent asked aloud: approve or hold
-                                                         │ approve
-hear  <── vox: synthesis <── qmcp: summary <── local model reads the clone,
-                                                  told the project's history by qmcp
-```
-
-On one machine: this server (`uv run qmcp serve`); the local model it stands
-up (`uv run qmcp localmodel check` says whether it is installed and served);
-joe, the speech engine, which owns the microphone and runs from its own
-checkout with its microphone and transcripts let on; and vox, vendored at
-`vendor/vox`, which carries the contract a speech engine answers and the local
-synthesizer.
-
-Once the workstation is set up -- the onboarding in `docs/voice-loop-demo.md`,
-with the local model served and joe holding a microphone -- two commands, and
-then only speech:
-
-```bash
-uv run joe dev --allow microphone --allow transcripts   # in joe's checkout: the speech engine
-uv run qmcp serve --converse --runtime local             # here: the server, and the conversation
-```
-
-qmcp says it is ready and asks what should be done. An instruction is read
-back -- and, heard confidently, recorded unless interrupted, otherwise on
-"agree" -- consent is asked aloud and given with
-"approve", the local model reads the project, the answer is said back, and it
-asks whether there is anything else; questions agents have queued are asked in
-between, and "stop listening" ends it. Each step also has a command, for
-checking and debugging:
-
-```bash
-uv run qmcp cookbook converse          # one whole spoken session offline, every take scripted
-uv run qmcp cookbook instruct          # the inbox and the loop offline: nothing spent
-uv run qmcp instruct --voice           # one instruction, spoken; prints the row
-uv run qmcp instructions act <id> --runtime local --budget 1 --voice
-uv run qmcp instructions say <id>      # what an instruction came to, again
-```
-
-Nothing runs on any answer but `approve`, and every runtime is asked. The
-`local` runtime reads the clone with tools that cannot write and spends
-nothing; other runtimes sit behind the same contract and are handed the same
-brief. `docs/voice-loop-demo.md` is the loop's onboarding and cookbook: the
-workstation set up once and proved in three tiers, the first two without a
-microphone, then what to say. `uv run qmcp cookbook instruct --runtime local`
-shows continuity on the local model in one command. The conversation finds a
-project's clone beside this checkout the first time; by command it is passed
-once with `--cwd`; either way it is remembered for the project. `--budget`
-counts runs and defaults to zero, which declares what would be asked and
-stops; `--runtime` has no default, and `scripted` runs nothing. Recording,
-acting and the summary each have a section in `docs/integrations/voice.md`.
-
-## Adoption and Onboarding
-
-Adoption checklist:
-- Decide how the server is hosted (local, container, or VM) and who can reach it.
-- Set `QMCP_HOST`, `QMCP_PORT`, and `QMCP_DATABASE_URL` for your environment.
-- Standardize `X-Correlation-ID` values for audit trails across clients.
-- Decide how humans submit HITL responses (UI or API).
-- Wire `/metrics` into your monitoring stack.
-
-Onboarding path:
-1. `git submodule update --init` -- both submodules: `vendor/vox`, a path
-   dependency any sync on a fresh clone fails without, and `governance/qm`,
-   which the suite's address vectors, the instruction roster and
-   `qmcp preflight` read.
-2. `uv sync --all-extras`
-3. Run the end-to-end tutorial below.
-4. `uv run qmcp serve` for local exploration.
-
-Onboarding to the voice dev loop is its own path, in `docs/voice-loop-demo.md`:
-both submodules (the roster as well as `vox`), the local model through `uv run
-qmcp localmodel check` and `plan`, joe and its microphone, the projects' clones
-beside this checkout, and then three tiers that each prove one more real thing
--- ending at a person talking to qmcp. Its cookbook is what to say once it runs.
-
-### End-to-End Tutorial (HITL approval workflow)
-
-This tutorial mirrors the end-to-end test
-`tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow`.
-
-Copy and paste:
-```bash
-git submodule update --init
-uv sync --all-extras
-uv run pytest tests/test_hitl.py::TestHITLWorkflow::test_complete_approval_workflow -v
-```
-
-## Client Library
-
-```python
-from qmcp.client import MCPClient
-
-with MCPClient(base_url="http://localhost:3141") as client:
-    # List tools
-    tools = client.list_tools()
-
-    # Invoke a tool
-    result = client.invoke_tool("echo", {"message": "Hello!"})
-    print(result.result)
-
-    # Human-in-the-loop
-    request = client.create_human_request(
-        request_id="approval-001",
-        request_type="approval",
-        prompt="Approve deployment?",
-        options=["approve", "reject"]
-    )
-    response = client.wait_for_human_response("approval-001", timeout=3600)
-```
-
-See [docs/client.md](docs/client.md) for full API documentation.
-
-## Validating itself, and the human loop
-
-qmcp can be pointed at its own repository. Each check is a real subprocess,
-recorded as the same invocation row the server writes when a tool is called over
-HTTP — so `qmcp dashboard` reads a self-check back like anything else.
-
-```bash
-# run this repository's own gates, recording each one
-qmcp selfcheck --database run.db
-
-# a failing check raises a question. What is waiting on a person:
-qmcp human list --database run.db
-
-# answer it. This is a person acting, and it is recorded as one:
-qmcp human respond selfcheck-tag-claims defer --database run.db --by "your name"
-```
-
-A failing check becomes a unit of work; a passing one becomes nothing, because a
-green gate is not work. It opens at `brainstorm` — noticing is not deciding —
-and moves to `planning` once somebody answers. It goes no further: re-running a
-check cannot establish that anybody acted on it.
-
-`walkthrough/02-a-run-that-found-something.md` executes the whole thing, with
-real subprocesses.
-
-**The pair.** qmcp is the harness; [dossier](https://github.com/quaternionmedia/dossier)
-is the control panel. Neither imports the other — what crosses is a schema, and
-an address names the same row on both sides:
-
-```bash
-qmcp selfcheck --database run.db --deltas > deltas.json   # units of work
-qmcp dashboard --database run.db --json   > harness.json  # what has run
-# then, in dossier: dossier deltas ingest / dossier harness ingest
-```
-
-## CLI Commands
-
-```bash
-# Start the server
-qmcp serve [--host HOST] [--port PORT] [--reload]
-
-# Start the server for Docker-based flows. It binds 127.0.0.1, which a
-# container on Docker Desktop reaches; on a Linux engine it needs
-# --host 0.0.0.0, which lets anyone who can reach this machine call its tools
-# and answer its human requests.
-qmcp cookbook serve [--host 0.0.0.0] [--port PORT] [--reload]
-
-# List registered tools
-qmcp tools list
-
-# Show configuration
-qmcp info
-
-# Run a cookbook flow in Docker
-qmcp cookbook simple-plan --goal "Deploy a web service"
-
-# Start the server + run a cookbook flow (unified dev). On Docker Desktop the
-# server stays on loopback; a Linux engine needs --server-host 0.0.0.0, asked
-# for explicitly
-qmcp cookbook dev simple-plan --goal "Deploy a web service"
-
-# Run a cookbook flow via the generic runner
-qmcp cookbook run simple-plan --goal "Deploy a web service"
-
-# Run other cookbook recipes (flow args are passed through)
-qmcp cookbook run approved-deploy --service "api-gateway" --environment "staging"
-qmcp cookbook dev local-qc-gauntlet --change-summary "Add audit fields" --target-area "metrics, logging"
-
-# Run a cookbook flow in Docker explicitly
-qmcp cookbook docker simple-plan --goal "Deploy a web service"
-
-# Run tests; the configured database is left alone unless --clean is passed
-qmcp test [-v] [--coverage] [--clean] [TEST_PATH]
-```
-
-Cookbook flows run in Docker and require Docker Desktop (Linux engine).
-Add `--no-sync` to skip syncing flow dependencies if the image is already built.
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/v1/tools` | GET | List available tools |
-| `/v1/tools/{name}` | POST | Invoke a tool |
-| `/v1/invocations` | GET | List invocation history |
-| `/v1/invocations/{id}` | GET | Get single invocation |
-| `/v1/human/requests` | POST | Create human request |
-| `/v1/human/requests` | GET | List human requests |
-| `/v1/human/requests/{id}` | GET | Get request with response |
-| `/v1/human/responses` | POST | Submit human response |
-| `/v1/topology` | GET | Every topology shape, and the encoding a window must honour |
-| `/v1/topology/encoding` | GET | Which visual channel carries which data axis |
-| `/v1/topology/shape/{kind}` | GET | One shape as boxes and arrows, at a level |
-| `/v1/topology/schema/{kind}` | GET | The JSON schema of one kind's configuration class |
-| `/v1/orchestration/plane` | GET | What every shape would do, declared: status, spends/writes/decides, needs, refusals, drift |
-| `/v1/orchestration/runnable` | GET | What a hand (`workers`, `budget`, `model`, `built`) could run, and what each shape is short of |
-| `/v1/topologies` | POST | Save a topology design, validated through its kind's configuration class |
-| `/v1/topologies` | GET | Every saved design, addressed, with the plane's verdict |
-| `/v1/topologies/{ref}` | GET | One design by id or by name; `?act=` judges a pairing |
-| `/v1/topologies/{ref}` | PUT | Change a design's description, config or version |
-| `/v1/topology-components` | POST | Save a reusable, named instruction component |
-| `/v1/topology-components` | GET | Every saved component of one project |
-| `/v1/topology-components/{name}` | GET | One component by name |
-| `/v1/topology-components/{name}` | PUT | Change a component's description, instruction or version |
-| `/metrics` | GET | Prometheus metrics |
-| `/metrics/json` | GET | Metrics as JSON |
-
-The topology and orchestration routes name nobody and are served wherever the
-server is bound. The design and component routes write and carry no
-authorization of their own, so they are served only on a loopback bind;
-`walkthrough/07-saving-a-shape-is-not-running-it.md` exercises them, and the
-reason a refused shape can be saved is in `qmcp/topology_designs.py`. The
-archive-derived readings under `/v1/topology/relations/`, `/v1/threads`, the
-voice routes and the instruction inbox under `/v1/instructions` are
-loopback-only too and are not in this table; `docs/integrations/voice.md` has
-the last two.
-
-## Built-in Tools
-
-- **echo** - Echo input back (for testing)
-- **planner** - Create execution plans
-- **executor** - Execute approved plans
-- **reviewer** - Review and assess results
-
-## Development
-
-```bash
-# Install dev dependencies (the submodules first; a sync without vox fails)
-git submodule update --init
-uv sync --all-extras
-
-# Run tests
-uv run qmcp test -v
-
-# Run linter
-uv run ruff check .
-
-# Run the workflows under .github/workflows locally (a pass is evidence, not proof).
-# On Windows after a change to pyproject.toml, run the runner by path instead;
-# AGENTS.md says why.
-uv run qmcp preflight --event pull_request --base-ref main
-```
-
-## Architecture
-
-See [docs/architecture.md](docs/architecture.md) for the full architectural overview.
-
-The system follows a three-plane architecture:
-
-1. **Client/Orchestration** - Metaflow workflows (MCP client)
-2. **MCP Server** - FastAPI service (this project)
-3. **Execution/Storage** - Tools and database
+Before starting a server on a machine that may already run one, read "Which
+server, and which queue" in [`docs/setup/README.md`](docs/setup/README.md):
+the clone's database holds questions somebody has not answered yet.
 
 ## Documentation
 
-- [Quickstart](quickstart.md) - Copy-paste setup and validation
-- [Overview](docs/overview.md) - What and why
-- [Architecture](docs/architecture.md) - How and constraints
-- [Tools](docs/tools.md) - Tool capabilities
-- [Client Library](docs/client.md) - Python client API
-- [Human-in-the-Loop](docs/human_in_loop.md) - HITL guide
-- [Agent Framework](docs/agentframework/overview.md) - Agent schemas and mixins
-- [PydanticAI Integration](docs/integrations/pydantic-ai.md) - Agent runtime integration
-- [alfred Integration](docs/integrations/alfred.md) - Video renders approved before delivery, captions read before they are burned in
-- [Thread Archive](docs/threads.md) - Conversations read as units of work
-- [Self-Checks](docs/self-checks.md) - Dashboard, audit, self-check and the feedback loop
-- [Testing](docs/testing.md) - What the suite isolates, and the harness an offline check stands a qmcp up with
-- [Deployment](docs/deployment.md) - Production deployment guide
-- [Contributing](docs/contributing.md) - Development guidelines
-- [Roadmap](docs/ROADMAP.md) - Development phases
-
-## Example Flows
-
-See [examples/flows/](examples/flows/) for Metaflow integration examples:
-
-- **simple_plan.py** - Basic tool invocation
-- **approved_deploy.py** - HITL approval workflow
-- **alfred_render.py** - An alfred render, put to a person for approval
-- **alfred_caption_render.py** - An alfred project's transcript put to a person, then its captioned render
-- **local_agent_chain.py** - Local LLM plan -> review -> refine with SQLModel artifacts
-- **local_qc_gauntlet.py** - Local LLM QC checklist/task/gate builder
-- **local_release_notes.py** - Local LLM release notes and doc update suggestions
-
-For local LLM flows, install extras with `uv sync --extra flows`.
-Start `uv run qmcp serve --host 0.0.0.0` when `--use-mcp True` to enable MCP calls
-from Docker-based flows.
-On Windows, prefer running flows in a Linux container to avoid platform-specific
-Metaflow dependencies.
-
-Docker runner (recommended on Windows):
-```bash
-docker compose -f docker-compose.flows.yml build
-docker compose -f docker-compose.flows.yml run --rm flow-runner \
-  examples/flows/local_agent_chain.py run --use-mcp True --goal "..."
-```
-
-Set `MCP_URL` and `LLM_BASE_URL` (or pass `--mcp-url` / `--llm-base-url`) when
-running in Docker, e.g. `http://host.docker.internal:3141`.
+[`docs/README.md`](docs/README.md) lists every page by the role it serves.
 
 ## License
 
-MIT
+MIT, as `REUSE.toml` declares for this project's own files; vendored and
+third-party files carry their own.

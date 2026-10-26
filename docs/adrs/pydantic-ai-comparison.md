@@ -2,7 +2,7 @@
 
 > **Status: IMPLEMENTED**
 >
-> This analysis has been implemented. See [PydanticAI Integration](integrations/pydantic-ai.md)
+> This analysis has been implemented. See [PydanticAI Integration](../integrations/pydantic-ai.md)
 > for usage documentation.
 >
 > Key implementations:
