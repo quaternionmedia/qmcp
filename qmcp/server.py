@@ -1,16 +1,15 @@
-"""FastAPI MCP Server.
+"""The qmcp HTTP server.
 
-This server exposes MCP-compatible endpoints for:
-- Tool discovery
-- Tool invocation
-- Invocation history (audit)
-- Human-in-the-loop requests and responses
+Routes for tool discovery, invocation and history, the human queue, the
+topology vocabulary and the orchestration plane; on a loopback bind only, also
+saved designs, the thread archive, the voice routes and the instruction inbox.
+`docs/http-api.md` lists them by role.
 
-The server is intentionally "boring":
-- No orchestration logic
-- No multi-step flows
-- No agent chaining
-- No hidden state
+It starts processes of its own, only on a loopback bind: the standing
+conversation `serve --converse` asks for, a spoken answer to one human request,
+a spoken instruction, and `qmcp instructions act`, which asks a person's
+consent before it acts. Tools do not call each other, and nothing here answers
+a human request.
 """
 
 import sys

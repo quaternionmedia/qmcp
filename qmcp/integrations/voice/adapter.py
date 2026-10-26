@@ -5,9 +5,8 @@ grammar. A request carrying none is an open question: the transcript itself is
 the answer, read back once and recorded when the speaker says so.
 
 Structurally typed against vox's `SpeechToText`/`TextToSpeech` shape rather
-than importing vox at module load — this module only needs objects with a
-`.listen()`/`.speak()` method, so qmcp does not require the `voice` extra
-just to import it.
+than importing vox at module load: this module only needs objects with a
+`.listen()`/`.speak()` method, such as a test's stand-ins.
 """
 
 from __future__ import annotations

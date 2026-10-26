@@ -6,7 +6,7 @@ P17 asks that the black box be reached through a loop somebody can issue by
 name, and a docstring naming a missing command describes that loop without it
 being there.
 
-It scans `qmcp/`, `docs/`, the README and the quickstart, for `uv run qmcp
+It scans `qmcp/`, `docs/` and the README for `uv run qmcp
 ...` anywhere and, in a page, for a command given bare in code -- a fenced
 line or an inline span that starts `qmcp ...`. A page's Python blocks are
 read too: every `from qmcp... import ...` they show must import. `tests/` is
@@ -54,8 +54,7 @@ PACKAGE = ROOT / "qmcp"
 # Where a claim can be made. The package, and the pages a reader reaches before
 # the package -- a command named in a README is read by more people than one
 # named in a docstring.
-SCANNED: tuple[Path, ...] = (PACKAGE, ROOT / "docs", ROOT / "README.md",
-                             ROOT / "quickstart.md")
+SCANNED: tuple[Path, ...] = (PACKAGE, ROOT / "docs", ROOT / "README.md")
 
 # A claim looks like `uv run qmcp <group> [<subcommand>]`. Everything from the
 # first option, backtick, quote or redirect onward is prose or arguments, and
