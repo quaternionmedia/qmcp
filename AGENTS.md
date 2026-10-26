@@ -230,12 +230,7 @@ are green; the hosted runs under `.github/workflows/` mirror this. It is not
 `selfcheck`: that runs this repository's gate scripts and records each as an
 invocation, where `preflight` simulates the workflows as the hosted runner
 would and records nothing. A pass is evidence and not proof, and the runner's
-own docstring is the list of what it cannot see. One thing it does see is
-`PATH`: a `run:` step that invokes `python` by name gets whichever interpreter
-leads `PATH`, and under `uv run` that is the project's virtual environment,
-which ships no `pip`. A step that `python -m pip install`s is therefore red
-through this route and may be green through the path -- the same workflow,
-answered by a different interpreter.
+own docstring is the list of what it cannot see.
 
 **On Windows, a change to `pyproject.toml` makes `uv run qmcp preflight` fail
 on its own sync.** The tests job runs `uv sync`, which reinstalls qmcp and must
@@ -243,9 +238,7 @@ replace `.venv/Scripts/qmcp.exe` -- the launcher the preflight is running from,
 which Windows holds open until it exits (os error 32). Run the same runner with
 the environment's interpreter, by path and outside `uv run`:
 `.venv\Scripts\python governance\qm\project-seed\ci\run_workflows_locally.py
---event pull_request --base-ref main`. A sync never replaces `python.exe`, and
-`PATH` is left as it was, so the steps that install with `pip` are answered by
-the interpreter that leads it rather than by the environment.
+--event pull_request --base-ref main`. A sync never replaces `python.exe`.
 
 ## The tag is the human gate, and nothing else is
 
