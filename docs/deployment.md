@@ -2,17 +2,11 @@
 
 This guide covers deploying QMCP in various environments.
 
-## Quick Start (Development)
+## Development
 
-```bash
-# Clone and install (the submodules too: vendor/vox is a path dependency)
-git clone --recurse-submodules https://github.com/quaternionmedia/qmcp.git
-cd qmcp
-uv sync
-
-# Start the server
-uv run qmcp serve --reload
-```
+A server started to develop qmcp takes its own port and database:
+[`contributing.md`](contributing.md), "A server of your own". The shared
+install is in [`setup/README.md`](setup/README.md).
 
 ## Production Deployment
 
@@ -27,15 +21,18 @@ uv run qmcp serve --reload
 | `QMCP_RUN_DIR` | `~/.qmcp/run` | Where `qmcp serve` leaves its run-file |
 | `QMCP_SESSION` | unset | A label the server states on `/health` and in its run-file |
 
-### Running with Uvicorn
+### Running the server
 
 ```bash
-# Production mode (JSON logging)
-uvicorn qmcp.server:app --host 0.0.0.0 --port 3333 --workers 4
-
-# With environment variables
-QMCP_HOST=0.0.0.0 QMCP_PORT=3333 uv run qmcp serve
+QMCP_HOST=0.0.0.0 uv run qmcp serve --port 3141
 ```
+
+Run it through `qmcp serve`, one process: `serve` leaves the run-file a
+collector on this machine finds, and refuses to start beside a healthy qmcp on
+its port. `uvicorn qmcp.server:app` started directly serves the same app and
+leaves no run-file. Bound off loopback, the server registers only the routes
+[`http-api.md`](http-api.md) marks **any**, and whoever reaches the port can
+invoke its tools and answer its human requests.
 
 ### Docker Deployment
 

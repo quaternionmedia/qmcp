@@ -17,7 +17,8 @@ It is a **boring, reliable MCP implementation** intended for real-world use.
 
 ---
 
-Quickstart: see `../quickstart.md` for a copy-paste walkthrough.
+Setting it up: [`setup/README.md`](setup/README.md), for the role at hand.
+The roles and their boundaries: [`roles.md`](roles.md).
 
 ---
 
@@ -31,7 +32,14 @@ Quickstart: see `../quickstart.md` for a copy-paste walkthrough.
   - Invoke tools (`POST /v1/tools/{name}`)
   - Query invocation history (`GET /v1/invocations`)
   - Request human input or approval (`POST /v1/human/requests`)
-  - Poll for human responses (`GET /v1/human/requests/{id}`)
+  - Read a request with its answer (`GET /v1/human/requests/{id}`). The read
+    stores the expiry of a pending request past its `expires_at`, so a loop
+    watching for answers lists them (`GET /v1/human/requests`) rather than
+    reading each one
+- Records instructions people give against a rostered project, asks consent
+  through the human queue, acts in the project's clone through a runtime, and
+  hands each act the project's earlier instructions, on loopback
+  (`/v1/instructions`; [`voice-loop-demo.md`](voice-loop-demo.md))
 - Serves the topology vocabulary to a window that must not carry its own copy:
   - Draw a shape (`GET /v1/topology/shape/{kind}`) and build a form from its
     configuration class (`GET /v1/topology/schema/{kind}`)
@@ -93,32 +101,21 @@ SQLModel. On Windows, run them in a Linux container (Docker or k3s) and set
 
 ---
 
-## What This System Explicitly Does NOT Do
+## What This System Does Not Do
 
-- ❌ The MCP server does not orchestrate workflows
-- ❌ The server does not manage agents or chains
 - ❌ Tools do not call each other
-- ❌ There is no autonomous loop
-- ❌ There is no hidden shared state
+- ❌ Nothing answers a human request on a person's behalf
+- ❌ Nothing acts on an instruction before a person says "approve" to its
+  consent
+- ❌ The server does not run flows: the cookbook's flows run in Docker as its
+  clients
+- ❌ It does not display its record: dossier shows it, codecartographer draws
+  its shapes, and joe's page shows the spoken conversation
 
-All orchestration lives in the **client**, not the server.
-
----
-
-## Mental Model
-
-```
-User / UI / IDE
-       ↓
-Metaflow (MCP Client)
-       ↓
-MCP Server (FastAPI)
-       ↓
-Tools / Human Requests / Database
-```
-
-If logic appears above the MCP server boundary, it is correct.
-If logic appears below it, it is likely a bug.
+The server does start processes of its own: `serve --converse` runs the
+standing conversation beside it, and acting on an instruction runs the act in
+a process of its own. [`roles.md`](roles.md) draws the stack around it and
+says what each role owns.
 
 ---
 
