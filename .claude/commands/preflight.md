@@ -3,10 +3,6 @@ description: Run every gate and report what ran, what failed, and what could not
 argument-hint: [base branch, defaults to main]
 ---
 
-<!-- SEED FILE: part of project-seed/ide/, copied recursively onto the project
-     root. The corpus's own .claude/commands/ holds symlinks back to this file,
-     so there is one copy to edit. Delete this comment in the copy. -->
-
 Establish whether this branch is ready to be a pull request. Base branch:
 **${ARGUMENTS:-main}**.
 
@@ -24,16 +20,16 @@ Exit 1 means *explain this*, not *broken*. Read the ratio: "1 of 61" is a merge
 you did deliberately; "18 of 20" is a branch you did not mean to be on. Keep the
 output — it goes in the pull request description verbatim.
 
-## 2. Do you have a slot
+## 2. Is anything of yours ready while stacked
 
 ```
 python project-seed/ci/check_one_pr.py --repo <owner/name> --contributor <your login>
 ```
 
-If you are over, stop. Say which pull requests hold the slots and let the human
-decide. If you are told to fold: **close the pull request first, then push** its
-commits onto the branch that survives. Pushing first merges it, with no review
-and no way to undo the record.
+It lists your open pull requests and the stack each sits in. If this change
+needs one of them, cut it from that branch and open it as a draft against it.
+If the check fails, mark the named pull request draft until the one beneath it
+merges. Never close a pull request in favour of one that contains it.
 
 ## 3. Run the gates
 
@@ -59,8 +55,10 @@ Then run this project's own suite — tests, linters, type checks — whatever i
 
 ## 5. Only then
 
-If it is ready: `gh pr create --draft`, assignee the person who asked, **no
-reviewer requested**, and the `check_pr_base.py` output in the body. Leaving
-draft is their decision, after their testing.
+If it is ready: `gh pr create`, assignee the person who asked, **no reviewer
+requested**, and the `check_pr_base.py` output in the body. Then merge it once
+every gate is green — the pull request is the audit record, not a queue, and
+the human gates are ratification and the version tag. Use `--draft` only when
+the work is genuinely unfinished.
 
 If it is not ready, say what is missing. Do not open it.

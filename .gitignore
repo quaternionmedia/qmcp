@@ -27,3 +27,6 @@ wheels/
 
 # The voice loop writes its audio here (joe-contract convention); never tracked.
 Data/
+
+# The session brief /cowork writes; it names this machine's paths.
+.harness/
