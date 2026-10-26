@@ -3,10 +3,6 @@ description: Refresh the harness status document and read what is in flight acro
 argument-hint: [repository name to focus on, optional]
 ---
 
-<!-- SEED FILE: part of project-seed/ide/, copied recursively onto the project
-     root. The corpus's own .claude/commands/ holds symlinks back to this file,
-     so there is one copy to edit. Delete this comment in the copy. -->
-
 Refresh the org's harness status and report what needs a person. Focus, if one
 was given: **$ARGUMENTS**.
 
@@ -18,8 +14,8 @@ push. Anything it surfaces that needs doing is proposed to the human, not done.
 From the corpus clone (or `governance/qm` inside a project):
 
 ```
-python ci/harness_status.py --no-local --write harness-status.json
-python ci/harness_dashboard.py harness-status.json --format md
+python ci/harness_status.py --no-local --write status/harness.yaml
+python ci/harness_dashboard.py status/harness.yaml --format md
 ```
 
 The first command takes a few seconds per repository — it reads open pull
@@ -50,8 +46,9 @@ them. The three that matter:
   left work in that state for months.
 - **`stalled`** — untouched past the document's threshold and not landed. Say
   how long, and say what it was.
-- **over the slot limit** — a contributor holding more than one open pull
-  request. Name the numbers; folding is theirs to decide and has an order.
+- **ready while stacked** — a pull request marked ready whose base is another
+  open pull request's branch. Name both numbers; it goes back to draft until
+  the one beneath it merges.
 
 **Then what could not be read**, with the reason. A repository nobody measured
 is not a repository with nothing wrong, and it is the first thing to lose in a
