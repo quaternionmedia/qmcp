@@ -11,7 +11,7 @@ configured for alfred (docs/integrations/alfred.md). The steps are
 
 Usage:
     # The server, with alfred configured
-    QMCP_ALFRED_URL=http://localhost:8000 uv run qmcp serve
+    QMCP_ALFRED_URL=http://127.0.0.1:1732 uv run qmcp serve
 
     # In another terminal, the flow
     uv run python examples/flows/alfred_caption_render.py run --project-id <id>
