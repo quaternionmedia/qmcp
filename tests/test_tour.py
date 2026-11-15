@@ -311,37 +311,40 @@ def test_the_records_are_read_and_the_embedded_copy_is_not() -> None:
     assert row["stops"][0]["feedback"] is None
 
 
-def test_a_ticked_line_with_a_stage_off_or_unanswered_is_a_disagreement() -> None:
-    """Four lines: off and unanswered, unanswered only, every stage works, and
-    an unticked line with a stage off.
-
-    Mutation: count only `off` -- red, the second line is lost.
-    Mutation: ignore the tick -- red, the fourth line appears.
-    Mutation: call any ticked journey line a disagreement -- red on the third."""
+def four_lines() -> dict:
+    """The review of four lines: `B` ticked with two stages unanswered, `A`
+    ticked with a stage off and one unanswered, `C` ticked with every stage
+    working, and `D` unticked with a stage off."""
     served = {"commit": "f0bc8430", "changed": False, "journeys": [
         {"id": "a", "name": "A", "stages": [stage("a", "1"), stage("a", "2"), stage("a", "3")]},
-        {"id": "b", "name": "B", "stages": [stage("b", "1"), stage("b", "2")]},
+        {"id": "b", "name": "B", "stages": [stage("b", "1"), stage("b", "2"), stage("b", "3")]},
         {"id": "c", "name": "C", "stages": [stage("c", "1")]},
         {"id": "d", "name": "D", "stages": [stage("d", "1")]},
     ]}
     records = [said("a/1", "works"), said("a/2", "off", "no"), said("b/1", "works"),
                said("c/1", "works"), said("d/1", "off", "no")]
-    roadmap = [Line("G", "A is built.", True, journeys=("a",)),
-               Line("G", "B is built.", True, journeys=("b",)),
+    roadmap = [Line("G", "B is built.", True, journeys=("b",)),
+               Line("G", "A is built.", True, journeys=("a",)),
                Line("G", "C is built.", True, journeys=("c",)),
                Line("G", "D is planned.", False, journeys=("d",))]
+    return tour.review(roadmap, [], served, records)
 
-    document = tour.review(roadmap, [], served, records)
+
+def test_a_ticked_line_with_a_stage_off_or_unanswered_is_a_disagreement() -> None:
+    """Mutation: count only `off` -- red, `B` is lost.
+    Mutation: ignore the tick -- red, `D` appears.
+    Mutation: call any ticked journey line a disagreement -- red on `C`."""
+    document = four_lines()
 
     assert document["disagreements"] == [
+        {"group": "G", "text": "B is built.", "roadmap": "ticked",
+         "off": [], "not_yet": ["b/2", "b/3"]},
         {"group": "G", "text": "A is built.", "roadmap": "ticked",
          "off": ["a/2"], "not_yet": ["a/3"]},
-        {"group": "G", "text": "B is built.", "roadmap": "ticked",
-         "off": [], "not_yet": ["b/2"]},
     ]
     # Neither side is taken: the line stays ticked and the stage stays off.
-    assert document["lines"][0]["ticked"] is True
-    assert states(document["lines"][0])[1] == ("a/2", "off")
+    assert document["lines"][1]["ticked"] is True
+    assert states(document["lines"][1])[1] == ("a/2", "off")
 
 
 def test_a_page_no_line_names_and_no_stage_tries_is_not_on_the_roadmap() -> None:
@@ -479,9 +482,10 @@ Making a thing
 Disagreements
   The roadmap ticks each line below, and the application holds a stage of
   it off or not yet answered. Both stand; nothing here writes to a roadmap.
-  [x] A part is chosen and its numbers are staged.
-      off: design/numbers
-      not yet: design/apply
+  a stage is off:
+    [x] A part is chosen and its numbers are staged.
+        off: design/numbers
+        1 not yet
 
 Not on the roadmap
   pages no line names and no stage tries:
@@ -504,6 +508,43 @@ def test_the_text_is_one_entry_a_line_with_its_counts_and_its_answered_stages() 
     document = tour.review(lines(), PAGES, SERVED, RECORDS, roadmap="ROADMAP.md", at=AT)
 
     assert tour.render(document) + "\n" == REVIEW
+
+
+def test_the_text_puts_the_lines_with_a_stage_off_before_those_only_waiting() -> None:
+    """`B` stands first in the roadmap and is only waiting; `A` has a stage off.
+
+    Mutation: list the disagreements in the roadmap's order, as one kind --
+    red. Mutation: name every unanswered stage of a waiting line -- red."""
+    said_of = tour.render(four_lines())
+
+    assert (
+        "Disagreements\n"
+        "  The roadmap ticks each line below, and the application holds a stage of\n"
+        "  it off or not yet answered. Both stand; nothing here writes to a roadmap.\n"
+        "  a stage is off:\n"
+        "    [x] A is built.\n"
+        "        off: a/2\n"
+        "        1 not yet\n"
+        "  only waiting on a word:\n"
+        "    [x] B is built.  2 not yet\n"
+        "\n"
+        "Not on the roadmap\n") in said_of
+
+
+def test_the_text_of_an_application_nobody_has_answered_is_one_line_a_claim() -> None:
+    """Every ticked journey line is a disagreement while nobody has said
+    anything, and each takes one line.
+
+    Mutation: head a block that holds nothing -- red on `a stage is off:`."""
+    said_of = tour.render(tour.review(lines(), PAGES, SERVED, []))
+
+    assert (
+        "it off or not yet answered. Both stand; nothing here writes to a roadmap.\n"
+        "  only waiting on a word:\n"
+        "    [x] A part is chosen and its numbers are staged.  3 not yet\n"
+        "\n"
+        "Not on the roadmap\n") in said_of
+    assert "a stage is off:" not in said_of
 
 
 def test_the_text_says_shown_by_nothing_in_those_words() -> None:
@@ -767,7 +808,8 @@ def test_off_narrows_the_text_and_the_document(monkeypatch, clone) -> None:
     assert "An assembly is navigated" not in text.output
     assert "Not on the roadmap" not in text.output
     assert "journey:calibrate" not in text.output
-    assert "      off: design/numbers\n      not yet: design/apply" in text.output
+    assert "        off: design/numbers\n        1 not yet" in text.output
+    assert "only waiting on a word" not in text.output
     assert [row["text"] for row in json.loads(data.output)["lines"]] == [
         "A part is chosen and its numbers are staged."]
 

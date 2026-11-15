@@ -431,11 +431,19 @@ def _disagreement_lines(document: dict[str, Any]) -> list[str]:
         return ["  None: no ticked line has a stage off or not yet answered."]
     out = ["  The roadmap ticks each line below, and the application holds a stage of",
            "  it off or not yet answered. Both stand; nothing here writes to a roadmap."]
-    for found in disagreements:
-        out.append(f"  [x] {found['text']}")
-        for label, key in ((OFF, "off"), (NOT_YET, "not_yet")):
-            if found[key]:
-                out.append(f"      {label}: " + ", ".join(found[key]))
+    # The lines a person has something to read on come first; a line nobody
+    # has answered takes one line, with a count where the document has the ids.
+    with_off = [found for found in disagreements if found["off"]]
+    waiting = [found for found in disagreements if not found["off"]]
+    if with_off:
+        out.append("  a stage is off:")
+    for found in with_off:
+        out += [f"    [x] {found['text']}", "        off: " + ", ".join(found["off"])]
+        if found["not_yet"]:
+            out.append(f"        {len(found['not_yet'])} {NOT_YET}")
+    if waiting:
+        out.append("  only waiting on a word:")
+    out += [f"    [x] {found['text']}  {len(found['not_yet'])} {NOT_YET}" for found in waiting]
     return out
 
 
