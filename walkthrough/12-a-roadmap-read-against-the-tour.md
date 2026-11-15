@@ -7,7 +7,8 @@ misleading somebody.
 A project's roadmap says what the project claims is built. An application
 that carries a guide of its own says something else: the guide walks a person
 through the application's *journeys*, stage by stage, and keeps what they said
-of each stage, `works`, or `off` with a note. `qmcp tour` reads the roadmap,
+of each stage, `works`, or `off` with a note, with their name and the commit
+the application ran. `qmcp tour` reads the roadmap,
 the clone's walkthrough pages and the application's two documents, and lays
 them side by side. `docs/tour.md` is the reference. This page reads a small
 roadmap, with the application's documents written out by hand.
@@ -88,59 +89,82 @@ reads:
     ...     {"id": "design", "name": "Design a part", "stages": [
     ...         stage("design", "choose", "04-designing-a-part.md"),
     ...         stage("design", "numbers"),
+    ...         stage("design", "apply"),
     ...         stage("design", "ready")]},
     ...     {"id": "calibrate", "name": "Calibrate a machine", "stages": [
     ...         stage("calibrate", "level")]}]}
 
-`GET /tour/feedback` lists every record the application keeps, oldest first.
-Choosing a part was said to be off, and on a later commit to work; the staged
-numbers were said to be off; nobody has answered the third stage:
+`GET /tour/feedback` lists every record the application keeps, oldest first,
+each with who said it and the commit the application ran. The application
+above runs `f0bc8430`. Choosing a part was said off of the build before it,
+and works in this one. The staged numbers are off in this one. Applying them
+worked in the build before, in a record kept before words carried a name.
+Nobody has answered the last stage:
 
-    >>> def said(of, verdict, note, at, commit):
-    ...     return {"stage": of, "verdict": verdict, "note": note, "at": at,
-    ...             "commit": commit, "changed": False}
+    >>> def said(of, verdict, note, at, commit, by=None):
+    ...     record = {"stage": of, "verdict": verdict, "note": note, "at": at,
+    ...               "commit": commit, "changed": False}
+    ...     return {**record, "by": by} if by else record
     >>> records = [
     ...     said("design/choose", "off", "the list is empty",
-    ...          "2026-11-14T09:00:00+00:00", "5caeea86"),
-    ...     said("design/choose", "works", "", "2026-11-15T12:00:00+00:00", "f0bc8430"),
+    ...          "2026-11-14T09:00:00+00:00", "5caeea86", by="Lin"),
+    ...     said("design/apply", "works", "", "2026-11-14T09:05:00+00:00", "5caeea86"),
+    ...     said("design/choose", "works", "", "2026-11-15T12:00:00+00:00", "f0bc8430", by="Ada"),
     ...     said("design/numbers", "off", "a staged number is lost on reload",
-    ...          "2026-11-15T12:10:00+00:00", "f0bc8430")]
+    ...          "2026-11-15T12:10:00+00:00", "f0bc8430", by="Lin")]
 
 ## Each line, with its stops
 
 A line's stops are its journey's stages in the journey's order, then its
-pages. A stage's feedback is the latest record that names it:
+pages. A stage's feedback is the latest record that names it, and a word
+counts for the build it was said of. Applying the numbers worked in the build
+before, which says nothing of this one:
 
     >>> document = tour.review(lines, pages, served, records, at="http://application.test")
     >>> for stop in document["lines"][0]["stops"]:
     ...     print(stop["id"], "|", stop["state"], "|", (stop["feedback"] or {}).get("commit"))
     design/choose | works | f0bc8430
     design/numbers | off | f0bc8430
+    design/apply | said of an earlier build | 5caeea86
     design/ready | not yet | None
+
+The record is kept as the application gave it, its name with it:
+
+    >>> document["lines"][0]["stops"][0]["feedback"]["by"]
+    'Ada'
+
+An application that does not say its build ties no word to one, and every
+stage's latest word counts:
+
+    >>> unsaid = tour.review(lines, pages, {**served, "commit": None}, records)
+    >>> [stop["state"] for stop in unsaid["lines"][0]["stops"]]
+    ['works', 'off', 'works', 'not yet']
 
 ## A ticked line with a stage off is a disagreement
 
 The roadmap ticks the first line. The application holds one of its stages off
-and one unanswered. The review reports that as a disagreement, with what each
-side says, and changes neither:
+in this build, one with a word of an earlier build only, and one unanswered.
+The review reports that as a disagreement, with what each side says, and
+changes neither:
 
     >>> document["disagreements"]
-    [{'group': 'Designing a part', 'text': 'A part is chosen and its numbers are staged.', 'roadmap': 'ticked', 'off': ['design/numbers'], 'not_yet': ['design/ready']}]
+    [{'group': 'Designing a part', 'text': 'A part is chosen and its numbers are staged.', 'roadmap': 'ticked', 'off': ['design/numbers'], 'earlier': ['design/apply'], 'not_yet': ['design/ready']}]
     >>> document["lines"][0]["ticked"]
     True
 
-The document holds the ids of both kinds of stage. The text gives a line with
-a stage off its ids, and a line that is only waiting on a word one line with
-a count. Before anybody has answered, every ticked journey line is one of
-those:
+The document holds the ids of each kind of stage. The text gives a line with
+a stage off its ids, and a line that is only waiting on a word of this build
+one line with two counts. Before anybody has answered, every ticked journey
+line is one of those:
 
     >>> unanswered = tour.render(tour.review(lines, pages, served, []))
     >>> print(unanswered[unanswered.index("Disagreements"):unanswered.index("\n\nNot on")])
     Disagreements
       The roadmap ticks each line below, and the application holds a stage of
-      it off or not yet answered. Both stand; nothing here writes to a roadmap.
+      it off, or with no word said of this build. Both stand; nothing here
+      writes to a roadmap.
       only waiting on a word:
-        [x] A part is chosen and its numbers are staged.  3 not yet
+        [x] A part is chosen and its numbers are staged.  0 said of an earlier build, 4 not yet
 
 ## What is not on the roadmap
 
@@ -172,7 +196,9 @@ the documents above.
     >>> real_get, httpx.get = httpx.get, answer
 
 The first line of the output names the roadmap that was read, by its path; the
-rest is the review:
+rest is the review. Each answered stage has who said the word, where the
+record names somebody, and a word of an earlier build is marked as of its
+commit:
 
     >>> result = CliRunner().invoke(cli, ["tour", str(clone), "--at", "http://application.test"])
     >>> print(result.output.split("\n", 1)[1].rstrip())
@@ -180,9 +206,10 @@ rest is the review:
     <BLANKLINE>
     Designing a part
       [x] A part is chosen and its numbers are staged.
-          journey:design  1 works, 1 off, 1 not yet
-            ✓ design/choose  f0bc8430  2026-11-15T12:00:00+00:00
-            ✗ design/numbers  f0bc8430  2026-11-15T12:10:00+00:00  a staged number is lost on reload
+          journey:design  1 works, 1 off, 1 said of an earlier build, 1 not yet
+            ✓ design/choose  Ada  f0bc8430  2026-11-15T12:00:00+00:00
+            ✗ design/numbers  Lin  f0bc8430  2026-11-15T12:10:00+00:00  a staged number is lost on reload
+            ✓ design/apply  of an earlier build, 5caeea86  2026-11-14T09:05:00+00:00
       [x] An assembly is navigated by its pieces.
           09-an-assembly.md  An assembly  read whole
       [ ] A part is priced.
@@ -190,17 +217,18 @@ rest is the review:
     <BLANKLINE>
     Disagreements
       The roadmap ticks each line below, and the application holds a stage of
-      it off or not yet answered. Both stand; nothing here writes to a roadmap.
+      it off, or with no word said of this build. Both stand; nothing here
+      writes to a roadmap.
       a stage is off:
         [x] A part is chosen and its numbers are staged.
             off: design/numbers
-            1 not yet
+            1 said of an earlier build, 1 not yet
     <BLANKLINE>
     Not on the roadmap
       pages no line names and no stage tries:
         10-a-drawing.md  A drawing
       journeys the application serves and no line names:
-        journey:calibrate  Calibrate a machine  0 works, 0 off, 1 not yet
+        journey:calibrate  Calibrate a machine  0 works, 0 off, 0 said of an earlier build, 1 not yet
 
 `--off` keeps the lines with a stage somebody said is off, and `--json` emits
 the document:
@@ -234,6 +262,6 @@ A clone with no roadmap is refused, with the path that was looked at:
 
 That an application serves these documents: the journeys and the records
 above are written on the page, in the shape `docs/tour.md` gives, and an
-application answering at an address is a person's check. Nor that the feedback
-is about the build the roadmap describes. A record carries the commit it was
-said of, the review prints it, and nothing compares it with any other.
+application answering at an address is a person's check. Nor that the build
+the application runs is the one the roadmap describes. A word is held to the
+running build, and a roadmap names none.

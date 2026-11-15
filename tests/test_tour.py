@@ -64,16 +64,23 @@ SERVED = {"commit": "f0bc8430", "changed": False, "journeys": [
     {"id": "design", "name": "Design a part", "stages": [
         stage("design", "choose", ("04-designing-a-part.md",)),
         stage("design", "numbers"),
-        stage("design", "apply")]},
+        stage("design", "apply"),
+        stage("design", "ready")]},
     {"id": "calibrate", "name": "Calibrate a machine", "stages": [
         stage("calibrate", "level")]},
 ]}
 
+# The application runs f0bc8430. Of the design stages, `choose` was said off
+# of an earlier build and works in this one, `numbers` is off in this one,
+# `apply` was last said off of an earlier build, and nobody has answered
+# `ready`.
 RECORDS = [
     said("design/choose", "off", "the list is empty", at="2026-11-14T09:00:00+00:00",
          commit="5caeea86"),
+    said("design/apply", "off", "nothing is applied", at="2026-11-14T09:05:00+00:00",
+         commit="5caeea86", by="Lin"),
     said("design/numbers", "off", "a staged number is lost on reload",
-         at="2026-11-15T12:10:00+00:00", commit="0a1b2c3d", changed=True),
+         at="2026-11-15T12:10:00+00:00", changed=True),
     said("design/choose", "works", by="Ada"),
 ]
 
@@ -281,12 +288,14 @@ def test_a_line_stops_at_its_journeys_stages_in_order_then_its_pages() -> None:
     assert states(row) == [
         ("design/choose", "works"),
         ("design/numbers", "off"),
-        ("design/apply", "not yet"),
+        ("design/apply", "said of an earlier build"),
+        ("design/ready", "not yet"),
         ("09-an-assembly.md", "read whole"),
     ]
-    assert [stop["kind"] for stop in row["stops"]] == ["stage", "stage", "stage", "page"]
+    assert [stop["kind"] for stop in row["stops"]] == [
+        "stage", "stage", "stage", "stage", "page"]
     assert row["stops"][0]["tries"] == ["04-designing-a-part.md"]
-    assert row["stops"][3]["title"] == "An assembly"
+    assert row["stops"][4]["title"] == "An assembly"
     assert (row["group"], row["text"], row["ticked"], row["shown_by_nothing"]) == (
         "Designing a part", "Designed and read.", True, False)
 
@@ -298,14 +307,61 @@ def test_the_latest_record_is_a_stages_feedback() -> None:
     row = tour.review(lines(), PAGES, SERVED, RECORDS)["lines"][0]
 
     assert row["stops"][0]["state"] == "works"
-    assert row["stops"][0]["feedback"] == RECORDS[2]
-    assert row["stops"][2]["feedback"] is None
+    assert row["stops"][0]["feedback"] == RECORDS[3]
+    assert row["stops"][3]["feedback"] is None
+
+
+def test_a_word_counts_for_the_build_it_was_said_of() -> None:
+    """`design/apply` was last said off while the application ran 5caeea86,
+    and it runs f0bc8430. `design/numbers` was said off of f0bc8430 with
+    changes beside it, which is this build.
+
+    Mutation: count a stage's latest word whatever build it was said of --
+    red, `apply` is `off`. Mutation: drop a word of an earlier build -- red,
+    `apply` is `not yet` and its record is gone."""
+    row = tour.review(lines(), PAGES, SERVED, RECORDS)["lines"][0]
+
+    assert states(row) == [
+        ("design/choose", "works"),
+        ("design/numbers", "off"),
+        ("design/apply", "said of an earlier build"),
+        ("design/ready", "not yet"),
+    ]
+    assert row["stops"][2]["feedback"] == RECORDS[1]
+    assert tour.counts(row["stops"]) == {
+        "works": 1, "off": 1, "said of an earlier build": 1, "not yet": 1}
+
+
+def test_an_application_that_does_not_say_its_build_counts_every_latest_word() -> None:
+    """Mutation: hold every word to a build nobody named -- red, each is of
+    an earlier build. Mutation: say nothing of it in the header -- red."""
+    unsaid = {**SERVED, "commit": None, "changed": None}
+
+    document = tour.review(lines(), PAGES, unsaid, RECORDS, at=AT)
+    said_of = tour.render(document)
+
+    assert states(document["lines"][0]) == [
+        ("design/choose", "works"),
+        ("design/numbers", "off"),
+        ("design/apply", "off"),
+        ("design/ready", "not yet"),
+    ]
+    assert said_of.splitlines()[0] == (
+        f"application  {AT}  did not say its build: every latest word counts as said of it")
+    assert said_of.count("did not say its build") == 1
+    # No word is marked as of an earlier build: there is no build to be earlier than.
+    assert ("        ✗ design/apply  Lin  5caeea86  2026-11-14T09:05:00+00:00"
+            "  nothing is applied\n") in said_of
+    assert "  of an earlier build," not in said_of
 
 
 def test_the_records_are_read_and_the_embedded_copy_is_not() -> None:
-    """Mutation: fall back to the `feedback` a stage embeds -- red."""
+    """The copy a stage embeds says of itself whether it is current.
+
+    Mutation: fall back to the `feedback` a stage embeds -- red."""
     embedded = {**SERVED, "journeys": [{"id": "design", "name": "Design a part", "stages": [
-        stage("design", "choose", feedback=said("design/choose", "works"))]}]}
+        stage("design", "choose",
+              feedback={**said("design/choose", "works"), "current": True})]}]}
 
     row = tour.review(lines(), PAGES, embedded, [])["lines"][0]
 
@@ -340,13 +396,54 @@ def test_a_ticked_line_with_a_stage_off_or_unanswered_is_a_disagreement() -> Non
 
     assert document["disagreements"] == [
         {"group": "G", "text": "B is built.", "roadmap": "ticked",
-         "off": [], "not_yet": ["b/2", "b/3"]},
+         "off": [], "earlier": [], "not_yet": ["b/2", "b/3"]},
         {"group": "G", "text": "A is built.", "roadmap": "ticked",
-         "off": ["a/2"], "not_yet": ["a/3"]},
+         "off": ["a/2"], "earlier": [], "not_yet": ["a/3"]},
     ]
     # Neither side is taken: the line stays ticked and the stage stays off.
     assert document["lines"][1]["ticked"] is True
     assert states(document["lines"][1])[1] == ("a/2", "off")
+
+
+def test_a_ticked_line_with_no_word_of_this_build_is_waiting_on_a_word() -> None:
+    """Three ticked lines: `A`, whose only `off` was said of an earlier
+    build; `B`, whose one stage worked in an earlier build; `C`, whose stage
+    works in this one.
+
+    Mutation: read a word of an earlier build as said of this one -- red:
+    `A` has a stage off and `B` is no disagreement.
+    Mutation: give a waiting line its unanswered count alone -- red.
+    Mutation: leave an earlier word out from under its line -- red.
+    Mutation: print an earlier word like one of this build -- red."""
+    served = {"commit": "f0bc8430", "changed": False, "journeys": [
+        {"id": "a", "name": "A", "stages": [stage("a", "1"), stage("a", "2")]},
+        {"id": "b", "name": "B", "stages": [stage("b", "1")]},
+        {"id": "c", "name": "C", "stages": [stage("c", "1")]},
+    ]}
+    records = [said("a/1", "off", "no", commit="5caeea86"),
+               said("b/1", "works", commit="5caeea86"),
+               said("c/1", "works")]
+    roadmap = [Line("G", "A is built.", True, journeys=("a",)),
+               Line("G", "B is built.", True, journeys=("b",)),
+               Line("G", "C is built.", True, journeys=("c",))]
+
+    document = tour.review(roadmap, [], served, records)
+    said_of = tour.render(document)
+
+    assert document["disagreements"] == [
+        {"group": "G", "text": "A is built.", "roadmap": "ticked",
+         "off": [], "earlier": ["a/1"], "not_yet": ["a/2"]},
+        {"group": "G", "text": "B is built.", "roadmap": "ticked",
+         "off": [], "earlier": ["b/1"], "not_yet": []},
+    ]
+    assert ("  only waiting on a word:\n"
+            "    [x] A is built.  1 said of an earlier build, 1 not yet\n"
+            "    [x] B is built.  1 said of an earlier build, 0 not yet\n") in said_of
+    assert "a stage is off:" not in said_of
+    # The earlier `off` can still be read under its line, marked as of its commit.
+    assert ("      journey:a  0 works, 0 off, 1 said of an earlier build, 1 not yet\n"
+            "        ✗ a/1  of an earlier build, 5caeea86  2026-11-15T12:00:00+00:00  no\n"
+            ) in said_of
 
 
 def test_a_page_no_line_names_and_no_stage_tries_is_not_on_the_roadmap() -> None:
@@ -437,6 +534,29 @@ def test_only_off_keeps_the_lines_with_a_stage_off() -> None:
     assert len(document["lines"]) == 4
 
 
+def test_only_off_keeps_a_line_whose_latest_off_was_said_of_an_earlier_build() -> None:
+    """An `off` nobody has taken back stays in what is off when the
+    application's commit moves; its line is then waiting on a word.
+
+    Mutation: keep only what is off of this build -- red."""
+    records = [said("design/apply", "off", "nothing is applied", commit="5caeea86")]
+
+    narrowed = tour.only_off(tour.review(lines(), PAGES, SERVED, records))
+    said_of = tour.render(narrowed)
+
+    assert [row["text"] for row in narrowed["lines"]] == [
+        "A part is chosen and its numbers are staged."]
+    assert narrowed["disagreements"] == [
+        {"group": "Designing a part", "text": "A part is chosen and its numbers are staged.",
+         "roadmap": "ticked", "off": [], "earlier": ["design/apply"],
+         "not_yet": ["design/choose", "design/numbers", "design/ready"]}]
+    assert "        ✗ design/apply  of an earlier build, 5caeea86" in said_of
+    assert said_of.endswith(
+        "  only waiting on a word:\n"
+        "    [x] A part is chosen and its numbers are staged."
+        "  1 said of an earlier build, 3 not yet")
+
+
 def test_only_off_drops_a_disagreement_that_is_only_unanswered() -> None:
     """Mutation: keep every disagreement -- red."""
     quiet = tour.review(lines(), PAGES, SERVED, [said("design/choose", "works")])
@@ -469,9 +589,10 @@ application  http://127.0.0.1:6283  f0bc8430
 
 Designing a part
   [x] A part is chosen and its numbers are staged.
-      journey:design  1 works, 1 off, 1 not yet
+      journey:design  1 works, 1 off, 1 said of an earlier build, 1 not yet
         ✓ design/choose  Ada  f0bc8430  2026-11-15T12:00:00+00:00
-        ✗ design/numbers  0a1b2c3d (changed)  2026-11-15T12:10:00+00:00  a staged number is lost on reload
+        ✗ design/numbers  f0bc8430 (changed)  2026-11-15T12:10:00+00:00  a staged number is lost on reload
+        ✗ design/apply  Lin  of an earlier build, 5caeea86  2026-11-14T09:05:00+00:00  nothing is applied
   [x] An assembly is navigated by its pieces.
       09-an-assembly.md  An assembly  read whole
 
@@ -483,17 +604,18 @@ Making a thing
 
 Disagreements
   The roadmap ticks each line below, and the application holds a stage of
-  it off or not yet answered. Both stand; nothing here writes to a roadmap.
+  it off, or with no word said of this build. Both stand; nothing here
+  writes to a roadmap.
   a stage is off:
     [x] A part is chosen and its numbers are staged.
         off: design/numbers
-        1 not yet
+        1 said of an earlier build, 1 not yet
 
 Not on the roadmap
   pages no line names and no stage tries:
     10-a-drawing.md  A drawing
   journeys the application serves and no line names:
-    journey:calibrate  Calibrate a machine  0 works, 0 off, 1 not yet
+    journey:calibrate  Calibrate a machine  0 works, 0 off, 0 said of an earlier build, 1 not yet
 
 Named by the roadmap, and not there
   journey:make  the application does not serve it  named by: A part is sliced and printed on a machine.
@@ -522,13 +644,14 @@ def test_the_text_puts_the_lines_with_a_stage_off_before_those_only_waiting() ->
     assert (
         "Disagreements\n"
         "  The roadmap ticks each line below, and the application holds a stage of\n"
-        "  it off or not yet answered. Both stand; nothing here writes to a roadmap.\n"
+        "  it off, or with no word said of this build. Both stand; nothing here\n"
+        "  writes to a roadmap.\n"
         "  a stage is off:\n"
         "    [x] A is built.\n"
         "        off: a/2\n"
-        "        1 not yet\n"
+        "        0 said of an earlier build, 1 not yet\n"
         "  only waiting on a word:\n"
-        "    [x] B is built.  2 not yet\n"
+        "    [x] B is built.  0 said of an earlier build, 2 not yet\n"
         "\n"
         "Not on the roadmap\n") in said_of
 
@@ -541,9 +664,10 @@ def test_the_text_of_an_application_nobody_has_answered_is_one_line_a_claim() ->
     said_of = tour.render(tour.review(lines(), PAGES, SERVED, []))
 
     assert (
-        "it off or not yet answered. Both stand; nothing here writes to a roadmap.\n"
+        "  writes to a roadmap.\n"
         "  only waiting on a word:\n"
-        "    [x] A part is chosen and its numbers are staged.  3 not yet\n"
+        "    [x] A part is chosen and its numbers are staged."
+        "  0 said of an earlier build, 4 not yet\n"
         "\n"
         "Not on the roadmap\n") in said_of
     assert "a stage is off:" not in said_of
@@ -598,12 +722,14 @@ def test_the_text_counts_nothing_of_an_application_it_did_not_read() -> None:
 def test_the_text_lists_what_was_said_of_a_stage_nothing_serves() -> None:
     """Mutation: leave the section out -- red."""
     orphan = said("design/sketch", "off", "the sketch is gone", by="Lin")
+    older = said("design/trace", "works", commit="5caeea86")
 
-    said_of = tour.render(tour.review(lines(), PAGES, SERVED, [*RECORDS, orphan]))
+    said_of = tour.render(tour.review(lines(), PAGES, SERVED, [*RECORDS, orphan, older]))
 
     assert said_of.endswith(
         "Said of a stage the application does not serve\n"
-        "  ✗ design/sketch  Lin  f0bc8430  2026-11-15T12:00:00+00:00  the sketch is gone")
+        "  ✗ design/sketch  Lin  f0bc8430  2026-11-15T12:00:00+00:00  the sketch is gone\n"
+        "  ✓ design/trace  of an earlier build, 5caeea86  2026-11-15T12:00:00+00:00")
 
 
 def test_the_text_of_a_review_with_no_disagreement_says_none() -> None:
@@ -616,7 +742,7 @@ def test_the_text_of_a_review_with_no_disagreement_says_none() -> None:
 
     assert said_of.endswith(
         "Disagreements\n"
-        "  None: no ticked line has a stage off or not yet answered.\n"
+        "  None: no ticked line has a stage off, or waiting on a word of this build.\n"
         "\n"
         "Not on the roadmap\n"
         "  Nothing: a line names every journey served, and a line or a stage every page.")
@@ -634,7 +760,8 @@ def test_the_narrowed_text_shows_a_stage_off_in_a_journey_no_line_names() -> Non
         "No line has a stage off.\n"
         "\n"
         "Off, in a journey no line names\n"
-        "    journey:calibrate  Calibrate a machine  0 works, 1 off, 0 not yet\n"
+        "    journey:calibrate  Calibrate a machine"
+        "  0 works, 1 off, 0 said of an earlier build, 0 not yet\n"
         "      ✗ calibrate/level  f0bc8430  2026-11-15T12:00:00+00:00  the bed is out by a turn")
 
 
@@ -832,7 +959,8 @@ def test_off_narrows_the_text_and_the_document(monkeypatch, clone) -> None:
     assert "An assembly is navigated" not in text.output
     assert "Not on the roadmap" not in text.output
     assert "journey:calibrate" not in text.output
-    assert "        off: design/numbers\n        1 not yet" in text.output
+    assert ("        off: design/numbers\n"
+            "        1 said of an earlier build, 1 not yet") in text.output
     assert "only waiting on a word" not in text.output
     assert [row["text"] for row in json.loads(data.output)["lines"]] == [
         "A part is chosen and its numbers are staged."]

@@ -11,9 +11,14 @@ application's own guide walks a person through, and the application keeps what
 each person said of a stage: `works`, or `off` with a note.
 
 The review lays those side by side: each line of the roadmap, the stages and
-pages that show it, and the latest thing said of each stage. Nothing here
-writes. A ticked line with a stage `off`, or with a stage nobody has answered,
-is a disagreement and is reported as one, with what each side says
+pages that show it, and the latest thing said of each stage, with who said
+it. A word counts for the build it was said of: a stage's latest record is
+current when it carries the commit the application runs, and is otherwise
+shown as said of an earlier build.
+
+Nothing here writes. A ticked line with a stage `off` in the running build,
+or with a stage that has no word of that build, is a disagreement and is
+reported as one, with what each side says
 (`records/DRAFT-a-disagreement-is-a-delta.md`); the roadmap is a person's to
 change.
 
@@ -22,8 +27,8 @@ What only the application holds, when it was not asked or did not answer, is
 
 What this cannot see:
 
-  * whether feedback is about the build the roadmap describes: a record
-    carries the commit it was said of, and nothing here compares commits;
+  * whether the build the application runs is the one the roadmap
+    describes: a word is held to the running build, and a roadmap names none;
   * whether a page shows what its line claims: a page is read whole by a
     person, and its state here says only that;
   * a name written any other way: a journey outside a code span or a page
@@ -42,9 +47,11 @@ from typing import Any
 SCHEMA = 1
 """The review document's version. It moves only for a breaking change."""
 
-# What a stage's latest record says, or that it has none.
+# What a stage's latest record says of the build the application runs, that
+# it was said of another build, or that the stage has no record.
 WORKS = "works"
 OFF = "off"
+EARLIER = "said of an earlier build"
 NOT_YET = "not yet"
 
 # A page carries no feedback: a person reads it whole, or the clone has no
@@ -206,10 +213,26 @@ def latest(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return said
 
 
+def is_current(record: dict[str, Any], running: str | None) -> bool:
+    """Whether a record was said of the build the application runs.
+
+    A word counts for the build it was said of: its `commit` is the running
+    one. An application that does not say its build ties no word to one, and
+    every word counts.
+    """
+    return running is None or record.get("commit") == running
+
+
 def _stage_stop(journey: dict[str, Any], stage: dict[str, Any],
-                said: dict[str, dict[str, Any]]) -> dict[str, Any]:
+                said: dict[str, dict[str, Any]], running: str | None) -> dict[str, Any]:
     record = said.get(stage.get("id"))
     verdict = record.get("verdict") if record else None
+    if verdict not in (WORKS, OFF):
+        state = NOT_YET
+    elif is_current(record, running):
+        state = verdict
+    else:
+        state = EARLIER
     return {
         "kind": "stage",
         "id": stage.get("id"),
@@ -217,13 +240,34 @@ def _stage_stop(journey: dict[str, Any], stage: dict[str, Any],
         "stage": stage.get("stage"),
         "title": stage.get("title"),
         "tries": [t["page"] for t in stage.get("tries") or [] if t.get("page")],
-        "state": verdict if verdict in (WORKS, OFF) else NOT_YET,
+        "state": state,
         "feedback": record,
     }
 
 
-def _stops(journey: dict[str, Any], said: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    return [_stage_stop(journey, stage, said) for stage in journey.get("stages") or []]
+def _stops(journey: dict[str, Any], said: dict[str, dict[str, Any]],
+           running: str | None) -> list[dict[str, Any]]:
+    return [_stage_stop(journey, stage, said, running) for stage in journey.get("stages") or []]
+
+
+def _disagreement(row: dict[str, Any]) -> dict[str, Any] | None:
+    """What a ticked line and the application say apart, or None.
+
+    Only a word said of the running build counts: a stage `off` in it, a
+    stage whose latest word is of an earlier build, and a stage nobody has
+    answered each leave the line in disagreement.
+    """
+    held = {state: [stop["id"] for stop in row["stops"]
+                    if stop["kind"] == "stage" and stop["state"] == state]
+            for state in (OFF, EARLIER, NOT_YET)}
+    if not row["ticked"] or not any(held.values()):
+        return None
+    return {"group": row["group"], "text": row["text"], "roadmap": "ticked",
+            "off": held[OFF], "earlier": held[EARLIER], "not_yet": held[NOT_YET]}
+
+
+def _disagreements(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [found for row in rows if (found := _disagreement(row))]
 
 
 def review(lines: list[Line], pages: list[Page],
@@ -246,6 +290,7 @@ def review(lines: list[Line], pages: list[Page],
     journeys = {j.get("id"): j for j in (served or {}).get("journeys") or []
                 if isinstance(j, dict)}
     said = latest(records or [])
+    running = (served or {}).get("commit")
     titles = {page.name: page.title for page in pages}
 
     rows, not_served, not_found = [], [], []
@@ -258,7 +303,7 @@ def review(lines: list[Line], pages: list[Page],
                 stops.append({"kind": "journey", "journey": name, "state": NOT_SERVED})
                 not_served.append({"journey": name, "group": line.group, "text": line.text})
             else:
-                stops += _stops(journeys[name], said)
+                stops += _stops(journeys[name], said, running)
         for name in line.pages:
             held = name in titles
             stops.append({"kind": "page", "page": name, "title": titles.get(name),
@@ -294,18 +339,8 @@ def review(lines: list[Line], pages: list[Page],
             document[theirs] = unknown(unread)
         return document
 
-    document["application"].update(commit=served.get("commit"), changed=served.get("changed"))
-
-    disagreements = []
-    for row in rows:
-        states = {state: [stop["id"] for stop in row["stops"]
-                          if stop["kind"] == "stage" and stop["state"] == state]
-                  for state in (OFF, NOT_YET)}
-        if row["ticked"] and (states[OFF] or states[NOT_YET]):
-            disagreements.append({"group": row["group"], "text": row["text"],
-                                  "roadmap": "ticked",
-                                  "off": states[OFF], "not_yet": states[NOT_YET]})
-    document["disagreements"] = disagreements
+    document["application"].update(commit=running, changed=served.get("changed"))
+    document["disagreements"] = _disagreements(rows)
 
     stages = [stage for journey in journeys.values() for stage in journey.get("stages") or []]
     tried = {t.get("page") for stage in stages for t in stage.get("tries") or []}
@@ -314,7 +349,7 @@ def review(lines: list[Line], pages: list[Page],
 
     named = {name for line in lines for name in line.journeys}
     document["journeys_not_on_the_roadmap"] = [
-        {"id": name, "name": journey.get("name"), "stops": _stops(journey, said)}
+        {"id": name, "name": journey.get("name"), "stops": _stops(journey, said, running)}
         for name, journey in journeys.items() if name not in named]
     document["journeys_not_served"] = not_served
 
@@ -324,23 +359,26 @@ def review(lines: list[Line], pages: list[Page],
     return document
 
 
-def _has_off(stops: list[dict[str, Any]]) -> bool:
-    return any(stop["state"] == OFF for stop in stops)
+def _said_off(stops: list[dict[str, Any]]) -> bool:
+    """Whether the latest word on one of these stops is `off`, of any build."""
+    return any((stop.get("feedback") or {}).get("verdict") == OFF for stop in stops)
 
 
 def only_off(document: dict[str, Any]) -> dict[str, Any]:
     """The review narrowed to what somebody said is off.
 
-    The lines with a stage off, the disagreements among them, and the journeys
-    no line names that have a stage off. The rest of the document stands.
+    The lines with a stage whose latest word is `off`, the disagreements of
+    those lines, and the journeys no line names that have such a stage. An
+    `off` said of an earlier build is kept: nobody has taken it back. The rest
+    of the document stands.
     """
     narrowed = dict(document, narrowed_to=OFF)
-    narrowed["lines"] = [row for row in document["lines"] if _has_off(row["stops"])]
+    narrowed["lines"] = [row for row in document["lines"] if _said_off(row["stops"])]
     if document["application"]["read"]:
-        narrowed["disagreements"] = [d for d in document["disagreements"] if d["off"]]
+        narrowed["disagreements"] = _disagreements(narrowed["lines"])
         narrowed["journeys_not_on_the_roadmap"] = [
             journey for journey in document["journeys_not_on_the_roadmap"]
-            if _has_off(journey["stops"])]
+            if _said_off(journey["stops"])]
     return narrowed
 
 
@@ -350,7 +388,7 @@ def only_off(document: dict[str, Any]) -> dict[str, Any]:
 def counts(stops: list[dict[str, Any]]) -> dict[str, int]:
     """How many of these stops are stages in each state."""
     states = [stop["state"] for stop in stops if stop["kind"] == "stage"]
-    return {state: states.count(state) for state in (WORKS, OFF, NOT_YET)}
+    return {state: states.count(state) for state in (WORKS, OFF, EARLIER, NOT_YET)}
 
 
 def _tally(stops: list[dict[str, Any]]) -> str:
@@ -362,18 +400,20 @@ def _commit(carrier: dict[str, Any]) -> str:
     return f"{commit} (changed)" if carrier.get("changed") else commit
 
 
-def _answered(record: dict[str, Any]) -> str:
+def _answered(record: dict[str, Any], current: bool) -> str:
     """One record: its mark and stage, who said it, the commit and time it
-    carries, its note. A record without a name has nothing in the name's place."""
+    carries, its note. A record without a name has nothing in the name's
+    place, and a word of an earlier build is marked as of its commit."""
+    build = _commit(record) if current else f"of an earlier build, {_commit(record)}"
     parts = [f"{MARK.get(record.get('verdict'), '?')} {record.get('stage')}",
-             record.get("by") or "", _commit(record),
+             record.get("by") or "", build,
              record.get("at") or "no time", record.get("note") or ""]
     return "  ".join(part for part in parts if part)
 
 
 def _stage_lines(stops: list[dict[str, Any]], indent: str) -> list[str]:
-    return [indent + _answered(stop["feedback"]) for stop in stops
-            if stop["kind"] == "stage" and stop["state"] in MARK]
+    return [indent + _answered(stop["feedback"], stop["state"] != EARLIER) for stop in stops
+            if stop["kind"] == "stage" and stop["state"] != NOT_YET]
 
 
 def _box(ticked: bool) -> str:
@@ -425,6 +465,11 @@ def _named(entry: dict[str, Any], what: str) -> str:
     return f"  {what}  named by: {entry['text']}"
 
 
+def _waiting(found: dict[str, Any]) -> str:
+    """How many stages of a disagreement have no word of this build, by kind."""
+    return f"{len(found['earlier'])} {EARLIER}, {len(found['not_yet'])} {NOT_YET}"
+
+
 def _disagreement_lines(document: dict[str, Any]) -> list[str]:
     disagreements = document["disagreements"]
     if not document["application"]["read"]:
@@ -432,22 +477,23 @@ def _disagreement_lines(document: dict[str, Any]) -> list[str]:
     if not disagreements and document["narrowed_to"] == OFF:
         return ["  None: no ticked line has a stage off."]
     if not disagreements:
-        return ["  None: no ticked line has a stage off or not yet answered."]
+        return ["  None: no ticked line has a stage off, or waiting on a word of this build."]
     out = ["  The roadmap ticks each line below, and the application holds a stage of",
-           "  it off or not yet answered. Both stand; nothing here writes to a roadmap."]
-    # The lines a person has something to read on come first; a line nobody
-    # has answered takes one line, with a count where the document has the ids.
+           "  it off, or with no word said of this build. Both stand; nothing here",
+           "  writes to a roadmap."]
+    # The lines a person has something to read on come first; a line waiting
+    # on a word takes one line, with counts where the document has the ids.
     with_off = [found for found in disagreements if found["off"]]
     waiting = [found for found in disagreements if not found["off"]]
     if with_off:
         out.append("  a stage is off:")
     for found in with_off:
         out += [f"    [x] {found['text']}", "        off: " + ", ".join(found["off"])]
-        if found["not_yet"]:
-            out.append(f"        {len(found['not_yet'])} {NOT_YET}")
+        if found["earlier"] or found["not_yet"]:
+            out.append(f"        {_waiting(found)}")
     if waiting:
         out.append("  only waiting on a word:")
-    out += [f"    [x] {found['text']}  {len(found['not_yet'])} {NOT_YET}" for found in waiting]
+    out += [f"    [x] {found['text']}  {_waiting(found)}" for found in waiting]
     return out
 
 
@@ -486,7 +532,8 @@ def _rest_lines(document: dict[str, Any]) -> list[str]:
     orphans = document["feedback_on_no_stage"] if read else []
     if orphans:
         out += ["", "Said of a stage the application does not serve"]
-        out += ["  " + _answered(record) for record in orphans]
+        running = document["application"]["commit"]
+        out += ["  " + _answered(record, is_current(record, running)) for record in orphans]
     return out
 
 
@@ -499,8 +546,10 @@ def render(document: dict[str, Any]) -> str:
     if document["roadmap"]:
         out.append(f"roadmap      {document['roadmap']}")
     if read:
-        parts = [application["at"] or "", _commit(application)]
-        out.append("application  " + "  ".join(part for part in parts if part))
+        build = (_commit(application) if application["commit"] else
+                 "did not say its build: every latest word counts as said of it")
+        out.append("application  " + "  ".join(part for part in (application["at"], build)
+                                               if part))
     else:
         out.append(f"application  not read: {application['why']}")
     if narrowed and not read:

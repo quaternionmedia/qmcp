@@ -2956,8 +2956,8 @@ def _tour_documents(at: str) -> tuple[dict | None, list | None, str]:
                    " http://127.0.0.1:6283; its journeys and the feedback on"
                    " them are read from there")
 @click.option("--off", "off", is_flag=True,
-              help="only what somebody said is off: the lines with a stage off,"
-                   " and a journey no line names that has one")
+              help="only what somebody said is off: the lines with a stage whose"
+                   " latest word is off, and a journey no line names that has one")
 @click.option("--json", "as_json", is_flag=True, help="emit the review as data")
 def tour_command(clone: Path, roadmap: Path | None, at: str | None, off: bool,
                  as_json: bool) -> None:
@@ -2970,12 +2970,15 @@ def tour_command(clone: Path, roadmap: Path | None, at: str | None, off: bool,
 
     With `--at`, the application is asked for its journeys (`GET /tour`) and
     for every feedback record it keeps (`GET /tour/feedback`), and each stage
-    carries the latest thing said of it. Without it, or when the application
-    does not answer, the roadmap and the pages are still reviewed and each
-    journey's stages are left as the application's to say.
+    carries the latest thing said of it and who said it. A word counts for
+    the build it was said of: one said while the application ran another
+    commit is shown as said of an earlier build. Without `--at`, or when the
+    application does not answer, the roadmap and the pages are still reviewed
+    and each journey's stages are left as the application's to say.
 
-    A ticked line with a stage off, or not yet answered, is listed as a
-    disagreement. Nothing is written: the roadmap is a person's to change.
+    A ticked line with a stage off, or with a stage that has no word of the
+    running build, is listed as a disagreement. Nothing is written: the
+    roadmap is a person's to change.
 
     \b
         uv run qmcp tour <clone>
