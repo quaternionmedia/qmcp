@@ -28,6 +28,8 @@ What this cannot see:
     person, and its state here says only that;
   * a name written any other way: a journey outside a code span or a page
     named without a link is prose, and its line is `shown by nothing`.
+
+`docs/tour.md` is the reference for the command and the documents it reads.
 """
 
 from __future__ import annotations
