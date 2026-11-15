@@ -2913,6 +2913,94 @@ def deltas(project: str | None, pipeline: str) -> None:
     click.echo(_json.dumps(payloads, indent=2))
 
 
+# Where a project's roadmap stands in its clone: in the project's branch of the
+# governance corpus, which the clone holds as a submodule.
+_ROADMAP = Path("governance", "qm", "project", "ROADMAP.md")
+
+
+def _tour_documents(at: str) -> tuple[dict | None, list | None, str]:
+    """An application's journeys and its feedback records, or why not.
+
+    Two reads, `<at>/tour` and `<at>/tour/feedback`. The review needs both, so
+    one that fails leaves the application unread, and the third value names
+    the address that failed and how.
+    """
+    import httpx
+
+    found = []
+    for path, holds in (("/tour", "journeys"), ("/tour/feedback", "feedback")):
+        url = at.rstrip("/") + path
+        try:
+            response = httpx.get(url, timeout=5.0)
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPStatusError as exc:
+            return None, None, f"{url} answered {exc.response.status_code}"
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
+            return None, None, f"{url} did not answer ({str(exc) or type(exc).__name__})"
+        except ValueError:
+            return None, None, f"{url} did not answer in JSON"
+        if not isinstance(body, dict) or not isinstance(body.get(holds), list):
+            return None, None, f"{url} answered without a `{holds}` list"
+        found.append(body)
+    return found[0], found[1]["feedback"], ""
+
+
+@cli.command("tour")
+@click.argument("clone", type=click.Path(path_type=Path, exists=True, file_okay=False))
+@click.option("--roadmap", type=click.Path(path_type=Path), default=None,
+              help="the roadmap to read (default: governance/qm/project/ROADMAP.md"
+                   " in CLONE)")
+@click.option("--at", default=None,
+              help="where the application is running, for example"
+                   " http://127.0.0.1:6283; its journeys and the feedback on"
+                   " them are read from there")
+@click.option("--off", "off", is_flag=True,
+              help="only what somebody said is off: the lines with a stage off,"
+                   " and a journey no line names that has one")
+@click.option("--json", "as_json", is_flag=True, help="emit the review as data")
+def tour_command(clone: Path, roadmap: Path | None, at: str | None, off: bool,
+                 as_json: bool) -> None:
+    """A project's roadmap, with what shows each line and what people said of it.
+
+    CLONE is a clone of the repository under review. Its roadmap's checkbox
+    lines are the claims; each names a journey of the application's own guide
+    (`journey:<id>` in a code span) or walkthrough pages (by link), and a
+    line that names neither is `shown by nothing`.
+
+    With `--at`, the application is asked for its journeys (`GET /tour`) and
+    for every feedback record it keeps (`GET /tour/feedback`), and each stage
+    carries the latest thing said of it. Without it, or when the application
+    does not answer, the roadmap and the pages are still reviewed and each
+    journey's stages are left as the application's to say.
+
+    A ticked line with a stage off, or not yet answered, is listed as a
+    disagreement. Nothing is written: the roadmap is a person's to change.
+
+    \b
+        uv run qmcp tour <clone>
+        uv run qmcp tour <clone> --at http://127.0.0.1:6283 --off
+    """
+    import json as _json
+
+    from qmcp import tour
+
+    path = roadmap or clone / _ROADMAP
+    if not path.is_file():
+        raise click.ClickException(
+            f"no roadmap at {path}. A project's roadmap is {_ROADMAP.as_posix()} "
+            "in its clone; --roadmap names one that stands elsewhere.")
+
+    served, records, unread = None, None, "no --at was given"
+    if at:
+        served, records, unread = _tour_documents(at)
+    document = tour.review(tour.read_roadmap(path), tour.read_pages(clone), served, records,
+                           roadmap=str(path), at=at, unread=unread)
+    if off:
+        document = tour.only_off(document)
+    click.echo(_json.dumps(document, indent=2) if as_json else tour.render(document))
+
+
 # =============================================================================
 # The routes three modules already told people to run
 #

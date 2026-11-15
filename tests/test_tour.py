@@ -1,18 +1,24 @@
-"""`qmcp.tour`: a roadmap read against the tour its application serves.
+"""`qmcp tour`: a roadmap read against the tour its application serves.
 
-Two parts are held here: the readers (a roadmap's lines, a clone's pages) and
-the review built from them and the application's two documents. Those
-documents are written out here, so no test needs an application running.
+Three parts are held here: the readers (a roadmap's lines, a clone's pages),
+the review built from them and the application's two documents, and the
+command, run through click with `httpx.get` replaced by a fake that answers
+from a dict and keeps what it was asked. No test needs a running application.
 
-Each test names the mutation of `qmcp/tour.py` it goes red under.
+Each test names the mutation of `qmcp/tour.py` or `qmcp/cli.py` it goes red
+under.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import httpx
 import pytest
+from click.testing import CliRunner
 
+import qmcp.cli as cli
 from qmcp import tour
 from qmcp.tour import Line, Page
 
@@ -580,3 +586,174 @@ def test_the_narrowed_text_with_nothing_off_says_so_and_stops() -> None:
     said_of = tour.render(tour.only_off(document))
 
     assert said_of.endswith("f0bc8430\n\nNo line has a stage off.")
+
+
+# --- the command ----------------------------------------------------------------
+
+
+@pytest.fixture
+def clone(tmp_path: Path) -> Path:
+    """A clone with a roadmap where a project keeps it, and its three pages."""
+    root = tmp_path / "clone"
+    (root / "governance" / "qm" / "project").mkdir(parents=True)
+    (root / "governance" / "qm" / "project" / "ROADMAP.md").write_text(ROADMAP, encoding="utf-8")
+    (root / "walkthrough").mkdir()
+    for page in PAGES:
+        number = page.name.split("-")[0]
+        (root / "walkthrough" / page.name).write_text(
+            f"# {number} — {page.title}\n", encoding="utf-8")
+    return root
+
+
+def answering(monkeypatch, answers: dict) -> list[str]:
+    """Replace `httpx.get` with one that answers from `answers`, by address.
+
+    An address it has no answer for refuses the connection. A dict is served
+    as JSON, a string as text, an int as that status. Returns the addresses
+    asked, in order.
+    """
+    asked: list[str] = []
+
+    def fake_get(url, timeout=None):
+        asked.append(url)
+        request = httpx.Request("GET", url)
+        if url not in answers:
+            raise httpx.ConnectError("All connection attempts failed", request=request)
+        answer = answers[url]
+        if isinstance(answer, int):
+            return httpx.Response(answer, request=request)
+        if isinstance(answer, str):
+            return httpx.Response(200, text=answer, request=request)
+        return httpx.Response(200, json=answer, request=request)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    return asked
+
+
+def application() -> dict:
+    return {f"{AT}/tour": SERVED, f"{AT}/tour/feedback": {"feedback": RECORDS}}
+
+
+def test_the_command_reads_the_roadmap_the_pages_and_both_documents(monkeypatch, clone) -> None:
+    """Mutation: read `/tour` alone and take the feedback it embeds -- red on
+    what was asked. Mutation: look for the roadmap at the clone's root -- red."""
+    asked = answering(monkeypatch, application())
+
+    result = CliRunner().invoke(cli.cli, ["tour", str(clone), "--at", AT + "/"])
+
+    assert result.exit_code == 0, result.output
+    assert asked == [f"{AT}/tour", f"{AT}/tour/feedback"]
+    roadmap = clone / "governance" / "qm" / "project" / "ROADMAP.md"
+    assert result.output == REVIEW.replace("ROADMAP.md", str(roadmap), 1).replace(
+        f"application  {AT}  ", f"application  {AT}/  ")
+
+
+def test_a_missing_roadmap_is_named_with_the_path_looked_at(monkeypatch, tmp_path) -> None:
+    """Mutation: read the roadmap without asking whether it is there -- red:
+    the exit is an unhandled `FileNotFoundError`, and nothing names the path."""
+    answering(monkeypatch, {})
+    (tmp_path / "walkthrough").mkdir()
+
+    result = CliRunner().invoke(cli.cli, ["tour", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, SystemExit)
+    looked_at = tmp_path / "governance" / "qm" / "project" / "ROADMAP.md"
+    assert f"no roadmap at {looked_at}" in result.output
+
+
+def test_roadmap_names_a_roadmap_that_stands_elsewhere(monkeypatch, clone, tmp_path) -> None:
+    """Mutation: ignore `--roadmap` -- red, the clone's own roadmap is read."""
+    answering(monkeypatch, {})
+    elsewhere = tmp_path / "another.md"
+    elsewhere.write_text("## Elsewhere\n\n- [ ] A line of another roadmap.\n", encoding="utf-8")
+
+    result = CliRunner().invoke(cli.cli, ["tour", str(clone), "--roadmap", str(elsewhere)])
+
+    assert result.exit_code == 0, result.output
+    assert "Elsewhere\n  [ ] A line of another roadmap.\n      shown by nothing" in result.output
+    assert "A part is chosen" not in result.output
+
+
+def test_without_at_nothing_is_asked_and_the_line_says_how_to_pass_it(monkeypatch, clone) -> None:
+    """Mutation: ask a default address when `--at` is not given -- red on
+    what was asked."""
+    asked = answering(monkeypatch, application())
+
+    result = CliRunner().invoke(cli.cli, ["tour", str(clone)])
+
+    assert result.exit_code == 0, result.output
+    assert asked == []
+    assert "application  not read: no --at was given" in result.output
+    assert ("journey:design  its stages are the application's to say:"
+            " pass --at URL, the address it is running at") in result.output
+    assert "09-an-assembly.md  An assembly  read whole" in result.output
+
+
+@pytest.mark.parametrize("answers, why", [
+    ({}, f"{AT}/tour did not answer (All connection attempts failed)"),
+    ({f"{AT}/tour": SERVED, f"{AT}/tour/feedback": 404}, f"{AT}/tour/feedback answered 404"),
+    ({f"{AT}/tour": "<html>a page</html>"}, f"{AT}/tour did not answer in JSON"),
+    ({f"{AT}/tour": {"detail": "Not Found"}}, f"{AT}/tour answered without a `journeys` list"),
+    ({f"{AT}/tour": SERVED, f"{AT}/tour/feedback": {"feedback": None}},
+     f"{AT}/tour/feedback answered without a `feedback` list"),
+])
+def test_an_application_that_does_not_answer_leaves_the_review_printed(
+        monkeypatch, clone, answers, why) -> None:
+    """Each way an address can fail to hand over its document.
+
+    Mutation: let a refused connection, a refusal status or a body that is
+    not JSON raise -- red, the command ends on the exception. Mutation: take
+    whatever JSON came back as the document -- red on the last two."""
+    answering(monkeypatch, answers)
+
+    result = CliRunner().invoke(cli.cli, ["tour", str(clone), "--at", AT])
+
+    assert result.exception is None, result.exception
+    assert result.exit_code == 0
+    assert f"application  not read: {why}" in result.output
+    assert (f"journey:design  its stages are the application's to say,"
+            f" and it did not answer at {AT}") in result.output
+    assert "09-an-assembly.md  An assembly  read whole" in result.output
+    assert "0 works" not in result.output
+
+
+def test_json_emits_the_review_document(monkeypatch, clone) -> None:
+    """Mutation: print the text whatever `--json` says -- red, it does not parse."""
+    answering(monkeypatch, application())
+
+    result = CliRunner().invoke(cli.cli, ["tour", str(clone), "--at", AT, "--json"])
+
+    assert result.exit_code == 0, result.output
+    roadmap = clone / "governance" / "qm" / "project" / "ROADMAP.md"
+    assert json.loads(result.output) == tour.review(
+        lines(), PAGES, SERVED, RECORDS, roadmap=str(roadmap), at=AT)
+
+
+def test_off_narrows_the_text_and_the_document(monkeypatch, clone) -> None:
+    """Mutation: ignore `--off` -- red, every line prints."""
+    answering(monkeypatch, application())
+
+    text = CliRunner().invoke(cli.cli, ["tour", str(clone), "--at", AT, "--off"])
+    data = CliRunner().invoke(cli.cli, ["tour", str(clone), "--at", AT, "--off", "--json"])
+
+    assert text.exit_code == 0, text.output
+    assert "✗ design/numbers" in text.output
+    assert "An assembly is navigated" not in text.output
+    assert "Not on the roadmap" not in text.output
+    assert "journey:calibrate" not in text.output
+    assert "      off: design/numbers\n      not yet: design/apply" in text.output
+    assert [row["text"] for row in json.loads(data.output)["lines"]] == [
+        "A part is chosen and its numbers are staged."]
+
+
+def test_off_without_at_asks_nothing_and_claims_nothing(monkeypatch, clone) -> None:
+    """Mutation: ask a default address under `--off` -- red on what was asked."""
+    asked = answering(monkeypatch, application())
+
+    result = CliRunner().invoke(cli.cli, ["tour", str(clone), "--off"])
+
+    assert result.exit_code == 0, result.output
+    assert asked == []
+    assert "Whether a stage is off is the application's to say." in result.output
+    assert "No line has a stage off" not in result.output

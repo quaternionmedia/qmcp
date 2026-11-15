@@ -1,5 +1,8 @@
 """A project's roadmap, read against the tour its application serves.
 
+    uv run qmcp tour <clone>                              # the roadmap and the pages
+    uv run qmcp tour <clone> --at http://127.0.0.1:6283   # and what people said
+
 A roadmap is a Markdown document in the project's branch of the governance
 corpus. Each checkbox item in it is a claim, ticked when the project says it
 is built, and it names what shows it: a journey, as `journey:<id>` in a code
