@@ -3,13 +3,14 @@
 A roadmap says what a project claims is built. `qmcp tour` shows what stands
 behind each claim and what people said of it: the stages of the application's
 own guide and the walkthrough pages a line names, with the latest feedback on
-each stage. The code is `qmcp/tour.py`, and
+each stage, who gave it, and whether it was said of the build the application
+runs. The code is `qmcp/tour.py`, and
 `walkthrough/12-a-roadmap-read-against-the-tour.md` runs it end to end.
 
 The guide itself is the application's. It walks a person through the
 application's *journeys*, each an ordered set of *stages*, and keeps what they
-said of a stage: `works`, or `off` with a note. qmcp reads that and the
-roadmap, and writes to neither.
+said of a stage: `works`, or `off` with a note, with their name and the commit
+the application ran. qmcp reads that and the roadmap, and writes to neither.
 
 ## The command
 
@@ -25,7 +26,7 @@ uv run qmcp tour <clone> --json
 | `CLONE` | a clone of the repository under review; its `walkthrough/` holds the pages |
 | `--roadmap PATH` | the roadmap to read; the default is `governance/qm/project/ROADMAP.md` in the clone |
 | `--at URL` | where the application is running; `URL/tour` and `URL/tour/feedback` are read |
-| `--off` | only what somebody said is off: the lines with a stage off, the disagreements among them, and a journey no line names that has a stage off |
+| `--off` | only what somebody said is off: the lines with a stage whose latest word is `off`, of this build or an earlier one, the disagreements of those lines, and a journey no line names that has such a stage |
 | `--json` | the review document, as data |
 
 A roadmap that is not there ends the command with the path it looked at and a
@@ -95,7 +96,7 @@ beside them.
 
 ```json
 {"feedback": [
-  {"stage": "design/choose", "verdict": "works", "note": "",
+  {"stage": "design/choose", "verdict": "works", "note": "", "by": "Ada",
    "at": "2026-11-15T12:00:00+00:00", "commit": "f0bc8430", "changed": false}
 ]}
 ```
@@ -104,17 +105,27 @@ What the review reads of them:
 
 | From | Key | Read as |
 |---|---|---|
-| `/tour` | `commit`, `changed` | the commit the application runs and whether its tree has changes beside it, printed in the review's first lines |
+| `/tour` | `commit`, `changed` | the build the application runs: the commit every record's own is held against, and whether its tree has changes beside it; printed in the review's first lines |
 | `/tour` | `journeys[].id`, `name`, `stages` | a journey, and its stages in the order listed |
 | `/tour` | `stages[].id`, `stage`, `title` | a stage; `id` is what a record names |
 | `/tour` | `stages[].tries[].page` | a walkthrough page the stage tries, by file name |
 | `/tour/feedback` | `feedback[].stage` | the stage a record is about |
 | `/tour/feedback` | `verdict` | `works` or `off` |
-| `/tour/feedback` | `note`, `at`, `commit`, `changed` | printed beside the stage, as the record carries them |
+| `/tour/feedback` | `by` | who said it, printed beside the stage; a record kept before words carried a name has no `by`, or an empty one, and nothing is printed in its place |
+| `/tour/feedback` | `commit` | the build the word was said of |
+| `/tour/feedback` | `note`, `at`, `changed` | printed beside the stage, as the record carries them |
 
 A stage's feedback is the **latest record that names it**, by the list's
-order. The `feedback` a stage embeds in `/tour` is not read. Any other key is
-passed over.
+order. The `feedback` a stage embeds in `/tour`, and the `current` it carries,
+are not read: the review works from the records and the commit at the top of
+`/tour`. Any other key is passed over.
+
+**A word counts for the build it was said of.** A stage's latest record is
+current when its `commit` is the one the application runs. Otherwise it was
+said of an earlier build: it is kept and printed, and it is not counted as
+`works` or `off`. An application whose `commit` is null ties no word to a
+build; every stage's latest record then counts, and the review's first lines
+say that the application did not say its build.
 
 ## The review document
 
@@ -125,9 +136,9 @@ passed over.
 | `schema` | the document's version, which moves only for a breaking change |
 | `roadmap` | the path of the roadmap read |
 | `application` | `at` and `read`; with `commit` and `changed` when read, with `why` when not |
-| `narrowed_to` | `"off"` under `--off`, where `lines`, `disagreements` and `journeys_not_on_the_roadmap` hold only what has a stage off; otherwise null |
+| `narrowed_to` | `"off"` under `--off`, where `lines`, `disagreements` and `journeys_not_on_the_roadmap` hold only what has a stage whose latest word is `off`; otherwise null |
 | `lines` | every acceptance line, in the roadmap's order |
-| `disagreements` | the ticked lines with a stage off or not yet answered |
+| `disagreements` | the ticked lines with a stage off, or with a stage that has no word of the running build |
 | `pages_no_line_names` | the clone's pages no line links |
 | `pages_not_on_the_roadmap` | those of them no stage tries either |
 | `journeys_not_on_the_roadmap` | journeys the application serves and no line names, each with its stops |
@@ -141,7 +152,7 @@ then its pages.
 
 | Stop `kind` | Keys | `state` |
 |---|---|---|
-| `stage` | `id`, `journey`, `stage`, `title`, `tries`, `feedback` | `works`, `off`, or `not yet` with `feedback` null |
+| `stage` | `id`, `journey`, `stage`, `title`, `tries`, `feedback` | `works` or `off`, of the running build; `said of an earlier build`, with the earlier record as `feedback`; or `not yet`, with `feedback` null |
 | `page` | `page`, `title` | `read whole`, or `not found` |
 | `journey` | `journey` | `the application's to say` when it was not read, `not served` when it was |
 
@@ -154,18 +165,23 @@ A `journey` stop stands where a journey's stages cannot be listed.
 
 ## Disagreements
 
-A ticked line with a stage `off`, or a stage nobody has answered, is a
+The rule reads only the words said of the running build. A ticked line with a
+stage `off` in that build, or with a stage that has no word of it, is a
 disagreement between the roadmap and the application. The review lists it
-with what each side says: `roadmap` is `ticked`, and `off` and `not_yet` hold
-the stage ids. Neither side is taken. The line stays ticked in the review,
-the stage keeps its state, and the roadmap is a person's to change
+with what each side says: `roadmap` is `ticked`, and three lists hold the
+stage ids: `off`, the stages off in this build; `earlier`, those whose latest
+word was said of an earlier build; and `not_yet`, those nobody has answered.
+Neither side is taken. The line stays ticked in the review, the stage keeps
+its state, and the roadmap is a person's to change
 (`governance/qm/records/DRAFT-a-disagreement-is-a-delta.md`).
 
 The text prints two kinds apart. The lines with a stage off come first, each
-with the ids of its off stages and a count of those not yet answered. The
-lines only waiting on a word follow, one line each with its count; while
-nobody has answered an application, every ticked journey line is one of
-these. The document holds both lists of ids for every disagreement.
+with the ids of its off stages and, beneath, how many of its stages were said
+of an earlier build and how many are not yet answered. The lines only waiting
+on a word follow, one line each with the same two counts; an `off` said of an
+earlier build puts its line here. While nobody has answered an application,
+or after its commit moves, every ticked journey line is one of these. The
+document holds the three lists of ids for every disagreement.
 
 A journey a line names and the application does not serve has no stages to
 disagree about. It is listed on its own, under what the roadmap names and is
@@ -173,21 +189,31 @@ not there.
 
 ## The text
 
+The first lines name the roadmap read and the application, with the commit it
+runs, or that it did not say its build.
+
 One entry for each line under its group's heading: the claim with its tick,
-then, for each journey it names, the count of stages that work, are off and
-are not yet answered. Each answered stage follows with `✓` or `✗`, the commit
-and time its record carries, and its note. `(changed)` after a commit is the
-record's own `changed`: the application's tree had changes beside that
-commit. The entries are followed by the disagreements, then what is not on
-the roadmap, what the roadmap names and is not there, and what was said of a
+then, for each journey it names, four counts of its stages: those that work
+and those that are off in the running build, those said of an earlier build,
+and those not yet answered. Each stage with a word follows with `✓` or `✗`,
+who said it, the commit and time its record carries, and its note. A word of
+an earlier build has `of an earlier build` before its commit. `(changed)`
+after a commit is the record's own `changed`: the application's tree had
+changes beside that commit.
+
+The entries are followed by the disagreements, then what is not on the
+roadmap, what the roadmap names and is not there, and what was said of a
 stage nothing serves. Under `--off` the entries are followed by their
-disagreements and by any journey no line names that has a stage off.
+disagreements and by any journey no line names that has a stage whose latest
+word is `off`.
 
 ## What it cannot see
 
-- Whether feedback is about the build the roadmap describes. A record carries
-  the commit it was said of, the review prints it, and nothing compares
-  commits.
+- Whether the build the application runs is the one the roadmap describes. A
+  word is held to the running build, and a roadmap names none.
+- Which of two builds is the later. A record whose commit is not the running
+  one was said while the application ran another build, and that is all
+  `earlier` means here: the two commits are not ordered.
 - Whether a page shows what its line claims.
 - A name written any other way. `journey:design` outside a code span, or a
   page named in a code span with no link, is prose, and its line is shown by
