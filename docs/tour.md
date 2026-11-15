@@ -3,7 +3,8 @@
 A roadmap says what a project claims is built. `qmcp tour` shows what stands
 behind each claim and what people said of it: the stages of the application's
 own guide and the walkthrough pages a line names, with the latest feedback on
-each stage. The code is `qmcp/tour.py`.
+each stage. The code is `qmcp/tour.py`, and
+`walkthrough/12-a-roadmap-read-against-the-tour.md` runs it end to end.
 
 The guide itself is the application's. It walks a person through the
 application's *journeys*, each an ordered set of *stages*, and keeps what they
