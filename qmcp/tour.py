@@ -363,8 +363,10 @@ def _commit(carrier: dict[str, Any]) -> str:
 
 
 def _answered(record: dict[str, Any]) -> str:
-    """One record: its mark and stage, the commit and time it carries, its note."""
-    parts = [f"{MARK.get(record.get('verdict'), '?')} {record.get('stage')}", _commit(record),
+    """One record: its mark and stage, who said it, the commit and time it
+    carries, its note. A record without a name has nothing in the name's place."""
+    parts = [f"{MARK.get(record.get('verdict'), '?')} {record.get('stage')}",
+             record.get("by") or "", _commit(record),
              record.get("at") or "no time", record.get("note") or ""]
     return "  ".join(part for part in parts if part)
 

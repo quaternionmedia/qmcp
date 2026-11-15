@@ -49,10 +49,12 @@ def stage(journey: str, name: str, tries: tuple[str, ...] = (), feedback=None) -
 
 
 def said(of: str, verdict: str, note: str = "", at: str = "2026-11-15T12:00:00+00:00",
-         commit: str = "f0bc8430", changed: bool = False) -> dict:
-    """One feedback record, shaped as `GET /tour/feedback` lists it."""
-    return {"stage": of, "verdict": verdict, "note": note, "at": at,
-            "commit": commit, "changed": changed}
+         commit: str = "f0bc8430", changed: bool = False, by: str | None = None) -> dict:
+    """One feedback record, shaped as `GET /tour/feedback` lists it. A record
+    kept before words were named has no `by`."""
+    record = {"stage": of, "verdict": verdict, "note": note, "at": at,
+              "commit": commit, "changed": changed}
+    return record if by is None else {**record, "by": by}
 
 
 # `design` is on the roadmap and served; `make` is on the roadmap and not
@@ -72,7 +74,7 @@ RECORDS = [
          commit="5caeea86"),
     said("design/numbers", "off", "a staged number is lost on reload",
          at="2026-11-15T12:10:00+00:00", commit="0a1b2c3d", changed=True),
-    said("design/choose", "works"),
+    said("design/choose", "works", by="Ada"),
 ]
 
 PAGES = [Page("04-designing-a-part.md", "Designing a part"),
@@ -468,7 +470,7 @@ application  http://127.0.0.1:6283  f0bc8430
 Designing a part
   [x] A part is chosen and its numbers are staged.
       journey:design  1 works, 1 off, 1 not yet
-        ✓ design/choose  f0bc8430  2026-11-15T12:00:00+00:00
+        ✓ design/choose  Ada  f0bc8430  2026-11-15T12:00:00+00:00
         ✗ design/numbers  0a1b2c3d (changed)  2026-11-15T12:10:00+00:00  a staged number is lost on reload
   [x] An assembly is navigated by its pieces.
       09-an-assembly.md  An assembly  read whole
@@ -547,6 +549,28 @@ def test_the_text_of_an_application_nobody_has_answered_is_one_line_a_claim() ->
     assert "a stage is off:" not in said_of
 
 
+def test_the_text_names_who_said_a_word_and_nothing_where_nobody_is_named() -> None:
+    """One word with a name, one with an empty name, one kept before names.
+
+    Mutation: leave the name out -- red on the first line.
+    Mutation: print `by` whatever it holds -- red, `None` stands for a name."""
+    records = [said("design/choose", "works", by="Ada"),
+               said("design/numbers", "off", "a staged number is lost", by=""),
+               said("design/apply", "works")]
+
+    document = tour.review(lines(), PAGES, SERVED, records)
+    said_of = tour.render(document)
+
+    assert ("        ✓ design/choose  Ada  f0bc8430  2026-11-15T12:00:00+00:00\n"
+            "        ✗ design/numbers  f0bc8430  2026-11-15T12:00:00+00:00"
+            "  a staged number is lost\n"
+            "        ✓ design/apply  f0bc8430  2026-11-15T12:00:00+00:00\n") in said_of
+    assert "None" not in said_of
+    # The document keeps the record as the application gave it.
+    assert document["lines"][0]["stops"][0]["feedback"]["by"] == "Ada"
+    assert "by" not in document["lines"][0]["stops"][2]["feedback"]
+
+
 def test_the_text_says_shown_by_nothing_in_those_words() -> None:
     """Mutation: print nothing under a line that names nothing -- red."""
     said_of = tour.render(tour.review(lines(), PAGES))
@@ -573,13 +597,13 @@ def test_the_text_counts_nothing_of_an_application_it_did_not_read() -> None:
 
 def test_the_text_lists_what_was_said_of_a_stage_nothing_serves() -> None:
     """Mutation: leave the section out -- red."""
-    orphan = said("design/sketch", "off", "the sketch is gone")
+    orphan = said("design/sketch", "off", "the sketch is gone", by="Lin")
 
     said_of = tour.render(tour.review(lines(), PAGES, SERVED, [*RECORDS, orphan]))
 
     assert said_of.endswith(
         "Said of a stage the application does not serve\n"
-        "  ✗ design/sketch  f0bc8430  2026-11-15T12:00:00+00:00  the sketch is gone")
+        "  ✗ design/sketch  Lin  f0bc8430  2026-11-15T12:00:00+00:00  the sketch is gone")
 
 
 def test_the_text_of_a_review_with_no_disagreement_says_none() -> None:
