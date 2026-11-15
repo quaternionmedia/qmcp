@@ -155,6 +155,31 @@ def test_a_line_names_a_journey_and_pages_together() -> None:
     assert found[0].text == "Cut."
 
 
+def test_the_commas_between_and_after_the_names_are_not_the_claim() -> None:
+    """A line that names two pages, with a comma between them.
+
+    Mutation: take out the names and leave what stands between them -- red:
+    the text ends ` ,`."""
+    found = tour.roadmap_lines(
+        "- [x] A camera's picture becomes pieces, and a piece a print."
+        " [01](../../../walkthrough/01-photographs-into-pieces.md),"
+        " [03](../../../walkthrough/03-a-picture-to-a-print.md)\n")
+
+    assert found[0].text == "A camera's picture becomes pieces, and a piece a print."
+    assert found[0].pages == ("01-photographs-into-pieces.md", "03-a-picture-to-a-print.md")
+
+
+@pytest.mark.parametrize("words, text", [
+    ("Cut. `journey:cut`, [20](walkthrough/20-a-cut.md), [21](walkthrough/21-a-fit.md),", "Cut."),
+    ("Cut, as `journey:cut` walks it, and fitted.", "Cut, as walks it, and fitted."),
+    ("Cut, fitted, and glued. [20](walkthrough/20-a-cut.md)", "Cut, fitted, and glued."),
+])
+def test_only_the_commas_beside_a_name_go_with_it(words: str, text: str) -> None:
+    """Mutation: take every comma out of a line that names something -- red
+    on the claim's own commas."""
+    assert tour.roadmap_lines(f"- [x] {words}\n")[0].text == text
+
+
 def test_a_wrapped_line_is_one_line() -> None:
     """A checkbox item's indented continuation is part of its claim; a nested
     item and the paragraph after it are not.

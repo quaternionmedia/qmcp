@@ -101,10 +101,13 @@ class Page:
 
 
 def _line(group: str | None, ticked: bool, words: str) -> Line:
-    named = _PAGE_LINK.sub(" ", _JOURNEY.sub(" ", words))
+    # A name leaves the claim with the commas and spaces that follow it:
+    # those between it and the next name, and those after the last.
+    marked = _PAGE_LINK.sub("\0", _JOURNEY.sub("\0", words))
+    claim = re.sub(r"\0[\s,]*", " ", marked)
     return Line(
         group=group,
-        text=" ".join(named.split()),
+        text=" ".join(claim.split()),
         ticked=ticked,
         journeys=tuple(dict.fromkeys(_JOURNEY.findall(words))),
         pages=tuple(dict.fromkeys(_PAGE_LINK.findall(words))),
