@@ -33,7 +33,7 @@ package qmcp imports, as a path dependency on its submodule.
 |---|---|---|---|
 | **Tool server** | publishing tools, running them when asked, a row per invocation | `GET /v1/tools`, `POST /v1/tools/{name}`, `/v1/invocations`; `qmcp.client`; `qmcp_mcp.py` over the Model Context Protocol | [`setup/tool-server.md`](setup/tool-server.md) |
 | **Human gate** | the questions waiting on a person, their options and expiry, and who answered | `/v1/human/requests`, `/v1/human/responses`; `qmcp human`; speech through vox and joe | [`setup/tool-server.md`](setup/tool-server.md) |
-| **Harness** | running a repository's gates as recorded invocations, turning failures into units of work, saying which server it is; reading assistant conversations as units of work | `qmcp selfcheck`, `dashboard`, `deltas`, `preflight`, `threads`; `/health`; `/v1/threads` | [`setup/harness.md`](setup/harness.md) |
+| **Harness** | running a repository's gates as recorded invocations, turning failures into units of work, saying which server it is; reading assistant conversations as units of work; reading a project's roadmap against the tour its application serves | `qmcp selfcheck`, `dashboard`, `deltas`, `preflight`, `threads`, `tour`; `/health`; `/v1/threads` | [`setup/harness.md`](setup/harness.md) |
 | **Instruction loop** | an instruction recorded against a rostered project, consent asked through the human gate, the act run in the project's clone, and the project's earlier instructions carried into the next | `qmcp instruct`, `instructions`, `converse`, `serve --converse`; `/v1/instructions`; `qmcp localmodel` | [`voice-loop-demo.md`](voice-loop-demo.md) |
 | **Topology designer** | the shapes a set of agents can take, what each would do declared before anything runs, and saved designs and components | `qmcp topology`, `orchestration`; `/v1/topology`, `/v1/orchestration/*`, `/v1/topologies`, `/v1/topology-components` | [`agentframework/topologies.md`](agentframework/topologies.md) |
 | **Flow host** | the cookbook's Metaflow flows, run in Docker against this server, alfred's renders and captions among them | `qmcp cookbook`; `examples/flows/`; the `alfred_*` tools | [`setup/flows.md`](setup/flows.md) |
@@ -50,6 +50,7 @@ package qmcp imports, as a path dependency on its submodule.
 | running a flow's steps | Metaflow, in Docker |
 | rendering and captioning media | alfred |
 | drawing a topology's shape as a map | codecartographer |
+| walking a person through an application's journeys, and keeping what they said of each stage | the application |
 | which projects exist, and the rules every project is held to | `governance/qm` |
 | answering a human request | a person; nothing in qmcp answers one on a person's behalf |
 

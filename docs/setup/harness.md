@@ -65,3 +65,4 @@ the `qmcp.exe` it would be running from:
 
 - [`../self-checks.md`](../self-checks.md): the dashboard, audit, self-check, the feedback loop and intake, and what each cannot see
 - [`../threads.md`](../threads.md): conversations read as units of work
+- [`../tour.md`](../tour.md): a project's roadmap read against the tour its application serves

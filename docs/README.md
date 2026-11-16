@@ -25,6 +25,7 @@ one of them.
 - [`setup/harness.md`](setup/harness.md): run the gates recorded, and hand them to dossier
 - [`self-checks.md`](self-checks.md): the dashboard, audit, self-check, the feedback loop and intake
 - [`threads.md`](threads.md): conversations with an assistant, read as units of work
+- [`tour.md`](tour.md): a project's roadmap, read against the tour its application serves and what people said of each stage
 
 ## Instruction loop
 
