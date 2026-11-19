@@ -388,7 +388,7 @@ correlation id `alfred-excerpts-<run id>`.
 | `read` | `alfred_project` for the saved timeline, and `alfred_captions` for the transcript: captions alfred holds are used as they are, and a project with none is transcribed as `alfred-caption-render` transcribes it, unless `--transcribe False` |
 | `propose` | chapters and spans from the transcript's timing (below); with `--label-with local`, the model `qmcp localmodel` stands up titles each chapter and sorts each span into one of `--categories` |
 | `review` | one approval per span, in order, placing it in the recording and quoting its words, that expires after `--review-timeout`; approve renders it, reject leaves it out |
-| `render` | `alfred_render_enqueue` for each approved span, with a timeline cut from the project's saved one and, unless `--captions False`, the project's captions that fall in it, in the project's caption style switched on; `--width`, `--height` and `--quality` when given |
+| `render` | `alfred_render_enqueue` for each approved span, with a timeline cut from the project's saved one and, unless `--captions False`, the captions alfred holds when the clip is queued that fall in it, in the project's caption style switched on, so a correction saved in alfred during the review is in the clip; `--width`, `--height` and `--quality` when given |
 | `follow` | `alfred_render_status` for each clip until it settles, as `alfred-render` follows one |
 | `ask_person` | for each rendered clip: an approval with its link that expires after `--approval-timeout`, then the answer |
 | `delivery` | for each approved clip, only when `--deliver True`: `alfred_render_deliver`, to `--destination` or alfred's choice |
@@ -430,8 +430,12 @@ times and length, its category when it has one, and its captions, one
 `m:ss.s-m:ss.s  text` line each. Each rendered clip's request is
 `alfred-excerpt-render-<render id>-<run id>`: `alfred-render`'s approval, with
 the link and when it stops working, placing the clip in the recording and
-saying what approving does. The answers are waited for as `alfred-render`
-waits for its one.
+saying what approving does. Both carry a `spoken` form in their context, the
+same question in a breath, which a voice reader speaks in place of the
+prompt (`qmcp.integrations.voice`). The answers are waited for as
+`alfred-render` waits for its one. In alfred's Deliver stage a clip is the
+render named `<project> - clip <n>`, described by its times in the recording,
+its chapter and its label.
 
 **The last line** counts each stage: how many clips in how many chapters were
 offered, how many a person approved and how many went unanswered, how many

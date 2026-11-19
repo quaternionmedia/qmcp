@@ -157,6 +157,12 @@ words. Here the person approves the story and rejects the welcome:
       0:28.0-0:31.2  so we wrote this in the hotel bar.
       0:31.8-0:34.4  It is called Late Checkout.
     Answer approve to render it as a clip of its own to review, or reject to leave it out.
+
+A voice reader speaks the request's shorter form in place of the prompt,
+since every line of a span is too long to listen to:
+
+    >>> print(review["context"]["spoken"])
+    Clip 2 of 2 from Set at the Hall, chapter 2 of 3 (Late Checkout), 13 seconds, story. It opens: We were on the road for three weeks last spring. Approve to render it as a clip of its own, or reject to leave it out.
     >>> alfred_render.ask(client, review, timeout_seconds=600,
     ...                   correlation_id="alfred-excerpts-page-12")
     >>> _ = client.submit_human_response(review["request_id"], "approve",
@@ -167,9 +173,10 @@ words. Here the person approves the story and rejects the welcome:
 ## The clip is cut from the timeline and rendered
 
 An approved span is rendered as a clip of its own: `alfred_render_enqueue`
-with a timeline cut from the project's saved one, and the captions that fall
-in the span, moved to the clip's own seconds, burned in with the project's
-style switched on. The title clip ends before the span begins, so only the
+with a timeline cut from the project's saved one, and the captions alfred
+holds when the clip is queued that fall in the span, moved to the clip's own
+seconds, burned in with the project's style switched on; a caption corrected
+in alfred's editor during the review is in the clip. The title clip ends before the span begins, so only the
 recording is in it, playing from the second the span starts, and neither edge
 the cut made has a fade, where the clip's own fades were:
 
@@ -195,7 +202,7 @@ the cut made has a fade, where the clip's own fades were:
      "duration": 13.4
     }
     >>> body["captions"][0], body["caption_style"]["enabled"], body["description"]
-    ({'start': 0.0, 'end': 3.5, 'text': 'We were on the road for three weeks last spring.'}, True, '0:21.0-0:34.4 of alfred project 6a78b0420eea42d905943615, chapter 2: story')
+    ({'start': 0.0, 'end': 3.5, 'text': 'We were on the road for three weeks last spring.'}, True, "0:21.0-0:34.4 of 'Set at the Hall', chapter 2: story")
     >>> (body["width"], body["height"]) == (1280, 720)
     True
 

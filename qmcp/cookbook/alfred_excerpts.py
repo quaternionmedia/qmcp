@@ -475,9 +475,11 @@ def clip_name(project_name: str | None, span: Span) -> str:
     return f"{project_name or 'alfred project'} - clip {span.number}"
 
 
-def clip_description(project_id: str, span: Span) -> str:
-    where = (f"{timecode(span.start)}-{timecode(span.end)} of alfred project {project_id}, "
-             f"chapter {span.chapter}")
+def clip_description(project_name: str | None, span: Span) -> str:
+    """What alfred's Deliver stage shows under the clip's name: where it lies
+    in the recording, its chapter, and its label when it has one."""
+    where = (f"{timecode(span.start)}-{timecode(span.end)} of "
+             f"{project_name or 'the recording'!r}, chapter {span.chapter}")
     return f"{where}: {span.label}" if span.label else where
 
 
@@ -493,13 +495,15 @@ def queue_clip(
     """Queue a render of the span as a clip of its own: `alfred_render_enqueue`
     with the timeline cut from the project's saved one, named for the project
     and the span, with the project's captions that fall in it burned in when
-    `captions` are given, in `style`. `options` left as None are the project's
-    saved settings, else alfred's. Returns what the tool returned."""
+    `captions` are given, in `style`: the captions alfred holds when the clip is
+    queued, so a correction saved in alfred during the review is in the clip.
+    `options` left as None are the project's saved settings, else alfred's.
+    Returns what the tool returned."""
     edl = excerpt_edl(project["edl"], span.start, span.end)
     params: dict[str, Any] = {
         "edl": edl,
         "name": clip_name(project.get("name"), span),
-        "description": clip_description(str(project.get("id")), span),
+        "description": clip_description(project.get("name"), span),
     }
     saved = project.get("render_settings") or {}
     for key in ("width", "height", "fps", "quality"):
@@ -523,7 +527,9 @@ def review_request(project: dict[str, Any], span: Span, proposal: Proposal,
                    run_id: str) -> dict[str, Any]:
     """What a person is asked about one span: the request's id, prompt, options
     and context, as `MCPClient.create_human_request` takes them. The prompt
-    places the span in the recording and quotes its words."""
+    places the span in the recording and quotes its words; the context's
+    `spoken` is the same question in a breath, for a voice reader, which
+    speaks it in place of the prompt."""
     project_id = str(project.get("id"))
     name = project.get("name") or project_id
     chapter = proposal.chapter_of(span)
@@ -537,11 +543,17 @@ def review_request(project: dict[str, Any], span: Span, proposal: Proposal,
         f"{timecode(span.start)}-{timecode(span.end)} ({span.seconds:.0f} s{labelled}):\n{lines}\n"
         "Answer approve to render it as a clip of its own to review, or reject to leave it out."
     )
+    spoken = (
+        f"Clip {span.number} of {len(proposal.spans)} from {name}, {place}, "
+        f"{span.seconds:.0f} seconds{labelled}. It opens: {span.opening} "
+        "Approve to render it as a clip of its own, or reject to leave it out."
+    )
     return {
         "request_id": f"alfred-excerpt-{project_id}-{span.number}-{run_id}",
         "prompt": prompt,
         "options": list(OPTIONS),
         "context": {
+            "spoken": spoken,
             "project_id": project_id,
             "name": name,
             "clip": span.number,
@@ -581,7 +593,11 @@ def approval_request(
         then = " Nothing is delivered either way: this run was not asked to deliver."
     request["request_id"] = f"alfred-excerpt-render-{queued['render_id']}-{run_id}"
     request["prompt"] += where + then
-    request["context"].update(clip=span.number, start=span.start, end=span.end, label=span.label,
+    # The prompt carries a link, which is for a page; the ear gets the place.
+    name = queued.get("name") or queued.get("render_id")
+    spoken = f"{name} is rendered.{where}{then}"
+    request["context"].update(spoken=spoken, clip=span.number, start=span.start,
+                              end=span.end, label=span.label,
                               captions=queued.get("captions"), deliver=deliver,
                               destination=destination)
     return request

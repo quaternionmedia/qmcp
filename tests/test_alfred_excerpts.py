@@ -26,8 +26,8 @@ import pytest
 
 import qmcp.tools.alfred as alfred
 from qmcp.client import MCPClient
-from qmcp.cookbook import alfred_captions, alfred_render
 from qmcp.cookbook import alfred_excerpts as flow
+from qmcp.cookbook import alfred_render
 from qmcp.cookbook.alfred_captions import DONE, NO_CAPTIONS, Delivered, Transcribed
 from qmcp.cookbook.alfred_excerpts import (
     APPROVE,
@@ -51,7 +51,7 @@ from qmcp.cookbook.alfred_excerpts import (
     title_from,
 )
 from qmcp.cookbook.alfred_render import RENDERED, ToolFailedError, Waited
-from tests.alfred_stub import CAPTIONS, URL, CaptionedAlfred, connect, render_id
+from tests.alfred_stub import CAPTIONS, CaptionedAlfred, connect, render_id
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -463,7 +463,7 @@ def test_a_clip_is_queued_from_the_cut_timeline_with_its_captions():
     sent, = queue.params
     assert sent["edl"] == excerpt_edl(TIMELINE, span.start, span.end)
     assert sent["name"] == "Set at the Hall - clip 2"
-    assert sent["description"] == f"1:39.2-3:07.0 of alfred project {PROJECT_ID}, chapter 2"
+    assert sent["description"] == "1:39.2-3:07.0 of 'Set at the Hall', chapter 2"
     assert (sent["width"], sent["height"], sent["quality"]) == (1280, 720, "high")
     assert "fps" not in sent
     assert sent["captions"] == excerpt_captions(RECORDING, span.start, span.end)
@@ -483,7 +483,8 @@ def test_a_clip_queued_without_captions_sends_none():
 
 def test_a_labelled_clip_s_description_names_its_label():
     span = Span(1, 1, 0.0, 10.0, (), label="song")
-    assert flow.clip_description("p1", span) == "0:00.0-0:10.0 of alfred project p1, chapter 1: song"
+    assert flow.clip_description("A Set", span) == "0:00.0-0:10.0 of 'A Set', chapter 1: song"
+    assert flow.clip_description(None, span) == "0:00.0-0:10.0 of 'the recording', chapter 1: song"
     assert flow.clip_name(None, span) == "alfred project - clip 1"
 
 
@@ -505,6 +506,11 @@ def test_the_review_places_the_span_and_quotes_its_words():
     assert request["context"]["clip"] == 3 and request["context"]["of"] == 3
     assert request["context"]["chapter_title"] == "The Story"
     assert request["context"]["captions"] == list(proposed.spans[2].captions)
+    # The ear gets the place and the opening, not every line.
+    assert request["context"]["spoken"] == (
+        "Clip 3 of 3 from Set at the Hall, chapter 2 of 3 (The Story), 58 seconds, story. "
+        "It opens: This is sentence 36 of the story, which goes on for a while and ends here. "
+        "Approve to render it as a clip of its own, or reject to leave it out.")
 
 
 def test_an_unlabelled_review_names_no_label():
@@ -525,6 +531,10 @@ def test_the_approval_places_the_clip_and_says_what_approval_does():
         " It is 1:39.2-3:07.0 of the recording, story. Answer approve to deliver it to "
         "alfred's default destination, or reject to leave it undelivered.")
     assert request["context"]["clip"] == 2 and request["context"]["captions"] == 4
+    assert request["context"]["spoken"] == (
+        "Set at the Hall - clip 2 is rendered. It is 1:39.2-3:07.0 of the recording, story. "
+        "Answer approve to deliver it to alfred's default destination, or reject to leave it "
+        "undelivered.")
     kept = flow.approval_request(queued, waited, Span(2, 1, 99.2, 187.0, ()), "run-1")
     assert kept["prompt"].endswith(" It is 1:39.2-3:07.0 of the recording. Nothing is "
                                    "delivered either way: this run was not asked to deliver.")
@@ -641,7 +651,7 @@ def server(tmp_path):
 
 
 def run(module, monkeypatch, url: str, *, review=APPROVE, approval=APPROVE,
-        **parameters) -> SimpleNamespace:
+        on_review=None, **parameters) -> SimpleNamespace:
     """One run of the flow file's steps, against the qmcp server at `url`.
 
     Time passes only when a wait sleeps. A person answers each request at the
@@ -667,6 +677,8 @@ def run(module, monkeypatch, url: str, *, review=APPROVE, approval=APPROVE,
 
     def asking(client, request, **options):
         asked.append(request)
+        if on_review is not None and "-render-" not in request["request_id"]:
+            on_review(request)
         alfred_render.ask(client, request, **options)
 
     def a_person_answers(client, request_id, **options):
@@ -727,9 +739,10 @@ def alfred_captions_clock():
     return Clock()
 
 
-# Reading the project and its captions, then the style: three tools; each render
-# moves one state per look, so two status reads follow each enqueue.
-READ_TOOLS = ["alfred_project", "alfred_captions", "alfred_captions"]
+# Reading the project and its captions: two tools; the captions are read once
+# more when a clip is queued; each render moves one state per look, so two
+# status reads follow each enqueue.
+READ_TOOLS = ["alfred_project", "alfred_captions"]
 
 
 def test_chosen_clips_are_cut_rendered_approved_and_delivered(
@@ -741,7 +754,7 @@ def test_chosen_clips_are_cut_rendered_approved_and_delivered(
               approval={1: APPROVE, 3: REJECT}, deliver=True)
     assert ran.line == ("3 clips in 3 chapters of 'Set at the Hall' offered, 2 approved, "
                         "2 rendered, 1 approved as clips, 1 delivered.")
-    assert ran.tools == sorted(READ_TOOLS + ["alfred_render_enqueue"] * 2
+    assert ran.tools == sorted(READ_TOOLS + ["alfred_captions"] + ["alfred_render_enqueue"] * 2
                                + ["alfred_render_status"] * 4 + ["alfred_render_deliver"])
     reviews, approvals = ran.asked[:3], ran.asked[3:]
     assert [r["request_id"] for r in reviews] == [
@@ -795,6 +808,20 @@ def test_captions_are_left_off_the_clips_when_the_run_says(
     assert "captions" not in fake.queued[0] and "caption_style" not in fake.queued[0]
 
 
+def test_a_caption_corrected_in_alfred_during_the_review_is_in_the_clip(
+        flow_file, monkeypatch, server, fake):
+    """Mutation: queue the clip with the captions read at the start -- red, the
+    clip burns the misheard word in."""
+    def correct(request):
+        held = fake.projects[PROJECT_ID]["captions"]
+        held[2] = {**held[2], "text": "This is sentence 0 of the story, corrected"}
+
+    run(flow_file, monkeypatch, server, review={1: APPROVE, 2: REJECT, 3: REJECT},
+        on_review=correct)
+    burned = fake.queued[0]["captions"][0]["text"]
+    assert burned == "This is sentence 0 of the story, corrected"
+
+
 def test_a_project_without_captions_is_transcribed_first(
         flow_file, monkeypatch, server, fake):
     project = fake.projects[PROJECT_ID]
@@ -802,10 +829,9 @@ def test_a_project_without_captions_is_transcribed_first(
     fake.heard[PROJECT_ID] = RECORDING
     ran = run(flow_file, monkeypatch, server, review=REJECT)
     assert ran.line == "3 clips in 3 chapters of 'Set at the Hall' offered, 0 approved."
-    # The captions looked at before transcribing, twice while the job moves,
-    # and once more for the style.
+    # The captions looked at before transcribing, and twice while the job moves.
     assert ran.tools == sorted(["alfred_project", "alfred_captions_transcribe"]
-                               + ["alfred_captions"] * 4)
+                               + ["alfred_captions"] * 3)
 
 
 def test_a_project_the_run_may_not_transcribe_asks_nobody(

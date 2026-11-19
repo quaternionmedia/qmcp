@@ -68,7 +68,8 @@ class AlfredExcerptsFlow(FlowSpec):
     2. read: the project's saved timeline, and its transcript, made if it has none
     3. propose: chapters and spans from the transcript, labelled when asked
     4. review: put each span to a person, in order, and wait for each answer
-    5. render: queue a clip of each approved span, cut from the timeline
+    5. render: queue a clip of each approved span, cut from the timeline, with the
+       captions alfred holds then
     6. follow: wait until each clip is rendered or failed, or no renderer runs
     7. ask_person: put each rendered clip, with its link, to a person and wait
     8. delivery: deliver each approved clip, when --deliver is set
@@ -198,9 +199,6 @@ class AlfredExcerptsFlow(FlowSpec):
                 queued_timeout=self.queued_timeout,
                 poll_interval=self.poll_interval,
             )
-            self.style = None
-            if self.transcribed.done:
-                self.style = invoke("alfred_captions", {"project_id": self.project_id}).get("style")
         why = f" -- {self.transcribed.why}" if self.transcribed.why else ""
         print(f"{self.project['name']!r}: {self.project['clips']} clips, "
               f"{len(self.transcribed.captions)} captions ({self.transcribed.outcome}{why})")
@@ -245,20 +243,26 @@ class AlfredExcerptsFlow(FlowSpec):
 
     @step
     def render(self):
-        """Queue a clip of each approved span, cut from the project's timeline."""
+        """Queue a clip of each approved span, cut from the project's timeline,
+        with the captions alfred holds now: a correction saved in alfred during
+        the review is in the clip."""
         self.queued = {}
-        if self.proposal is not None:
+        approved = [span for span in (self.proposal.spans if self.proposal else ())
+                    if self.reviewed.get(span.number) == APPROVE]
+        if approved:
             with self._client() as client:
                 invoke = invoker(client, self._correlation())
-                for span in self.proposal.spans:
-                    if self.reviewed.get(span.number) != APPROVE:
-                        continue
+                captions = style = None
+                if self.captions:
+                    held = invoke("alfred_captions", {"project_id": self.project_id})
+                    captions, style = held.get("captions") or [], held.get("style")
+                for span in approved:
                     self.queued[span.number] = queue_clip(
                         invoke,
                         self.project,
                         span,
-                        captions=self.transcribed.captions if self.captions else None,
-                        style=self.style,
+                        captions=captions,
+                        style=style,
                         width=self.width,
                         height=self.height,
                         quality=self.quality,
