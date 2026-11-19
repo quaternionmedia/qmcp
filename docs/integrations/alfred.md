@@ -3,15 +3,18 @@
 qmcp drives alfred, a self-hosted video editor that renders on its server. Its
 tools list alfred's projects and templates; queue a render, follow it to a link
 a person can open, and deliver it; and transcribe, read and correct a project's
-captions for a render to burn in. Two flows put the work to a person:
+captions for a render to burn in. Three flows put the work to a person:
 `alfred-render` asks about a finished render before anything else happens to
-it, and `alfred-caption-render` asks about the transcript, then the render.
+it, `alfred-caption-render` asks about the transcript, then the render, and
+`alfred-excerpts` offers the stretches of a long project's transcript that
+stand alone as clips, asks about each, and renders the chosen ones.
 
 The tools use alfred's HTTP API and import no alfred or render-engine code.
 Every call is a tool invocation, so qmcp records it.
-`walkthrough/10-a-render-waits-for-a-person.md` and
-`walkthrough/11-captions-are-read-before-they-are-burned-in.md` run the tools
-and the flows' steps against a stand-in alfred.
+`walkthrough/10-a-render-waits-for-a-person.md`,
+`walkthrough/11-captions-are-read-before-they-are-burned-in.md` and
+`walkthrough/12-a-long-recording-is-offered-as-clips.md` run the tools and the
+flows' steps against a stand-in alfred.
 
 ## Configuration
 
@@ -54,8 +57,9 @@ tool against it, from the qmcp checkout beside alfred's or the one
 | Tool | Input | Returns | alfred route |
 |---|---|---|---|
 | `alfred_projects` | `skip`, `limit` (optional) | `[{id, name, clips, duration}]` | `GET /project` |
+| `alfred_project` | `project_id` | `{id, name, clips, duration, edl, render_settings}` | `GET /project/{id}` |
 | `alfred_templates` | none | alfred's list, `[{name, description, parameters, deprecated}]` | `GET /templates` |
-| `alfred_render_enqueue` | `project_id` or `edl`, exactly one; `name`, `description`, `width`, `height`, `fps`, `quality`, `captions` (optional) | `{render_id, project_id, name, width, height, fps, quality, captions}` | `GET /project/{id}`, `POST /render` |
+| `alfred_render_enqueue` | `project_id` or `edl`, exactly one; `name`, `description`, `width`, `height`, `fps`, `quality`, `captions`, `caption_style` (optional) | `{render_id, project_id, name, width, height, fps, quality, captions}` | `GET /project/{id}`, `POST /render` |
 | `alfred_render_status` | `render_id` | `{render_id, state, progress, error, download_url, download_expires_at}` | `GET /render/{id}/status` |
 | `alfred_render_deliver` | `render_id`; `destination` (optional) | `{render_id, destination, location}` | `POST /render/{id}/deliver` |
 | `alfred_captions` | `project_id` | `{project_id, captions, style, job}` | `GET /project/{id}/captions` |
@@ -66,6 +70,11 @@ tool against it, from the qmcp checkout beside alfred's or the one
 **`alfred_projects`**: `clips` counts the clips on each project's timeline, 0
 for a project built from a form. `duration` is the one saved with the timeline,
 null when none was.
+
+**`alfred_project`** is one project as alfred holds it: the summary above, its
+saved timeline as `edl`, and its saved `render_settings`. The timeline is what
+`alfred_render_enqueue` renders for the project, and what a timeline cut from
+it is cut from.
 
 **`alfred_render_enqueue` with `project_id`** renders the project's saved
 timeline exactly as alfred returns it. No clip is placed, filled in or dropped,
@@ -87,9 +96,13 @@ as switched off. The `captions` input:
 - `true`: burned in with the style switched on, whatever the project saved.
   Refused before anything is queued for a project with no captions, and with
   `edl`;
-- `false`: none are sent.
+- `false`: none are sent;
+- with `edl`, a list of captions, each `{start, end, text}` in the EDL's own
+  seconds, burned in with `caption_style` switched on, or with nothing but
+  `enabled: true` when no style is given. A list with `project_id` is refused:
+  a saved project's captions are alfred's. An empty list sends none.
 
-`captions` in the result is how many went with the render; with `edl`, none.
+`captions` in the result is how many went with the render.
 
 **`alfred_render_status`**: `state` is alfred's: `queued`, `rendering`,
 `rendered` or `failed`. `error` says why a render failed. Once a render is
@@ -346,6 +359,85 @@ be asked again.
 
 Both answers are waited for as `alfred-render` waits for its one.
 
+## The excerpt flow
+
+`examples/flows/alfred_excerpts.py` cuts a long project into clips a person
+chooses. The transcript's own timing proposes chapters and spans; a person is
+asked about each span; each approved span is rendered as a clip of its own,
+cut from the project's saved timeline with its captions burned in; each
+rendered clip is put to a person with its link; and an approved clip is
+delivered, when the run is asked to.
+
+```bash
+uv run qmcp serve                    # with the QMCP_ALFRED_* settings
+uv run python examples/flows/alfred_excerpts.py run --project-id <id>
+uv run python examples/flows/alfred_excerpts.py run --project-id <id> \
+    --label-with local --categories "song,story,announcement"
+uv run qmcp human respond <request id> approve      # or reject, for each request
+```
+
+It is also the `alfred-excerpts` recipe: `uv run qmcp cookbook run
+alfred-excerpts --project-id <id>`, or `run_recipe_local` from the MCP server
+in `qmcp_mcp.py`. Its steps are in `qmcp.cookbook.alfred_excerpts`, beside the
+other two flows'. Every call to alfred goes through the tools above, under the
+correlation id `alfred-excerpts-<run id>`.
+
+| Step | What it does |
+|---|---|
+| `start` | checks the qmcp server answers |
+| `read` | `alfred_project` for the saved timeline, and `alfred_captions` for the transcript: captions alfred holds are used as they are, and a project with none is transcribed as `alfred-caption-render` transcribes it, unless `--transcribe False` |
+| `propose` | chapters and spans from the transcript's timing (below); with `--label-with local`, the model `qmcp localmodel` stands up titles each chapter and sorts each span into one of `--categories` |
+| `review` | one approval per span, in order, placing it in the recording and quoting its words, that expires after `--review-timeout`; approve renders it, reject leaves it out |
+| `render` | `alfred_render_enqueue` for each approved span, with a timeline cut from the project's saved one and, unless `--captions False`, the project's captions that fall in it, in the project's caption style switched on; `--width`, `--height` and `--quality` when given |
+| `follow` | `alfred_render_status` for each clip until it settles, as `alfred-render` follows one |
+| `ask_person` | for each rendered clip: an approval with its link that expires after `--approval-timeout`, then the answer |
+| `delivery` | for each approved clip, only when `--deliver True`: `alfred_render_deliver`, to `--destination` or alfred's choice |
+| `end` | prints how the run ended |
+
+**What a span is.** The proposal comes from the transcript and nothing else:
+when the words were said, and whether a caption ends a sentence. A pause of
+`--chapter-pause` seconds or more (4 unless given) ends a chapter, and within
+one a pause of `--pause` seconds or more (1) ends a stretch. A stretch that
+runs between `--shortest` (10) and `--longest` (90) seconds is a span; one
+that runs longer is cut at the last sentence end that fits, or at the last
+caption that fits when none ends a sentence; one that runs shorter is joined
+to the span before it, else after it, when the join still fits, and is
+otherwise left out and counted. Nothing hears the sound, so a song the engine
+wrote no words for is a pause, and where it falls is a chapter's edge; a
+person chooses each span, and the editor is where a span is refined.
+
+**The clip's timeline** is the part of the project's saved timeline between
+the span's start and end, as a timeline of its own that begins at 0: each
+clip that plays in it is kept with every field it had and re-timed as otto
+reads a clip, its in-point and out-point set to the part of its source the
+span holds. An edge the span cut gets no fade, as alfred's own cuts have none;
+an edge it did not cut keeps the clip's. An image keeps a duration alone. The
+captions that fall in the span go with it, moved to the clip's own seconds and
+trimmed where the span cuts one.
+
+**The labeller** is a function from a prompt to an answer, one short answer
+per prompt. `--label-with local` builds it over the chat route at
+`--llm-base-url` for `--llm-model`, at a temperature of 0, a few tokens at
+most, within `--llm-timeout` seconds each; a prompt the model does not answer
+in time leaves that title or label empty and the rest of the proposal
+readable. Without categories, chapters are titled and no span is labelled.
+`--label-with none`, the default, asks no model.
+
+**What the person reads.** Each span's request is
+`alfred-excerpt-<project id>-<clip number>-<run id>`: the clip's number and
+how many there are, its chapter and the chapter's title when it has one, its
+times and length, its category when it has one, and its captions, one
+`m:ss.s-m:ss.s  text` line each. Each rendered clip's request is
+`alfred-excerpt-render-<render id>-<run id>`: `alfred-render`'s approval, with
+the link and when it stops working, placing the clip in the recording and
+saying what approving does. The answers are waited for as `alfred-render`
+waits for its one.
+
+**The last line** counts each stage: how many clips in how many chapters were
+offered, how many a person approved and how many went unanswered, how many
+rendered and which did not, how many were approved as clips, and, when the run
+was asked to deliver, how many were delivered and which alfred refused.
+
 ## What is checked
 
 `tests/test_alfred_tools.py`, `tests/test_alfred_caption_tools.py`,
@@ -353,10 +445,12 @@ Both answers are waited for as `alfred-render` waits for its one.
 a stand-in alfred through `httpx.MockTransport` (`tests/alfred_stub.py`). It
 also holds projects' captions, a transcription job and a render that each move
 one state per look. One run of `alfred-render`'s steps goes through a qmcp
-server on an ephemeral port and its queue. The caption flow's file is run step
-by step there, over a stand-in for Metaflow's classes and decorators, through
-each way a run can end. Each guard names the mutation that turns it red.
+server on an ephemeral port and its queue. The caption flow's file and the
+excerpt flow's are run step by step there, over a stand-in for Metaflow's
+classes and decorators, through each way a run can end; the excerpt flow's
+proposal, cut timeline and labeller are tested on their own, with no alfred at
+all. Each guard names the mutation that turns it red.
 
 Not in the suite: a running alfred, and Metaflow where it cannot be imported
-(`import fcntl`). `tests/test_examples_smoke.py` imports both flows where it
+(`import fcntl`). `tests/test_examples_smoke.py` imports the three flows where it
 can.

@@ -179,6 +179,13 @@ def _recipe_specs(repo_root: Path) -> dict[str, RecipeSpec]:
             flow_rel="examples/flows/alfred_caption_render.py",
             required_flags=("--project-id",),
         ),
+        "alfred-excerpts": RecipeSpec(
+            name="alfred-excerpts",
+            description="Cut a long alfred project into clips: propose them from its "
+            "transcript, have a person choose each, render it and ask a person to approve it",
+            flow_rel="examples/flows/alfred_excerpts.py",
+            required_flags=("--project-id",),
+        ),
         "local-agent-chain": RecipeSpec(
             name="local-agent-chain",
             description="Local LLM plan -> review -> refine chain",

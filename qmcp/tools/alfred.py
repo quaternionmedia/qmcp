@@ -566,13 +566,40 @@ def alfred_templates(params: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 @tool_registry.register(
+    name="alfred_project",
+    description=(
+        "One alfred project as alfred holds it: its id, name, saved timeline (edl), saved "
+        "render settings, how many clips the timeline has and how long it runs. The "
+        "timeline is what alfred_render_enqueue renders for the project; a timeline cut "
+        "from it, given as edl, renders part of it."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The project's id"},
+        },
+        "required": ["project_id"],
+    },
+)
+def alfred_project(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    path = f"/project/{_path_id(project_id)}"
+    project = _expect(client().get(path), dict, "GET", path)
+    return {
+        **project_summary(project),
+        "edl": project.get("edl"),
+        "render_settings": project.get("render_settings"),
+    }
+
+
+@tool_registry.register(
     name="alfred_render_enqueue",
     description=(
         "Queue a render in alfred, of a saved project's timeline sent exactly as it is "
         "stored (project_id) or of an explicit EDL (edl); give one of the two. A project "
-        "whose caption style is enabled has its captions burned in. Returns the render's "
-        "id, the settings it was queued with, and how many captions went with it; "
-        "alfred_render_status follows it."
+        "whose caption style is enabled has its captions burned in; an EDL has the captions "
+        "given with it burned in. Returns the render's id, the settings it was queued "
+        "with, and how many captions went with it; alfred_render_status follows it."
     ),
     input_schema={
         "type": "object",
@@ -607,11 +634,19 @@ def alfred_templates(params: dict[str, Any]) -> list[dict[str, Any]]:
                 "description": "An encoding preset alfred offers: draft, standard or high",
             },
             "captions": {
-                "type": "boolean",
+                "type": ["boolean", "array"],
                 "description": (
-                    "Burn a project's captions in: true sends them with its caption style "
-                    "switched on, false sends none; unset sends them when the project's "
-                    "caption style is enabled"
+                    "With project_id, burn the project's captions in: true sends them with "
+                    "its caption style switched on, false sends none; unset sends them when "
+                    "the project's caption style is enabled. With edl, a list of captions "
+                    "to burn in, each {start, end, text} in the EDL's seconds"
+                ),
+            },
+            "caption_style": {
+                "type": "object",
+                "description": (
+                    "With edl and a list of captions, the style they are drawn in, as "
+                    "alfred_captions answers one; it is sent switched on"
                 ),
             },
         },
@@ -623,8 +658,19 @@ def alfred_render_enqueue(params: dict[str, Any]) -> dict[str, Any]:
     if (project_id is None) == (edl is None):
         raise ValueError("give exactly one of project_id, to render a saved project, or edl")
     wanted = params.get("captions")
-    if wanted is not None and not isinstance(wanted, bool):
-        raise ValueError("captions is true, false, or left out")
+    given: list[Any] | None = None
+    style = params.get("caption_style")
+    if isinstance(wanted, list):
+        if project_id is not None:
+            raise ValueError("a saved project's captions are alfred's: with project_id, "
+                             "captions is true, false, or left out")
+        if style is not None and not isinstance(style, dict):
+            raise ValueError("caption_style is an object, as alfred_captions answers one")
+        given, wanted = wanted, None
+    elif wanted is not None and not isinstance(wanted, bool):
+        raise ValueError("captions is true, false, or left out, or a list of captions with edl")
+    elif style is not None:
+        raise ValueError("caption_style goes with a list of captions and edl")
     if wanted and project_id is None:
         raise ValueError("captions come from a saved project: give project_id to burn them in")
 
@@ -647,6 +693,10 @@ def alfred_render_enqueue(params: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(edl, dict) or not isinstance(edl.get("clips"), list):
             raise ValueError('edl must be an object with a list of clips: {"clips": [...]}')
         body, saved = {}, {}
+        if given:
+            # As given, in the EDL's own seconds: alfred checks each one and
+            # turns them into clips, as it does a project's.
+            burned = list(given), {**(style or {}), "enabled": True}
 
     # The EDL goes as alfred gave it or the caller sent it: a null is a value
     # (`fadeIn: null` is no fade, where an absent `fadeIn` is the engine's).

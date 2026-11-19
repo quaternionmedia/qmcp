@@ -493,6 +493,68 @@ def test_an_edl_without_a_clip_list_is_refused_here(tools):
         alfred.alfred_render_enqueue({"edl": {"clips": "title"}})
 
 
+CUT_CAPTIONS = [{"start": 0.0, "end": 2.0, "text": "A clip's own captions."}]
+
+
+def test_captions_given_with_an_edl_are_burned_in_with_their_style_switched_on(tools):
+    """Mutation: refuse a list, as a project's captions are refused with an
+    edl -- red; or send the style as given -- red, alfred draws none."""
+    tools.route("POST", "/render", "r4")
+    edl = {"clips": [{"type": "video", "name": "videos/talk.mp4", "inpoint": 3, "outpoint": 5}],
+           "duration": 2.0}
+    queued = alfred.alfred_render_enqueue({
+        "edl": edl, "captions": CUT_CAPTIONS, "caption_style": {"fontsize": 40.0}})
+    assert render_body(tools) == {"edl": edl, "duration": 2.0, "captions": CUT_CAPTIONS,
+                                  "caption_style": {"fontsize": 40.0, "enabled": True}}
+    assert queued["captions"] == 1
+    # No style given: switched on, and nothing else said.
+    alfred.alfred_render_enqueue({"edl": edl, "captions": CUT_CAPTIONS})
+    assert json.loads(tools.calls("POST", "/render")[1].content)["caption_style"] == {
+        "enabled": True}
+
+
+def test_an_empty_list_of_captions_with_an_edl_sends_none(tools):
+    tools.route("POST", "/render", "r5")
+    queued = alfred.alfred_render_enqueue({"edl": {"clips": [{"name": "x"}]}, "captions": []})
+    assert "captions" not in render_body(tools) and queued["captions"] == 0
+
+
+@pytest.mark.parametrize("params,why", [
+    ({"project_id": "p1", "captions": CUT_CAPTIONS}, "a saved project's captions are alfred's"),
+    ({"edl": {"clips": []}, "captions": "yes"}, "captions is true, false, or left out, or a list"),
+    ({"edl": {"clips": []}, "caption_style": {}}, "caption_style goes with a list"),
+    ({"edl": {"clips": []}, "captions": CUT_CAPTIONS, "caption_style": "big"},
+     "caption_style is an object"),
+])
+def test_captions_that_fit_neither_form_are_refused_before_alfred_is_asked(tools, params, why):
+    with pytest.raises(ValueError, match=why):
+        alfred.alfred_render_enqueue(params)
+    assert tools.requests == []
+
+
+def test_a_project_is_read_whole_with_its_timeline_and_settings(tools):
+    """Mutation: answer the summary alone -- red, the timeline is missing."""
+    tools.route("GET", "/project/6a78b0420eea42d905943615", {
+        "_id": "6a78b0420eea42d905943615", "name": "Timeline demo", "edl": SAVED_EDL,
+        "render_settings": {"width": 1280, "height": 720, "fps": 30.0, "quality": None},
+        "captions": [], "logic": {}})
+    assert alfred.alfred_project({"project_id": "6a78b0420eea42d905943615"}) == {
+        "id": "6a78b0420eea42d905943615", "name": "Timeline demo", "clips": 2, "duration": 5.0,
+        "edl": SAVED_EDL,
+        "render_settings": {"width": 1280, "height": 720, "fps": 30.0, "quality": None}}
+
+
+def test_a_project_needs_an_id(tools):
+    with pytest.raises(ValueError, match="project_id is required"):
+        alfred.alfred_project({})
+    assert tools.requests == []
+
+
+def test_a_project_nobody_holds_is_alfred_s_refusal(tools):
+    with pytest.raises(AlfredError, match="404"):
+        alfred.alfred_project({"project_id": "6a78b0420eea42d905943699"})
+
+
 def test_a_refused_render_carries_alfred_s_detail_and_code(tools):
     """alfred's refusal of a clip the library does not hold, as alfred answers it."""
     refused_edl = REFUSALS["edl_refused"]

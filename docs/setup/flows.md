@@ -64,10 +64,11 @@ tool says alfred is not configured.
 
 ```bash
 uv run qmcp cookbook run alfred-render --project-id <id>
+uv run qmcp cookbook run alfred-excerpts --project-id <id>
 ```
 
 [`../integrations/alfred.md`](../integrations/alfred.md) is the reference: the
-settings, the tools, and the two recipes.
+settings, the tools, and the three recipes.
 
 ## Reference
 

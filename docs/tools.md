@@ -224,7 +224,7 @@ All tools must:
 
 ## alfred Tools
 
-`alfred_projects`, `alfred_templates`, `alfred_render_enqueue`,
+`alfred_projects`, `alfred_project`, `alfred_templates`, `alfred_render_enqueue`,
 `alfred_render_status`, `alfred_render_deliver`, `alfred_health`,
 `alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set` drive
 alfred, a self-hosted video editor, over its HTTP API;

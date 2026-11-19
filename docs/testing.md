@@ -53,7 +53,7 @@ Its callers:
 
 - the product's offline checks: `uv run qmcp cookbook voice` and
   `uv run qmcp cookbook instruct`
-- walkthrough pages 09, 10 and 11
+- walkthrough pages 09 to 12
 - the tests that drive a flow over HTTP
 
 The server runs in a thread of the caller's process. It sees the caller's

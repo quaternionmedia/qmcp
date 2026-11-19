@@ -317,17 +317,19 @@ class CaptionedAlfred(FakeAlfred):
         style: dict[str, Any] | None = None,
         render_settings: dict[str, Any] | None = None,
         failure: str | None = None,
+        edl: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """A project with a one-clip timeline, held as alfred stores one: no
-        captions or style is null until one is given. `heard` is what the audio
-        engine will hear in it; `failure`, when given, is why its transcription
-        fails."""
+        """A project with a one-clip timeline, or the `edl` given, held as alfred
+        stores one: no captions or style is null until one is given. `heard` is
+        what the audio engine will hear in it; `failure`, when given, is why its
+        transcription fails."""
         project = {
             "_id": project_id,
             "name": name,
             "logic": {},
-            "edl": {"clips": [{"type": "video", "name": "videos/talk.mp4", "duration": 9.0}],
-                    "duration": 9.0},
+            "edl": edl if edl is not None else {
+                "clips": [{"type": "video", "name": "videos/talk.mp4", "duration": 9.0}],
+                "duration": 9.0},
             "render_settings": render_settings,
             "captions": None if captions is None else list(captions),
             "caption_style": style,

@@ -126,6 +126,7 @@ class TestListRecipes:
         assert "plan-council" in names
         assert "alfred-render" in names
         assert "alfred-caption-render" in names
+        assert "alfred-excerpts" in names
 
     def test_recipe_has_required_fields(self):
         for recipe in mcp_mod.list_recipes():
@@ -134,8 +135,8 @@ class TestListRecipes:
             assert "flow" in recipe
             assert "required_flags" in recipe
 
-    def test_eleven_recipes_total(self):
-        assert len(mcp_mod.list_recipes()) == 11
+    def test_twelve_recipes_total(self):
+        assert len(mcp_mod.list_recipes()) == 12
 
 
 # ---------------------------------------------------------------------------
