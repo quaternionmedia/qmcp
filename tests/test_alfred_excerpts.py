@@ -500,7 +500,8 @@ def test_the_review_places_the_span_and_quotes_its_words():
     lines = request["prompt"].splitlines()
     assert lines[0] == ("Clip 3 of 3 from 'Set at the Hall', chapter 2 of 3 (The Story), "
                         "3:07.4-4:05.8 (58 s, story):")
-    assert lines[1] == "  3:07.4-3:14.4  This is sentence 36 of the story, which goes on for a while"
+    assert lines[1] == ("  3:07.4-3:14.4  This is sentence 36 of the story, which goes on for "
+                        "a while")
     assert lines[-1] == ("Answer approve to render it as a clip of its own to review, or reject "
                          "to leave it out.")
     assert request["context"]["clip"] == 3 and request["context"]["of"] == 3
