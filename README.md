@@ -22,7 +22,7 @@ leaves to another program.
 | run a repository's gates and hand the results to dossier | [`docs/setup/harness.md`](docs/setup/harness.md) |
 | speak instructions at the machine and hear what the model found | [`docs/voice-loop-demo.md`](docs/voice-loop-demo.md) |
 | declare how agents are arranged, and save a design | [`docs/agentframework/topologies.md`](docs/agentframework/topologies.md) |
-| run the cookbook's flows, alfred renders among them | [`docs/setup/flows.md`](docs/setup/flows.md) |
+| run the cookbook's flows: alfred's renders, captions, and a long recording cut into excerpts a person chooses | [`docs/setup/flows.md`](docs/setup/flows.md) |
 | build agents whose tool calls are recorded here | [`docs/integrations/pydantic-ai.md`](docs/integrations/pydantic-ai.md) |
 | change qmcp itself | [`docs/contributing.md`](docs/contributing.md) |
 

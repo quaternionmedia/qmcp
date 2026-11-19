@@ -39,7 +39,7 @@ one of them.
 ## Flow host
 
 - [`setup/flows.md`](setup/flows.md): run the cookbook's flows in Docker
-- [`integrations/alfred.md`](integrations/alfred.md): alfred's renders and captions, behind a person's approval
+- [`integrations/alfred.md`](integrations/alfred.md): alfred's renders and captions behind a person's approval, and a long recording's transcript cut into excerpts a person chooses
 - [`agentframework/runners.md`](agentframework/runners.md): how a flow's steps are built
 
 ## Agent library
