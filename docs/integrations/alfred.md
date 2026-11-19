@@ -7,13 +7,13 @@ captions for a render to burn in. Three flows put the work to a person:
 `alfred-render` asks about a finished render before anything else happens to
 it, `alfred-caption-render` asks about the transcript, then the render, and
 `alfred-excerpts` offers the stretches of a long project's transcript that
-stand alone as clips, asks about each, and renders the chosen ones.
+stand alone as excerpts, asks about each, and renders the chosen ones.
 
 The tools use alfred's HTTP API and import no alfred or render-engine code.
 Every call is a tool invocation, so qmcp records it.
 `walkthrough/10-a-render-waits-for-a-person.md`,
 `walkthrough/11-captions-are-read-before-they-are-burned-in.md` and
-`walkthrough/12-a-long-recording-is-offered-as-clips.md` run the tools and the
+`walkthrough/12-a-long-recording-is-offered-as-excerpts.md` run the tools and the
 flows' steps against a stand-in alfred.
 
 ## Configuration
@@ -361,11 +361,11 @@ Both answers are waited for as `alfred-render` waits for its one.
 
 ## The excerpt flow
 
-`examples/flows/alfred_excerpts.py` cuts a long project into clips a person
+`examples/flows/alfred_excerpts.py` cuts a long project into excerpts a person
 chooses. The transcript's own timing proposes chapters and spans; a person is
-asked about each span; each approved span is rendered as a clip of its own,
+asked about each span; each approved span is rendered as an excerpt of its own,
 cut from the project's saved timeline with its captions burned in; each
-rendered clip is put to a person with its link; and an approved clip is
+rendered excerpt is put to a person with its link; and an approved excerpt is
 delivered, when the run is asked to.
 
 ```bash
@@ -388,10 +388,10 @@ correlation id `alfred-excerpts-<run id>`.
 | `read` | `alfred_project` for the saved timeline, and `alfred_captions` for the transcript: captions alfred holds are used as they are, and a project with none is transcribed as `alfred-caption-render` transcribes it, unless `--transcribe False` |
 | `propose` | chapters and spans from the transcript's timing (below); with `--label-with local`, the model `qmcp localmodel` stands up titles each chapter and sorts each span into one of `--categories` |
 | `review` | one approval per span, in order, placing it in the recording and quoting its words, that expires after `--review-timeout`; approve renders it, reject leaves it out |
-| `render` | `alfred_render_enqueue` for each approved span, with a timeline cut from the project's saved one and, unless `--captions False`, the captions alfred holds when the clip is queued that fall in it, in the project's caption style switched on, so a correction saved in alfred during the review is in the clip; `--width`, `--height` and `--quality` when given |
-| `follow` | `alfred_render_status` for each clip until it settles, as `alfred-render` follows one |
-| `ask_person` | for each rendered clip: an approval with its link that expires after `--approval-timeout`, then the answer |
-| `delivery` | for each approved clip, only when `--deliver True`: `alfred_render_deliver`, to `--destination` or alfred's choice |
+| `render` | `alfred_render_enqueue` for each approved span, with a timeline cut from the project's saved one and, unless `--captions False`, the captions alfred holds when the excerpt is queued that fall in it, in the project's caption style switched on, so a correction saved in alfred during the review is in the excerpt; `--width`, `--height` and `--quality` when given |
+| `follow` | `alfred_render_status` for each excerpt until it settles, as `alfred-render` follows one |
+| `ask_person` | for each rendered excerpt: an approval with its link that expires after `--approval-timeout`, then the answer |
+| `delivery` | for each approved excerpt, only when `--deliver True`: `alfred_render_deliver`, to `--destination` or alfred's choice |
 | `end` | prints how the run ended |
 
 **What a span is.** The proposal comes from the transcript and nothing else:
@@ -406,13 +406,13 @@ otherwise left out and counted. Nothing hears the sound, so a song the engine
 wrote no words for is a pause, and where it falls is a chapter's edge; a
 person chooses each span, and the editor is where a span is refined.
 
-**The clip's timeline** is the part of the project's saved timeline between
+**The excerpt's timeline** is the part of the project's saved timeline between
 the span's start and end, as a timeline of its own that begins at 0: each
 clip that plays in it is kept with every field it had and re-timed as otto
 reads a clip, its in-point and out-point set to the part of its source the
 span holds. An edge the span cut gets no fade, as alfred's own cuts have none;
 an edge it did not cut keeps the clip's. An image keeps a duration alone. The
-captions that fall in the span go with it, moved to the clip's own seconds and
+captions that fall in the span go with it, moved to the excerpt's own seconds and
 trimmed where the span cuts one.
 
 **The labeller** is a function from a prompt to an answer, one short answer
@@ -424,22 +424,22 @@ readable. Without categories, chapters are titled and no span is labelled.
 `--label-with none`, the default, asks no model.
 
 **What the person reads.** Each span's request is
-`alfred-excerpt-<project id>-<clip number>-<run id>`: the clip's number and
+`alfred-excerpt-<project id>-<excerpt number>-<run id>`: the excerpt's number and
 how many there are, its chapter and the chapter's title when it has one, its
 times and length, its category when it has one, and its captions, one
-`m:ss.s-m:ss.s  text` line each. Each rendered clip's request is
+`m:ss.s-m:ss.s  text` line each. Each rendered excerpt's request is
 `alfred-excerpt-render-<render id>-<run id>`: `alfred-render`'s approval, with
-the link and when it stops working, placing the clip in the recording and
+the link and when it stops working, placing the excerpt in the recording and
 saying what approving does. Both carry a `spoken` form in their context, the
 same question in a breath, which a voice reader speaks in place of the
 prompt (`qmcp.integrations.voice`). The answers are waited for as
-`alfred-render` waits for its one. In alfred's Deliver stage a clip is the
-render named `<project> - clip <n>`, described by its times in the recording,
+`alfred-render` waits for its one. In alfred's Deliver stage an excerpt is the
+render named `<project> - excerpt <n>`, described by its times in the recording,
 its chapter and its label.
 
-**The last line** counts each stage: how many clips in how many chapters were
+**The last line** counts each stage: how many excerpts in how many chapters were
 offered, how many a person approved and how many went unanswered, how many
-rendered and which did not, how many were approved as clips, and, when the run
+rendered and which did not, how many were approved as excerpts, and, when the run
 was asked to deliver, how many were delivered and which alfred refused.
 
 ## What is checked

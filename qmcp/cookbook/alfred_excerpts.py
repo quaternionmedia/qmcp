@@ -1,4 +1,4 @@
-"""Cutting a long alfred project into clips a person chooses: the steps, apart from any flow.
+"""Cutting a long alfred project into excerpts a person chooses: the steps, apart from any flow.
 
 `examples/flows/alfred_excerpts.py` runs them as a Metaflow flow, one step each:
 
@@ -7,16 +7,16 @@
               when the project holds none
     propose   chapters and spans from the transcript's own timing: a chapter
               ends at a long pause, a span at a pause or at a sentence's end,
-              within the length a clip may have; a labeller, when the run has
+              within the length an excerpt may have; a labeller, when the run has
               one, titles each chapter and sorts each span into a category
     review    one request on qmcp's human queue per span, carrying its words:
-              approve renders it as a clip of its own, reject leaves it out
+              approve renders it as an excerpt of its own, reject leaves it out
     render    `alfred_render_enqueue` with a timeline cut from the project's
               for each approved span, its captions burned in when asked, then
               `alfred_render_status` until each settles (`alfred_render`)
-    ask       a request per rendered clip, with its link, saying what
+    ask       a request per rendered excerpt, with its link, saying what
               approval does
-    deliver   `alfred_render_deliver` for each approved clip, when the run was
+    deliver   `alfred_render_deliver` for each approved excerpt, when the run was
               asked to deliver
 
 Every call to alfred is a qmcp tool invocation, so the run is in qmcp's
@@ -83,7 +83,7 @@ _FIRST_SENTENCE = re.compile(r"^(.*?[.!?…][\"')”’»\]]*)(?:\s|$)")
 
 @dataclass(frozen=True)
 class Span:
-    """A stretch of the transcript offered as a clip: `number` counts spans
+    """A stretch of the transcript offered as an excerpt: `number` counts spans
     from 1 in timeline order, `chapter` is the chapter's number from 1,
     `start` and `end` are timeline seconds, `captions` what is said in it, and
     `label` the category a labeller gave it, empty until one does."""
@@ -322,7 +322,7 @@ def title_prompt(chapter_text: str) -> str:
 
 
 def category_prompt(span_text: str, categories: Sequence[str]) -> str:
-    return (f"Which one of these categories fits this clip best: {', '.join(categories)}? "
+    return (f"Which one of these categories fits this excerpt best: {', '.join(categories)}? "
             f"Answer with the category alone.\n\n{span_text[:LABEL_CHARS]}")
 
 
@@ -397,7 +397,7 @@ def local_model(
     return ask
 
 
-# --- the clip's timeline ---------------------------------------------------------------
+# --- the excerpt's timeline ---------------------------------------------------------------
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -459,7 +459,7 @@ def excerpt_edl(edl: dict[str, Any], start: float, end: float) -> dict[str, Any]
 
 def excerpt_captions(captions: Sequence[dict[str, Any]], start: float,
                      end: float) -> list[dict[str, Any]]:
-    """The captions that lie between `start` and `end`, in the clip's own
+    """The captions that lie between `start` and `end`, in the excerpt's own
     seconds: moved by `start`, trimmed where the span cuts one, and dropped
     where nothing of one is left."""
     kept = []
@@ -471,19 +471,19 @@ def excerpt_captions(captions: Sequence[dict[str, Any]], start: float,
     return kept
 
 
-def clip_name(project_name: str | None, span: Span) -> str:
-    return f"{project_name or 'alfred project'} - clip {span.number}"
+def excerpt_name(project_name: str | None, span: Span) -> str:
+    return f"{project_name or 'alfred project'} - excerpt {span.number}"
 
 
-def clip_description(project_name: str | None, span: Span) -> str:
-    """What alfred's Deliver stage shows under the clip's name: where it lies
+def excerpt_description(project_name: str | None, span: Span) -> str:
+    """What alfred's Deliver stage shows under the excerpt's name: where it lies
     in the recording, its chapter, and its label when it has one."""
     where = (f"{timecode(span.start)}-{timecode(span.end)} of "
              f"{project_name or 'the recording'!r}, chapter {span.chapter}")
     return f"{where}: {span.label}" if span.label else where
 
 
-def queue_clip(
+def queue_excerpt(
     invoke: Invoke,
     project: dict[str, Any],
     span: Span,
@@ -492,18 +492,18 @@ def queue_clip(
     style: dict[str, Any] | None = None,
     **options: Any,
 ) -> dict[str, Any]:
-    """Queue a render of the span as a clip of its own: `alfred_render_enqueue`
+    """Queue a render of the span as an excerpt of its own: `alfred_render_enqueue`
     with the timeline cut from the project's saved one, named for the project
     and the span, with the project's captions that fall in it burned in when
-    `captions` are given, in `style`: the captions alfred holds when the clip is
-    queued, so a correction saved in alfred during the review is in the clip.
+    `captions` are given, in `style`: the captions alfred holds when the excerpt is
+    queued, so a correction saved in alfred during the review is in the excerpt.
     `options` left as None are the project's saved settings, else alfred's.
     Returns what the tool returned."""
     edl = excerpt_edl(project["edl"], span.start, span.end)
     params: dict[str, Any] = {
         "edl": edl,
-        "name": clip_name(project.get("name"), span),
-        "description": clip_description(project.get("name"), span),
+        "name": excerpt_name(project.get("name"), span),
+        "description": excerpt_description(project.get("name"), span),
     }
     saved = project.get("render_settings") or {}
     for key in ("width", "height", "fps", "quality"):
@@ -512,7 +512,7 @@ def queue_clip(
         if value is not None:
             params[key] = value
     if captions is not None:
-        # Held to the clip, as the timeline was: a caption past its end is left.
+        # Held to the excerpt, as the timeline was: a caption past its end is left.
         burned = excerpt_captions(captions, span.start, span.start + edl["duration"])
         if burned:
             params["captions"] = burned
@@ -539,14 +539,14 @@ def review_request(project: dict[str, Any], span: Span, proposal: Proposal,
     labelled = f", {span.label}" if span.label else ""
     lines = "\n".join(f"  {line}" for line in transcript(list(span.captions)))
     prompt = (
-        f"Clip {span.number} of {len(proposal.spans)} from {name!r}, {place}, "
+        f"Excerpt {span.number} of {len(proposal.spans)} from {name!r}, {place}, "
         f"{timecode(span.start)}-{timecode(span.end)} ({span.seconds:.0f} s{labelled}):\n{lines}\n"
-        "Answer approve to render it as a clip of its own to review, or reject to leave it out."
+        "Answer approve to render it as an excerpt of its own to review, or reject to leave it out."
     )
     spoken = (
-        f"Clip {span.number} of {len(proposal.spans)} from {name}, {place}, "
+        f"Excerpt {span.number} of {len(proposal.spans)} from {name}, {place}, "
         f"{span.seconds:.0f} seconds{labelled}. It opens: {span.opening} "
-        "Approve to render it as a clip of its own, or reject to leave it out."
+        "Approve to render it as an excerpt of its own, or reject to leave it out."
     )
     return {
         "request_id": f"alfred-excerpt-{project_id}-{span.number}-{run_id}",
@@ -556,7 +556,7 @@ def review_request(project: dict[str, Any], span: Span, proposal: Proposal,
             "spoken": spoken,
             "project_id": project_id,
             "name": name,
-            "clip": span.number,
+            "excerpt": span.number,
             "of": len(proposal.spans),
             "chapter": span.chapter,
             "chapter_title": chapter.title,
@@ -579,9 +579,9 @@ def approval_request(
     deliver: bool = False,
     destination: str | None = None,
 ) -> dict[str, Any]:
-    """What a person is asked about a rendered clip: `alfred_render`'s request,
-    with the link and when it stops working, placing the clip in the recording
-    and saying what approval does -- deliver the clip, when the run was asked
+    """What a person is asked about a rendered excerpt: `alfred_render`'s request,
+    with the link and when it stops working, placing the excerpt in the recording
+    and saying what approval does -- deliver the excerpt, when the run was asked
     to, or nothing more."""
     request = alfred_render.approval_request(queued, waited, run_id)
     where = f" It is {timecode(span.start)}-{timecode(span.end)} of the recording"
@@ -596,7 +596,7 @@ def approval_request(
     # The prompt carries a link, which is for a page; the ear gets the place.
     name = queued.get("name") or queued.get("render_id")
     spoken = f"{name} is rendered.{where}{then}"
-    request["context"].update(spoken=spoken, clip=span.number, start=span.start,
+    request["context"].update(spoken=spoken, excerpt=span.number, start=span.start,
                               end=span.end, label=span.label,
                               captions=queued.get("captions"), deliver=deliver,
                               destination=destination)
@@ -631,28 +631,28 @@ def summary(
         shortest = (proposal.settings if proposal else {}).get("shortest", SHORTEST)
         return (f"Nothing was asked: the transcript of {name!r} "
                 f"({counted(len(transcribed.captions), 'caption')}) has no stretch of "
-                f"{shortest:g} s or more to offer as a clip.")
+                f"{shortest:g} s or more to offer as an excerpt.")
     reviewed, queued, waited = reviewed or {}, queued or {}, waited or {}
     answers, delivered = answers or {}, delivered or {}
     approved = sum(answer == APPROVE for answer in reviewed.values())
     unanswered = sum(answer is None for answer in reviewed.values())
     rendered = sum(w.rendered for w in waited.values())
     kept = sum(answer == APPROVE for answer in answers.values())
-    parts = [f"{counted(len(proposal.spans), 'clip')} in "
+    parts = [f"{counted(len(proposal.spans), 'excerpt')} in "
              f"{counted(len(proposal.chapters), 'chapter')} of {name!r} offered",
              f"{approved} approved"]
     if unanswered:
         parts[-1] += f" ({unanswered} unanswered)"
     if approved:
         parts.append(f"{rendered} rendered")
-        failed = [f"clip {n} {w.why}" for n, w in sorted(waited.items()) if not w.rendered]
+        failed = [f"excerpt {n} {w.why}" for n, w in sorted(waited.items()) if not w.rendered]
         if failed:
             parts[-1] += f" ({'; '.join(failed)})"
-        parts.append(f"{kept} approved as clips")
+        parts.append(f"{kept} approved as excerpts")
         if deliver:
             went = sum(d.ok for d in delivered.values())
             parts.append(f"{went} delivered")
-            refused = [f"clip {n}: {d.error}" for n, d in sorted(delivered.items()) if not d.ok]
+            refused = [f"excerpt {n}: {d.error}" for n, d in sorted(delivered.items()) if not d.ok]
             if refused:
                 parts[-1] += f" ({'; '.join(refused)})"
     return sentence(", ".join(parts))
@@ -673,8 +673,8 @@ __all__ = [
     "Span",
     "approval_request",
     "category_from",
-    "clip_description",
-    "clip_name",
+    "excerpt_description",
+    "excerpt_name",
     "ends_sentence",
     "excerpt_captions",
     "excerpt_edl",
@@ -684,7 +684,7 @@ __all__ = [
     "opening",
     "pieces",
     "propose",
-    "queue_clip",
+    "queue_excerpt",
     "read_transcript",
     "review_request",
     "spoken",

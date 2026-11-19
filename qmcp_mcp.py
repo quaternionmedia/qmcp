@@ -77,7 +77,7 @@ _RECIPES: dict[str, dict[str, Any]] = {
         "required_flags": ["--project-id"],
     },
     "alfred-excerpts": {
-        "description": "Cut a long alfred project into clips: propose them from its "
+        "description": "Cut a long alfred project into excerpts: propose them from its "
         "transcript, have a person choose each, render it and ask a person to approve it",
         "flow": "examples/flows/alfred_excerpts.py",
         "required_flags": ["--project-id"],

@@ -1,11 +1,11 @@
-"""Cut a long alfred project into clips a person chooses, and render each one.
+"""Cut a long alfred project into excerpts a person chooses, and render each one.
 
 alfred holds the project's transcript, made by its audio engine when it holds
 none; the transcript's own timing proposes chapters and spans; a person is
 asked about each span on qmcp's human queue, and approves or rejects it; each
-approved span is rendered as a clip of its own, cut from the project's saved
+approved span is rendered as an excerpt of its own, cut from the project's saved
 timeline with its captions burned in, followed until it renders and put to a
-person with its download link; and an approved clip is delivered, when the run
+person with its download link; and an approved excerpt is delivered, when the run
 is asked to deliver. A local model, when the run names one, titles each
 chapter and sorts each span into a category the run names. Every call to
 alfred is one of qmcp's alfred tools, made through the qmcp server, so the
@@ -44,7 +44,7 @@ from qmcp.cookbook.alfred_excerpts import (
     label,
     local_model,
     propose,
-    queue_clip,
+    queue_excerpt,
     read_transcript,
     review_request,
     summary,
@@ -60,7 +60,7 @@ from qmcp.localmodel import MODEL as LOCAL_MODEL
 
 
 class AlfredExcerptsFlow(FlowSpec):
-    """Propose clips from an alfred project's transcript, have a person choose
+    """Propose excerpts from an alfred project's transcript, have a person choose
     them, render each one, have a person approve each render, and deliver them.
 
     Steps:
@@ -68,11 +68,11 @@ class AlfredExcerptsFlow(FlowSpec):
     2. read: the project's saved timeline, and its transcript, made if it has none
     3. propose: chapters and spans from the transcript, labelled when asked
     4. review: put each span to a person, in order, and wait for each answer
-    5. render: queue a clip of each approved span, cut from the timeline, with the
+    5. render: queue an excerpt of each approved span, cut from the timeline, with the
        captions alfred holds then
-    6. follow: wait until each clip is rendered or failed, or no renderer runs
-    7. ask_person: put each rendered clip, with its link, to a person and wait
-    8. delivery: deliver each approved clip, when --deliver is set
+    6. follow: wait until each excerpt is rendered or failed, or no renderer runs
+    7. ask_person: put each rendered excerpt, with its link, to a person and wait
+    8. delivery: deliver each approved excerpt, when --deliver is set
     9. end: say how it ended
     """
 
@@ -89,10 +89,10 @@ class AlfredExcerptsFlow(FlowSpec):
         type=float,
     )
     shortest = Parameter(
-        "shortest", help="The shortest a clip may run, in seconds", default=SHORTEST, type=float
+        "shortest", help="The shortest an excerpt may run, in seconds", default=SHORTEST, type=float
     )
     longest = Parameter(
-        "longest", help="The longest a clip may run, in seconds", default=LONGEST, type=float
+        "longest", help="The longest an excerpt may run, in seconds", default=LONGEST, type=float
     )
     label_with = Parameter(
         "label-with",
@@ -115,7 +115,7 @@ class AlfredExcerptsFlow(FlowSpec):
         type=float,
     )
     captions = Parameter(
-        "captions", help="Burn each clip's captions into it", type=bool, default=True
+        "captions", help="Burn each excerpt's captions into it", type=bool, default=True
     )
     width = Parameter("width", help="Frame width; the project's saved size by default", type=int)
     height = Parameter("height", help="Frame height; the project's saved size by default",
@@ -123,7 +123,7 @@ class AlfredExcerptsFlow(FlowSpec):
     quality = Parameter("quality", help="draft, standard or high; alfred's default if unset",
                         type=str)
     deliver = Parameter(
-        "deliver", help="Deliver each clip once a person approves it", type=bool, default=False
+        "deliver", help="Deliver each excerpt once a person approves it", type=bool, default=False
     )
     destination = Parameter(
         "destination", help="Where to deliver: a destination alfred offers; alfred's own "
@@ -158,7 +158,7 @@ class AlfredExcerptsFlow(FlowSpec):
         default=3600, type=int,
     )
     approval_timeout = Parameter(
-        "approval-timeout", help="Seconds each clip's approval may wait for an answer",
+        "approval-timeout", help="Seconds each excerpt's approval may wait for an answer",
         default=3600, type=int,
     )
 
@@ -224,9 +224,9 @@ class AlfredExcerptsFlow(FlowSpec):
                 raise ValueError(f"--label-with is none or local, not {self.label_with!r}")
             for chapter in self.proposal.chapters:
                 title = f" {chapter.title!r}" if chapter.title else ""
-                print(f"chapter {chapter.number}{title}: {chapter.spans} clips, "
+                print(f"chapter {chapter.number}{title}: {chapter.spans} excerpts, "
                       f"{chapter.opening}")
-            print(f"{len(self.proposal.spans)} clips proposed, {self.proposal.left_out} "
+            print(f"{len(self.proposal.spans)} excerpts proposed, {self.proposal.left_out} "
                   "stretches too short to stand alone")
         self.next(self.review)
 
@@ -243,9 +243,9 @@ class AlfredExcerptsFlow(FlowSpec):
 
     @step
     def render(self):
-        """Queue a clip of each approved span, cut from the project's timeline,
+        """Queue an excerpt of each approved span, cut from the project's timeline,
         with the captions alfred holds now: a correction saved in alfred during
-        the review is in the clip."""
+        the review is in the excerpt."""
         self.queued = {}
         approved = [span for span in (self.proposal.spans if self.proposal else ())
                     if self.reviewed.get(span.number) == APPROVE]
@@ -257,7 +257,7 @@ class AlfredExcerptsFlow(FlowSpec):
                     held = invoke("alfred_captions", {"project_id": self.project_id})
                     captions, style = held.get("captions") or [], held.get("style")
                 for span in approved:
-                    self.queued[span.number] = queue_clip(
+                    self.queued[span.number] = queue_excerpt(
                         invoke,
                         self.project,
                         span,
@@ -274,7 +274,7 @@ class AlfredExcerptsFlow(FlowSpec):
 
     @step
     def follow(self):
-        """Wait until each clip is rendered or failed, or no renderer runs."""
+        """Wait until each excerpt is rendered or failed, or no renderer runs."""
         self.waited = {}
         with self._client() as client:
             invoke = invoker(client, self._correlation())
@@ -288,12 +288,12 @@ class AlfredExcerptsFlow(FlowSpec):
                 )
                 waited = self.waited[number]
                 why = f" -- {waited.why}" if waited.why else ""
-                print(f"After {waited.seconds:.0f} s clip {number} ended: {waited.outcome}{why}")
+                print(f"After {waited.seconds:.0f} s excerpt {number} ended: {waited.outcome}{why}")
         self.next(self.ask_person)
 
     @step
     def ask_person(self):
-        """Put each rendered clip, with its link, to a person, and wait for each answer."""
+        """Put each rendered excerpt, with its link, to a person, and wait for each answer."""
         self.answers = {}
         spans = {span.number: span for span in (self.proposal.spans if self.proposal else ())}
         with self._client() as client:
@@ -308,7 +308,7 @@ class AlfredExcerptsFlow(FlowSpec):
 
     @step
     def delivery(self):
-        """Deliver each approved clip, when the run was asked to."""
+        """Deliver each approved excerpt, when the run was asked to."""
         self.delivered = {}
         if self.deliver:
             with self._client() as client:

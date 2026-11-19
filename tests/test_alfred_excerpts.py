@@ -1,5 +1,5 @@
 """The excerpt flow: a transcript cut into chapters and spans, a labeller over
-them, the clip's timeline cut from the project's, the transcript read or made,
+them, the excerpt's timeline cut from the project's, the transcript read or made,
 each request a person gets, how a run ends, and the flow file's steps end to
 end through a qmcp server and its queue.
 
@@ -43,7 +43,7 @@ from qmcp.cookbook.alfred_excerpts import (
     local_model,
     opening,
     propose,
-    queue_clip,
+    queue_excerpt,
     read_transcript,
     review_request,
     spoken,
@@ -96,7 +96,7 @@ def test_the_flow_file_compiles_and_runs_the_module_s_steps():
     source = path.read_text(encoding="utf-8")
     compile(source, str(path), "exec")
     for name in ("read_transcript", "propose", "label", "local_model", "review_request",
-                 "queue_clip", "wait_for_render", "approval_request", "ask", "wait_for_answer",
+                 "queue_excerpt", "wait_for_render", "approval_request", "ask", "wait_for_answer",
                  "deliver_render", "summary"):
         assert f"{name}(" in source, name
     assert '"alfred_project"' in source
@@ -294,7 +294,7 @@ def test_a_model_that_refuses_raises_and_label_leaves_the_span_unlabelled():
     assert [s.label for s in proposed.spans] == ["", "", ""]
 
 
-# --- the clip's timeline ---------------------------------------------------------------
+# --- the excerpt's timeline ---------------------------------------------------------------
 
 TIMELINE = {"duration": 260.0, "clips": [
     {"type": "template", "name": "title", "start": 0, "duration": 5, "data": {"text": "Show"}},
@@ -347,7 +347,7 @@ def test_a_deprecated_offset_is_folded_into_the_timing():
 
 
 def test_a_span_is_held_to_the_timeline_s_duration():
-    """Mutation: ignore the timeline's duration -- red, the clip runs past it."""
+    """Mutation: ignore the timeline's duration -- red, the excerpt runs past it."""
     cut = excerpt_edl({"duration": 12.0, "clips": [{"type": "video", "name": "v.mp4",
                                                      "duration": 30}]}, 10.0, 20.0)
     assert cut["duration"] == 2.0 and cut["clips"][0]["outpoint"] == 12.0
@@ -436,7 +436,7 @@ def test_a_transcription_running_now_is_followed_rather_than_read_stale():
     assert ended.captions == GOODBYE
 
 
-# --- queueing a clip --------------------------------------------------------------------
+# --- queueing an excerpt --------------------------------------------------------------------
 
 PROJECT_ID = "6a78b0420eea42d905943601"
 PROJECT = {"id": PROJECT_ID, "name": "Set at the Hall", "edl": TIMELINE,
@@ -458,11 +458,11 @@ def test_a_clip_is_queued_from_the_cut_timeline_with_its_captions():
     """Mutation: send the project's whole timeline -- red."""
     span = propose(RECORDING).spans[1]
     queue = Queue()
-    queued = queue_clip(queue, PROJECT, span, captions=RECORDING,
+    queued = queue_excerpt(queue, PROJECT, span, captions=RECORDING,
                         style={**CAPTIONS["style"], "fontsize": 40.0}, quality="high")
     sent, = queue.params
     assert sent["edl"] == excerpt_edl(TIMELINE, span.start, span.end)
-    assert sent["name"] == "Set at the Hall - clip 2"
+    assert sent["name"] == "Set at the Hall - excerpt 2"
     assert sent["description"] == "1:39.2-3:07.0 of 'Set at the Hall', chapter 2"
     assert (sent["width"], sent["height"], sent["quality"]) == (1280, 720, "high")
     assert "fps" not in sent
@@ -471,21 +471,22 @@ def test_a_clip_is_queued_from_the_cut_timeline_with_its_captions():
     assert queued["captions"] == len(sent["captions"]) > 0
 
 
-def test_a_clip_queued_without_captions_sends_none():
+def test_an_excerpt_queued_without_captions_sends_none():
     """Mutation: send the captions whenever there are any -- red."""
     span = propose(RECORDING).spans[0]
     queue = Queue()
-    queue_clip(queue, PROJECT, span, captions=None, style=CAPTIONS["style"])
+    queue_excerpt(queue, PROJECT, span, captions=None, style=CAPTIONS["style"])
     assert "captions" not in queue.params[0] and "caption_style" not in queue.params[0]
-    queue_clip(queue, PROJECT, span, captions=GOODBYE, style=CAPTIONS["style"])
+    queue_excerpt(queue, PROJECT, span, captions=GOODBYE, style=CAPTIONS["style"])
     assert "captions" not in queue.params[1]
 
 
-def test_a_labelled_clip_s_description_names_its_label():
+def test_a_labelled_excerpt_s_description_names_its_label():
     span = Span(1, 1, 0.0, 10.0, (), label="song")
-    assert flow.clip_description("A Set", span) == "0:00.0-0:10.0 of 'A Set', chapter 1: song"
-    assert flow.clip_description(None, span) == "0:00.0-0:10.0 of 'the recording', chapter 1: song"
-    assert flow.clip_name(None, span) == "alfred project - clip 1"
+    assert flow.excerpt_description("A Set", span) == "0:00.0-0:10.0 of 'A Set', chapter 1: song"
+    assert flow.excerpt_description(None, span) == ("0:00.0-0:10.0 of 'the recording', "
+                                                     "chapter 1: song")
+    assert flow.excerpt_name(None, span) == "alfred project - excerpt 1"
 
 
 # --- what a person is asked ----------------------------------------------------------
@@ -498,20 +499,21 @@ def test_the_review_places_the_span_and_quotes_its_words():
     assert request["request_id"] == f"alfred-excerpt-{PROJECT_ID}-3-run-1"
     assert request["options"] == [APPROVE, REJECT]
     lines = request["prompt"].splitlines()
-    assert lines[0] == ("Clip 3 of 3 from 'Set at the Hall', chapter 2 of 3 (The Story), "
+    assert lines[0] == ("Excerpt 3 of 3 from 'Set at the Hall', chapter 2 of 3 (The Story), "
                         "3:07.4-4:05.8 (58 s, story):")
     assert lines[1] == ("  3:07.4-3:14.4  This is sentence 36 of the story, which goes on for "
                         "a while")
-    assert lines[-1] == ("Answer approve to render it as a clip of its own to review, or reject "
+    assert lines[-1] == ("Answer approve to render it as an excerpt of its own to review, or "
+                         "reject "
                          "to leave it out.")
-    assert request["context"]["clip"] == 3 and request["context"]["of"] == 3
+    assert request["context"]["excerpt"] == 3 and request["context"]["of"] == 3
     assert request["context"]["chapter_title"] == "The Story"
     assert request["context"]["captions"] == list(proposed.spans[2].captions)
     # The ear gets the place and the opening, not every line.
     assert request["context"]["spoken"] == (
-        "Clip 3 of 3 from Set at the Hall, chapter 2 of 3 (The Story), 58 seconds, story. "
+        "Excerpt 3 of 3 from Set at the Hall, chapter 2 of 3 (The Story), 58 seconds, story. "
         "It opens: This is sentence 36 of the story, which goes on for a while and ends here. "
-        "Approve to render it as a clip of its own, or reject to leave it out.")
+        "Approve to render it as an excerpt of its own, or reject to leave it out.")
 
 
 def test_an_unlabelled_review_names_no_label():
@@ -519,21 +521,21 @@ def test_an_unlabelled_review_names_no_label():
     assert request["prompt"].splitlines()[0].endswith("chapter 2 of 3, 0:11.0-1:38.8 (88 s):")
 
 
-def test_the_approval_places_the_clip_and_says_what_approval_does():
+def test_the_approval_places_the_excerpt_and_says_what_approval_does():
     """Mutation: say delivery follows whatever the run asked -- red."""
     span = Span(2, 1, 99.2, 187.0, (), label="story")
-    queued = {"render_id": "r2", "name": "Set at the Hall - clip 2", "captions": 4}
+    queued = {"render_id": "r2", "name": "Set at the Hall - excerpt 2", "captions": 4}
     waited = Waited(RENDERED, {"download_url": "http://alfred.test/r2", "download_expires_at":
                                "2030-01-01T00:00:00+00:00"}, 10.0)
     request = flow.approval_request(queued, waited, span, "run-1", deliver=True)
     assert request["request_id"] == "alfred-excerpt-render-r2-run-1"
-    assert request["prompt"].startswith("Approve the render of 'Set at the Hall - clip 2'? ")
+    assert request["prompt"].startswith("Approve the render of 'Set at the Hall - excerpt 2'? ")
     assert request["prompt"].endswith(
         " It is 1:39.2-3:07.0 of the recording, story. Answer approve to deliver it to "
         "alfred's default destination, or reject to leave it undelivered.")
-    assert request["context"]["clip"] == 2 and request["context"]["captions"] == 4
+    assert request["context"]["excerpt"] == 2 and request["context"]["captions"] == 4
     assert request["context"]["spoken"] == (
-        "Set at the Hall - clip 2 is rendered. It is 1:39.2-3:07.0 of the recording, story. "
+        "Set at the Hall - excerpt 2 is rendered. It is 1:39.2-3:07.0 of the recording, story. "
         "Answer approve to deliver it to alfred's default destination, or reject to leave it "
         "undelivered.")
     kept = flow.approval_request(queued, waited, Span(2, 1, 99.2, 187.0, ()), "run-1")
@@ -555,27 +557,27 @@ def test_a_transcription_that_did_not_finish_ends_the_run_in_the_caption_flow_s_
 def test_a_transcript_with_nothing_to_offer_says_so():
     line = summary(PROJECT, Transcribed(DONE, WELCOME, None, 0.0), propose(WELCOME))
     assert line == ("Nothing was asked: the transcript of 'Set at the Hall' (2 captions) has no "
-                    "stretch of 10 s or more to offer as a clip.")
+                    "stretch of 10 s or more to offer as an excerpt.")
 
 
 def test_the_last_line_counts_each_stage():
-    """Mutation: count a rejected clip as approved -- red."""
+    """Mutation: count a rejected excerpt as approved -- red."""
     proposed = propose(RECORDING)
     reviewed = {1: APPROVE, 2: REJECT, 3: None}
     queued = {1: {"render_id": "r1"}}
     waited = {1: Waited(RENDERED, {}, 1.0)}
     line = summary(PROJECT, HEARD, proposed, reviewed, queued, waited, {1: APPROVE},
                    {1: Delivered("local", "http://alfred.test/r1")}, deliver=True)
-    assert line == ("3 clips in 3 chapters of 'Set at the Hall' offered, 1 approved "
-                    "(1 unanswered), 1 rendered, 1 approved as clips, 1 delivered.")
+    assert line == ("3 excerpts in 3 chapters of 'Set at the Hall' offered, 1 approved "
+                    "(1 unanswered), 1 rendered, 1 approved as excerpts, 1 delivered.")
     line = summary(PROJECT, HEARD, proposed, {1: APPROVE, 2: APPROVE, 3: REJECT},
                    {1: {"render_id": "r1"}, 2: {"render_id": "r2"}},
                    {1: Waited(RENDERED, {}, 1.0), 2: Waited("failed", {}, 1.0, "out of disk")},
                    {1: REJECT}, {})
-    assert line == ("3 clips in 3 chapters of 'Set at the Hall' offered, 2 approved, 1 rendered "
-                    "(clip 2 out of disk), 0 approved as clips.")
+    assert line == ("3 excerpts in 3 chapters of 'Set at the Hall' offered, 2 approved, 1 rendered "
+                    "(excerpt 2 out of disk), 0 approved as excerpts.")
     line = summary(PROJECT, HEARD, proposed, {1: REJECT, 2: REJECT, 3: REJECT})
-    assert line == "3 clips in 3 chapters of 'Set at the Hall' offered, 0 approved."
+    assert line == "3 excerpts in 3 chapters of 'Set at the Hall' offered, 0 approved."
 
 
 def test_a_delivery_alfred_refused_is_said_in_the_last_line():
@@ -583,7 +585,7 @@ def test_a_delivery_alfred_refused_is_said_in_the_last_line():
     line = summary(PROJECT, HEARD, proposed, {1: APPROVE, 2: REJECT, 3: REJECT},
                    {1: {"render_id": "r1"}}, {1: Waited(RENDERED, {}, 1.0)}, {1: APPROVE},
                    {1: Delivered("dropbox", None, "alfred refused it")}, deliver=True)
-    assert line.endswith("1 approved as clips, 0 delivered (clip 1: alfred refused it).")
+    assert line.endswith("1 approved as excerpts, 0 delivered (excerpt 1: alfred refused it).")
 
 
 def test_a_proposal_pickles_as_metaflow_keeps_artifacts():
@@ -657,7 +659,7 @@ def run(module, monkeypatch, url: str, *, review=APPROVE, approval=APPROVE,
 
     Time passes only when a wait sleeps. A person answers each request at the
     first sleep of its wait: each span's review with `review`, one answer or a
-    dict by clip number, and each render with `approval`, likewise; None is
+    dict by excerpt number, and each render with `approval`, likewise; None is
     nobody answering. `parameters` are set on the run, the rest keep their
     defaults. After each step its artifacts are pickled, as Metaflow keeps them
     between steps.
@@ -671,7 +673,7 @@ def run(module, monkeypatch, url: str, *, review=APPROVE, approval=APPROVE,
         chosen = approval if "-render-" in request_id else review
         if isinstance(chosen, dict):
             if number is None:
-                number = next(n for n, q in queued_by_clip(module).items()
+                number = next(n for n, q in queued_by_excerpt(module).items()
                               if request_id.startswith(f"alfred-excerpt-render-{q}-"))
             return chosen.get(number)
         return chosen
@@ -696,7 +698,7 @@ def run(module, monkeypatch, url: str, *, review=APPROVE, approval=APPROVE,
         return alfred_render.wait_for_answer(client, request_id, sleep=waiting, clock=clock,
                                              **options)
 
-    def queued_by_clip(module) -> dict[int, str]:
+    def queued_by_excerpt(module) -> dict[int, str]:
         return {n: q["render_id"] for n, q in getattr(module._ran, "queued", {}).items()}
 
     monkeypatch.setattr(module, "read_transcript",
@@ -741,20 +743,20 @@ def alfred_captions_clock():
 
 
 # Reading the project and its captions: two tools; the captions are read once
-# more when a clip is queued; each render moves one state per look, so two
+# more when an excerpt is queued; each render moves one state per look, so two
 # status reads follow each enqueue.
 READ_TOOLS = ["alfred_project", "alfred_captions"]
 
 
-def test_chosen_clips_are_cut_rendered_approved_and_delivered(
+def test_chosen_excerpts_are_cut_rendered_approved_and_delivered(
         flow_file, monkeypatch, server, fake):
     """Through a qmcp server on an ephemeral port over its own database: every
     call to alfred is an invocation it recorded under the run's correlation id,
     and every request is answered on its queue."""
     ran = run(flow_file, monkeypatch, server, review={1: APPROVE, 2: REJECT, 3: APPROVE},
               approval={1: APPROVE, 3: REJECT}, deliver=True)
-    assert ran.line == ("3 clips in 3 chapters of 'Set at the Hall' offered, 2 approved, "
-                        "2 rendered, 1 approved as clips, 1 delivered.")
+    assert ran.line == ("3 excerpts in 3 chapters of 'Set at the Hall' offered, 2 approved, "
+                        "2 rendered, 1 approved as excerpts, 1 delivered.")
     assert ran.tools == sorted(READ_TOOLS + ["alfred_captions"] + ["alfred_render_enqueue"] * 2
                                + ["alfred_render_status"] * 4 + ["alfred_render_deliver"])
     reviews, approvals = ran.asked[:3], ran.asked[3:]
@@ -768,7 +770,7 @@ def test_chosen_clips_are_cut_rendered_approved_and_delivered(
     first, third = fake.queued
     assert first["edl"] == excerpt_edl(TIMELINE, spans[0].start, spans[0].end)
     assert third["edl"] == excerpt_edl(TIMELINE, spans[2].start, spans[2].end)
-    assert first["name"] == "Set at the Hall - clip 1" and third["name"].endswith("clip 3")
+    assert first["name"] == "Set at the Hall - excerpt 1" and third["name"].endswith("excerpt 3")
     assert first["captions"] == excerpt_captions(RECORDING, spans[0].start, spans[0].end)
     assert first["caption_style"] == {**CAPTIONS["style"], "enabled": True, "fontsize": 40.0}
     assert (first["width"], first["height"]) == (1280, 720)
@@ -777,31 +779,31 @@ def test_chosen_clips_are_cut_rendered_approved_and_delivered(
     assert ran.pending == []
 
 
-def test_a_clip_approved_is_not_delivered_unless_the_run_was_asked_to(
+def test_an_excerpt_approved_is_not_delivered_unless_the_run_was_asked_to(
         flow_file, monkeypatch, server, fake):
-    """Mutation: deliver whenever a clip is approved -- red."""
+    """Mutation: deliver whenever an excerpt is approved -- red."""
     ran = run(flow_file, monkeypatch, server, review={1: APPROVE, 2: REJECT, 3: REJECT})
-    assert ran.line == ("3 clips in 3 chapters of 'Set at the Hall' offered, 1 approved, "
-                        "1 rendered, 1 approved as clips.")
+    assert ran.line == ("3 excerpts in 3 chapters of 'Set at the Hall' offered, 1 approved, "
+                        "1 rendered, 1 approved as excerpts.")
     assert "alfred_render_deliver" not in ran.tools
     assert ran.asked[3]["prompt"].endswith("Nothing is delivered either way: this run was not "
                                            "asked to deliver.")
 
 
-def test_clips_nobody_chooses_render_nothing(flow_file, monkeypatch, server, fake):
+def test_excerpts_nobody_chooses_render_nothing(flow_file, monkeypatch, server, fake):
     """Mutation: render whatever the review's answer -- red."""
     ran = run(flow_file, monkeypatch, server, review=REJECT)
-    assert ran.line == "3 clips in 3 chapters of 'Set at the Hall' offered, 0 approved."
+    assert ran.line == "3 excerpts in 3 chapters of 'Set at the Hall' offered, 0 approved."
     assert ran.tools == sorted(READ_TOOLS) and fake.queued == [] and len(ran.asked) == 3
 
 
 def test_a_review_nobody_answers_is_counted(flow_file, monkeypatch, server, fake):
     ran = run(flow_file, monkeypatch, server, review={1: APPROVE}, review_timeout=60)
-    assert ran.line == ("3 clips in 3 chapters of 'Set at the Hall' offered, 1 approved "
-                        "(2 unanswered), 1 rendered, 1 approved as clips.")
+    assert ran.line == ("3 excerpts in 3 chapters of 'Set at the Hall' offered, 1 approved "
+                        "(2 unanswered), 1 rendered, 1 approved as excerpts.")
 
 
-def test_captions_are_left_off_the_clips_when_the_run_says(
+def test_captions_are_left_off_the_excerpts_when_the_run_says(
         flow_file, monkeypatch, server, fake):
     """Mutation: burn them in regardless -- red."""
     run(flow_file, monkeypatch, server, review={1: APPROVE, 2: REJECT, 3: REJECT},
@@ -809,10 +811,10 @@ def test_captions_are_left_off_the_clips_when_the_run_says(
     assert "captions" not in fake.queued[0] and "caption_style" not in fake.queued[0]
 
 
-def test_a_caption_corrected_in_alfred_during_the_review_is_in_the_clip(
+def test_a_caption_corrected_in_alfred_during_the_review_is_in_the_excerpt(
         flow_file, monkeypatch, server, fake):
-    """Mutation: queue the clip with the captions read at the start -- red, the
-    clip burns the misheard word in."""
+    """Mutation: queue the excerpt with the captions read at the start -- red, the
+    excerpt burns the misheard word in."""
     def correct(request):
         held = fake.projects[PROJECT_ID]["captions"]
         held[2] = {**held[2], "text": "This is sentence 0 of the story, corrected"}
@@ -829,7 +831,7 @@ def test_a_project_without_captions_is_transcribed_first(
     project["captions"], project["caption_style"] = None, None
     fake.heard[PROJECT_ID] = RECORDING
     ran = run(flow_file, monkeypatch, server, review=REJECT)
-    assert ran.line == "3 clips in 3 chapters of 'Set at the Hall' offered, 0 approved."
+    assert ran.line == "3 excerpts in 3 chapters of 'Set at the Hall' offered, 0 approved."
     # The captions looked at before transcribing, and twice while the job moves.
     assert ran.tools == sorted(["alfred_project", "alfred_captions_transcribe"]
                                + ["alfred_captions"] * 3)
@@ -859,7 +861,7 @@ def test_a_local_labeller_is_built_from_the_run_s_settings(
               categories="song, story", llm_base_url="http://model.test/v1", llm_model="m",
               llm_timeout=9.0)
     assert built == [("http://model.test/v1", "m", 9.0)]
-    assert ran.asked[0]["prompt"].startswith("Clip 1 of 3 from 'Set at the Hall', chapter 2 "
+    assert ran.asked[0]["prompt"].startswith("Excerpt 1 of 3 from 'Set at the Hall', chapter 2 "
                                              "of 3 (A Song), 0:11.0-1:38.8 (88 s, song):")
 
 
@@ -873,8 +875,8 @@ def test_a_refusal_from_alfred_is_the_tool_s_error(flow_file, monkeypatch, serve
     fake.workers = 0
     ran = run(flow_file, monkeypatch, server, review={1: APPROVE, 2: REJECT, 3: REJECT},
               render_timeout=30, queued_timeout=10)
-    assert ran.line.endswith("1 approved, 0 rendered (clip 1 still queued after 10 s, and "
-                             "alfred reports no render worker running), 0 approved as clips.")
+    assert ran.line.endswith("1 approved, 0 rendered (excerpt 1 still queued after 10 s, and "
+                             "alfred reports no render worker running), 0 approved as excerpts.")
 
 
 def test_a_tool_error_outside_the_known_refusals_is_raised(

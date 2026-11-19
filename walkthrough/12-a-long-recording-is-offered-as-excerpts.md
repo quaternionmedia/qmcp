@@ -1,4 +1,4 @@
-# 12 — A long recording is offered as clips
+# 12 — A long recording is offered as excerpts
 
 Everything on this page runs. It is executed by the ordinary test command, so
 an example that stops being true fails the build rather than sitting here
@@ -8,9 +8,9 @@ A recording of a whole set, a talk or an interview is one alfred project, and
 what is worth sharing from it is a few stretches that stand on their own. Page
 11 has alfred's audio engine say what is said in a project, word by word and
 when. This page takes that transcript and offers the stretches that stand
-alone as clips: a person is asked about each one, each approved span is cut
-from the project's saved timeline and rendered as a clip of its own with its
-captions burned in, and each rendered clip is put to a person with its link.
+alone as excerpts: a person is asked about each one, each approved span is cut
+from the project's saved timeline and rendered as an excerpt of its own with its
+captions burned in, and each rendered excerpt is put to a person with its link.
 The steps are `qmcp.cookbook.alfred_excerpts`, run by
 `examples/flows/alfred_excerpts.py`; `docs/integrations/alfred.md` is the
 reference.
@@ -86,7 +86,7 @@ recording, and keeps every request:
 ## The project, and the transcript alfred holds
 
 `alfred_project` is the project as alfred holds it, its saved timeline
-included. The flow needs the timeline to cut a clip from it:
+included. The flow needs the timeline to cut an excerpt from it:
 
     >>> from qmcp.cookbook import alfred_excerpts as flow
     >>> from qmcp.cookbook import alfred_render
@@ -107,7 +107,7 @@ is heard once. A project with none is transcribed as page 11 transcribes it:
 The proposal comes from the transcript's own timing and nothing else. A pause
 of four seconds or more ends a chapter; within one, a pause of a second or
 more ends a span, as does the end of a sentence once a span is as long as a
-clip may be. Here the song itself is a pause: the engine wrote no words for
+excerpt may be. Here the song itself is a pause: the engine wrote no words for
 it, so the applause after it opens the last chapter:
 
     >>> proposal = flow.propose(transcribed.captions)
@@ -151,18 +151,18 @@ words. Here the person approves the story and rejects the welcome:
 
     >>> review = flow.review_request(project, proposal.spans[1], proposal, "page-12")
     >>> print(review["prompt"])
-    Clip 2 of 2 from 'Set at the Hall', chapter 2 of 3 (Late Checkout), 0:21.0-0:34.4 (13 s, story):
+    Excerpt 2 of 2 from 'Set at the Hall', chapter 2 of 3 (Late Checkout), 0:21.0-0:34.4 (13 s, story):
       0:21.0-0:24.5  We were on the road for three weeks last spring.
       0:24.9-0:27.6  The van broke down outside Leeds,
       0:28.0-0:31.2  so we wrote this in the hotel bar.
       0:31.8-0:34.4  It is called Late Checkout.
-    Answer approve to render it as a clip of its own to review, or reject to leave it out.
+    Answer approve to render it as an excerpt of its own to review, or reject to leave it out.
 
 A voice reader speaks the request's shorter form in place of the prompt,
 since every line of a span is too long to listen to:
 
     >>> print(review["context"]["spoken"])
-    Clip 2 of 2 from Set at the Hall, chapter 2 of 3 (Late Checkout), 13 seconds, story. It opens: We were on the road for three weeks last spring. Approve to render it as a clip of its own, or reject to leave it out.
+    Excerpt 2 of 2 from Set at the Hall, chapter 2 of 3 (Late Checkout), 13 seconds, story. It opens: We were on the road for three weeks last spring. Approve to render it as an excerpt of its own, or reject to leave it out.
     >>> alfred_render.ask(client, review, timeout_seconds=600,
     ...                   correlation_id="alfred-excerpts-page-12")
     >>> _ = client.submit_human_response(review["request_id"], "approve",
@@ -170,20 +170,21 @@ since every line of a span is too long to listen to:
     >>> alfred_render.wait_for_answer(client, review["request_id"], timeout_seconds=600)
     'approve'
 
-## The clip is cut from the timeline and rendered
+## The excerpt is cut from the timeline and rendered
 
-An approved span is rendered as a clip of its own: `alfred_render_enqueue`
+An approved span is rendered as an excerpt of its own: `alfred_render_enqueue`
 with a timeline cut from the project's saved one, and the captions alfred
-holds when the clip is queued that fall in the span, moved to the clip's own
+holds when the excerpt is queued that fall in the span, moved to the excerpt's own
 seconds, burned in with the project's style switched on; a caption corrected
-in alfred's editor during the review is in the clip. The title clip ends before the span begins, so only the
+in alfred's editor during the review is in the excerpt. The title clip ends
+before the span begins, so only the
 recording is in it, playing from the second the span starts, and neither edge
 the cut made has a fade, where the clip's own fades were:
 
-    >>> queued = flow.queue_clip(invoke, project, proposal.spans[1],
+    >>> queued = flow.queue_excerpt(invoke, project, proposal.spans[1],
     ...                          captions=transcribed.captions, style=held["style"])
     >>> queued["render_id"], queued["name"], queued["captions"]
-    ('6a7900000000000000000003', 'Set at the Hall - clip 2', 4)
+    ('6a7900000000000000000003', 'Set at the Hall - excerpt 2', 4)
     >>> body = json.loads([r for r in sent if r.url.path == "/render"][-1].content)
     >>> print(json.dumps(body["edl"], indent=1))
     {
@@ -213,7 +214,7 @@ This run was not asked to deliver, and the request says so:
     ...                                        sleep=lambda seconds: None)
     >>> approval = flow.approval_request(queued, waited, proposal.spans[1], "page-12")
     >>> print(approval["prompt"])
-    Approve the render of 'Set at the Hall - clip 2'? Watch it at http://alfred.test/render/6a7900000000000000000003/download?exp=1893456000&sig=c2ln -- the link works until 2030-01-01T00:00:00+00:00; alfred_render_status for render 6a7900000000000000000003 issues a fresh one. It is 0:21.0-0:34.4 of the recording, story. Nothing is delivered either way: this run was not asked to deliver.
+    Approve the render of 'Set at the Hall - excerpt 2'? Watch it at http://alfred.test/render/6a7900000000000000000003/download?exp=1893456000&sig=c2ln -- the link works until 2030-01-01T00:00:00+00:00; alfred_render_status for render 6a7900000000000000000003 issues a fresh one. It is 0:21.0-0:34.4 of the recording, story. Nothing is delivered either way: this run was not asked to deliver.
     >>> alfred_render.ask(client, approval, timeout_seconds=600,
     ...                   correlation_id="alfred-excerpts-page-12")
     >>> _ = client.submit_human_response(approval["request_id"], "approve",
@@ -222,7 +223,7 @@ This run was not asked to deliver, and the request says so:
     ...                                        timeout_seconds=600)
     >>> print(flow.summary(project, transcribed, proposal, {1: "reject", 2: "approve"},
     ...                    {2: queued}, {2: waited}, {2: answer}))
-    2 clips in 3 chapters of 'Set at the Hall' offered, 1 approved, 1 rendered, 1 approved as clips.
+    2 excerpts in 3 chapters of 'Set at the Hall' offered, 1 approved, 1 rendered, 1 approved as excerpts.
 
 ## In qmcp's record
 
@@ -244,7 +245,7 @@ Sorted, because the listing orders by creation time alone:
 
 ## What this page does not claim
 
-That alfred renders the clip, or that otto plays the cut timeline as a
+That alfred renders the excerpt, or that otto plays the cut timeline as a
 person would expect: the handler answers as told, and a running alfred is a
 person's check (`docs/integrations/alfred.md`). That the spans are the ones a
 person would choose: they come from pauses and sentence ends, and a person
