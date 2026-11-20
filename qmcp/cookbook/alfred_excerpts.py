@@ -18,6 +18,9 @@
               approval does
     deliver   `alfred_render_deliver` for each approved excerpt, when the run was
               asked to deliver
+    mark      after each of those, `alfred_cues_set` with the proposal as cues on
+              the project's timeline: each chapter, and each span with where it
+              stands, which alfred's editor draws under the clips
 
 Every call to alfred is a qmcp tool invocation, so the run is in qmcp's
 record. The steps take the tool caller (`Invoke`) and the queue client as
@@ -33,7 +36,7 @@ engine wrote no words for is a pause, and where it falls is a chapter's edge.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -518,6 +521,80 @@ def queue_excerpt(
             params["captions"] = burned
             params["caption_style"] = dict(style or {})
     return invoke("alfred_render_enqueue", params)
+
+
+# --- the cues on alfred's timeline -----------------------------------------------------
+
+# Whose the cues are: this flow's, so a run replaces the last run's and leaves
+# what anything else marked.
+CUE_SOURCE = "alfred-excerpts"
+# Where a span stands, as its cue says: proposed and not yet asked about;
+# waiting for an answer on the queue; approved or rejected by it, or
+# unanswered when the wait ran out; queued as a render; rendered, or failed;
+# and delivered.
+PROPOSED = "proposed"
+WAITING = "waiting"
+APPROVED = "approved"
+REJECTED = "rejected"
+UNANSWERED = "unanswered"
+QUEUED = "queued"
+RENDERED = "rendered"
+FAILED = "failed"
+DELIVERED = "delivered"
+
+
+def cues_of(
+    proposal: Proposal,
+    states: Mapping[int, str] | None = None,
+    refs: Mapping[int, str] | None = None,
+) -> list[dict[str, Any]]:
+    """The proposal as cues on the project's timeline: one per chapter, titled
+    when a labeller titled it, and one per span, labelled by its number and
+    its category, with its `state` and `ref` from `states` and `refs` by span
+    number -- `proposed`, and no reference, until they say otherwise -- and
+    the opening of what is said in it as its note."""
+    states = states or {}
+    refs = refs or {}
+    cues: list[dict[str, Any]] = []
+    for chapter in proposal.chapters:
+        cues.append({
+            "start": chapter.start,
+            "end": chapter.end,
+            "label": chapter.title or f"Chapter {chapter.number}",
+            "kind": "chapter",
+            "note": chapter.opening,
+        })
+    for span in proposal.spans:
+        label = f"Excerpt {span.number}" + (f": {span.label}" if span.label else "")
+        cue: dict[str, Any] = {
+            "start": span.start,
+            "end": span.end,
+            "label": label,
+            "kind": "excerpt",
+            "state": states.get(span.number, PROPOSED),
+            "note": span.opening,
+        }
+        if refs.get(span.number):
+            cue["ref"] = refs[span.number]
+        cues.append(cue)
+    return cues
+
+
+def mark(
+    invoke: Invoke,
+    project_id: Any,
+    proposal: Proposal,
+    states: Mapping[int, str] | None = None,
+    refs: Mapping[int, str] | None = None,
+) -> dict[str, Any]:
+    """Draw the proposal on the project's timeline as this flow's cues,
+    replacing the last run's: `alfred_cues_set` with `cues_of`. Returns what
+    the tool returned."""
+    return invoke("alfred_cues_set", {
+        "project_id": str(project_id),
+        "cues": cues_of(proposal, states, refs),
+        "source": CUE_SOURCE,
+    })
 
 
 # --- what a person is asked --------------------------------------------------------------

@@ -1,9 +1,10 @@
 """Tools that drive alfred, the self-hosted video editor, over its HTTP API.
 
 `alfred_projects`, `alfred_templates`, `alfred_render_enqueue`,
-`alfred_render_status`, `alfred_render_deliver`, `alfred_health`, and the
+`alfred_render_status`, `alfred_render_deliver`, `alfred_health`, the
 caption tools `alfred_captions`, `alfred_captions_transcribe` and
-`alfred_captions_set` each ask the alfred named by `QMCP_ALFRED_URL` and
+`alfred_captions_set`, and `alfred_cues_set`, which marks a project's
+timeline, each ask the alfred named by `QMCP_ALFRED_URL` and
 return what it answered, reshaped for a caller that is not alfred's own
 editor. `docs/integrations/alfred.md` is the reference: the settings, each
 tool's input and output, and the errors.
@@ -945,6 +946,69 @@ def alfred_captions_set(params: dict[str, Any]) -> dict[str, Any]:
             and "style" in stored):
         stored = _expect(alfred.get(path), dict, "GET", path)
     return captions_view(project_id, stored)
+
+
+@tool_registry.register(
+    name="alfred_cues_set",
+    description=(
+        "Mark an alfred project's timeline: store its cues, each a moment or a stretch in "
+        "timeline seconds with a label, which the editor draws under the clips -- a chapter, a "
+        "stretch proposed as an excerpt with where it stands, a mark to come back to. With a "
+        "source, replaces the cues that source wrote and keeps every other writer's; without "
+        "one, replaces them all. Returns the cues alfred then holds, in order of start."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The alfred project's id"},
+            "cues": {
+                "type": "array",
+                "description": "Every cue of this source: start, and end for a stretch, in "
+                "timeline seconds; a label of at most 200 characters; kind and state, each a "
+                "word such as chapter, excerpt or mark and proposed, waiting, approved, "
+                "rejected, rendered or delivered; ref, the writer's own reference; and note, "
+                "what a reader may want to know",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start": {"type": "number"},
+                        "end": {"type": ["number", "null"]},
+                        "label": {"type": "string"},
+                        "kind": {"type": "string"},
+                        "state": {"type": "string"},
+                        "ref": {"type": "string"},
+                        "note": {"type": "string"},
+                    },
+                    "required": ["start", "label"],
+                },
+            },
+            "source": {
+                "type": "string",
+                "description": "Who these cues are: given, the cues replace this source's "
+                "alone and are stamped with it; left out, they replace every cue",
+            },
+        },
+        "required": ["project_id", "cues"],
+    },
+)
+def alfred_cues_set(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    cues = params.get("cues")
+    if not isinstance(cues, list):
+        raise ValueError("cues must be a list of {start, end, label, kind, state, ref, note}")
+    source = params.get("source")
+    if source is not None and not isinstance(source, str):
+        raise ValueError("source must be a string")
+
+    alfred = client()
+    path = f"/project/{_path_id(project_id)}/cues"
+    body: dict[str, Any] = {"cues": cues}
+    if source:
+        body["source"] = source
+    stored = alfred.put(path, body)
+    if not (isinstance(stored, dict) and isinstance(stored.get("cues"), list)):
+        stored = _expect(alfred.get(path), dict, "GET", path)
+    return {"project_id": str(project_id), "cues": stored["cues"]}
 
 
 @tool_registry.register(

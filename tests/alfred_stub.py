@@ -175,6 +175,7 @@ NOT_FOUND_DETAIL = said("not_found")
 SIGNED_UNTIL = 1893456000  # the `exp` on every download link, 2030-01-01T00:00:00Z
 
 _CAPTIONS = re.compile(r"/project/([^/]+)/captions(/transcribe)?")
+_CUES = re.compile(r"/project/([^/]+)/cues")
 _PROJECT = re.compile(r"/project/([^/]+)")
 _RENDER = re.compile(r"/render/([^/]+)/(status|deliver)")
 _OBJECT_ID = re.compile(r"[0-9a-fA-F]{24}")
@@ -334,6 +335,7 @@ class CaptionedAlfred(FakeAlfred):
             "captions": None if captions is None else list(captions),
             "caption_style": style,
             "captions_job": None,
+            "cues": None,
         }
         self.projects[project_id] = project
         self.heard[project_id] = list(heard or [])
@@ -361,6 +363,14 @@ class CaptionedAlfred(FakeAlfred):
                 return self._with(self.projects, match[1], self.look)
             if (request.method, transcribing) == ("POST", True):
                 return self._with(self.projects, match[1], self.transcribe)
+        elif match := _CUES.fullmatch(path):
+            if request.method == "PUT":
+                body = json.loads(request.content)
+                return self._with(self.projects, match[1], lambda p: self.mark(p, body))
+            if request.method == "GET":
+                return self._with(
+                    self.projects, match[1],
+                    lambda p: httpx.Response(200, json={"cues": p.get("cues") or []}))
         elif (match := _PROJECT.fullmatch(path)) and request.method == "GET":
             return self._with(self.projects, match[1],
                               lambda project: httpx.Response(200, json=project))
@@ -465,6 +475,21 @@ class CaptionedAlfred(FakeAlfred):
         if (style := style_to_store(body.get("style"), project["caption_style"])) is not None:
             project["caption_style"] = style
         return httpx.Response(200, json=self.held(project))
+
+    def mark(self, project: dict[str, Any], body: dict[str, Any]) -> httpx.Response:
+        """`PUT /project/{id}/cues`, as alfred stores them: with a source, that
+        source's replaced, each stamped with it, and the rest kept; without
+        one, every cue replaced; in order of when they start."""
+        source = body.get("source")
+        sent = [dict(cue) for cue in body["cues"]]
+        kept: list[dict[str, Any]] = []
+        if source:
+            for cue in sent:
+                cue["source"] = source
+            kept = [cue for cue in project.get("cues") or [] if cue.get("source") != source]
+        stop = lambda cue: cue["start"] if cue.get("end") is None else cue["end"]  # noqa: E731
+        project["cues"] = sorted(kept + sent, key=lambda cue: (cue["start"], stop(cue)))
+        return httpx.Response(200, json={"cues": project["cues"]})
 
     def queue(self, body: dict[str, Any]) -> httpx.Response:
         self.queued.append(body)

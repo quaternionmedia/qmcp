@@ -65,6 +65,7 @@ tool against it, from the qmcp checkout beside alfred's or the one
 | `alfred_captions` | `project_id` | `{project_id, captions, style, job}` | `GET /project/{id}/captions` |
 | `alfred_captions_transcribe` | `project_id` | `{project_id, job}` | `POST /project/{id}/captions/transcribe` |
 | `alfred_captions_set` | `project_id`; `captions`, `style`, or both | `{project_id, captions, style, job}` | `PUT /project/{id}/captions`, and `GET` for what is left out |
+| `alfred_cues_set` | `project_id`, `cues`; `source` (optional) | `{project_id, cues}` | `PUT /project/{id}/cues` |
 | `alfred_health` | none | alfred's report as alfred answers it, `{api, db, renderer: {ok, workers}, queue: {pending}, audio_engine: {configured, ok, detail}}` | `GET /health` |
 
 **`alfred_projects`**: `clips` counts the clips on each project's timeline, 0
@@ -156,6 +157,21 @@ them apart: a detail naming the engine or an `ALFRED_AUDIO_ENGINE_*` setting,
 or one opening `The transcription could not be queued`. A refusal with any
 other code, or with no code and neither wording, is passed on as it came, such
 as a proxy's answer while alfred is down.
+
+**`alfred_cues_set`** marks a project's timeline. A cue is a moment or a
+stretch in timeline seconds with a label, which alfred's editor draws in the
+Cues lane under the clips: `{start, end, label, kind, state, ref, note}`,
+`end` left out for a moment. `kind` says what sort -- `chapter`, `excerpt`,
+`mark`, or a word of the caller's -- and `state` where it stands with the
+caller, in a word alfred's stylesheet knows: `proposed`, `waiting`,
+`approved`, `rejected`, `queued`, `rendered`, `delivered`, `failed`. `ref` is
+the caller's own reference, such as a request on qmcp's queue, and `note`
+what a reader may want to know, such as the words said in it. With a
+`source`, the cues replace the ones that source wrote and are stamped with
+it, and every other writer's stay; without one, they replace every cue the
+project holds. alfred keeps them in order of when they start, at most 2000
+to a project, and answers them as stored. An alfred from before cues answers
+the route with its 404, which the tool passes on.
 
 **`alfred_captions_set`** stores a person's correction. Give the captions, the
 style, or both. The one left out is read from alfred and sent back as alfred
@@ -386,13 +402,25 @@ correlation id `alfred-excerpts-<run id>`.
 |---|---|
 | `start` | checks the qmcp server answers |
 | `read` | `alfred_project` for the saved timeline, and `alfred_captions` for the transcript: captions alfred holds are used as they are, and a project with none is transcribed as `alfred-caption-render` transcribes it, unless `--transcribe False` |
-| `propose` | chapters and spans from the transcript's timing (below); with `--label-with local`, the model `qmcp localmodel` stands up titles each chapter and sorts each span into one of `--categories` |
+| `propose` | chapters and spans from the transcript's timing (below); with `--label-with local`, the model `qmcp localmodel` stands up titles each chapter and sorts each span into one of `--categories`; then `alfred_cues_set` draws them on the project's timeline (below) |
 | `review` | one approval per span, in order, placing it in the recording and quoting its words, that expires after `--review-timeout`; approve renders it, reject leaves it out |
 | `render` | `alfred_render_enqueue` for each approved span, with a timeline cut from the project's saved one and, unless `--captions False`, the captions alfred holds when the excerpt is queued that fall in it, in the project's caption style switched on, so a correction saved in alfred during the review is in the excerpt; `--width`, `--height` and `--quality` when given |
 | `follow` | `alfred_render_status` for each excerpt until it settles, as `alfred-render` follows one |
 | `ask_person` | for each rendered excerpt: an approval with its link that expires after `--approval-timeout`, then the answer |
 | `delivery` | for each approved excerpt, only when `--deliver True`: `alfred_render_deliver`, to `--destination` or alfred's choice |
 | `end` | prints how the run ended |
+
+**The cues.** From `propose` on, the proposal is on the project's timeline as
+cues of the source `alfred-excerpts`, which a run replaces and anything else's
+cues survive: one per chapter, titled when a labeller titled it, and one per
+span, `Excerpt n` with its category, carrying the opening of what is said in
+it. Each span's `state` follows the run -- `proposed`; `waiting` while its
+review is on the queue, with the request's id as its `ref`; `approved`,
+`rejected` or `unanswered`; `queued` with the render's id; `rendered` or
+`failed`; `rejected` again when the render is; `delivered` -- and alfred's
+editor, which reads the cues again every few seconds while any waits, shows
+the run as it goes in its Cues lane. An alfred without the cues route does
+not stop the run: the mark is printed as not made and the run goes on.
 
 **What a span is.** The proposal comes from the transcript and nothing else:
 when the words were said, and whether a caption ends a sentence. A pause of

@@ -602,6 +602,54 @@ CORRELATION = "alfred-excerpts-run-1"
 RENDER = render_id(1)
 
 
+# --- the cues on the timeline ------------------------------------------------------
+
+
+def test_cues_of_draws_each_chapter_and_each_span_with_where_it_stands():
+    """Mutation: give a span no state until one is known -- red: it is `proposed`."""
+    proposal = propose(RECORDING)
+    cues = flow.cues_of(proposal, {2: flow.WAITING, 3: flow.REJECTED}, {2: "request-2"})
+    chapters = [c for c in cues if c["kind"] == "chapter"]
+    spans = [c for c in cues if c["kind"] == "excerpt"]
+    assert len(chapters) == len(proposal.chapters) and len(spans) == len(proposal.spans)
+    assert [c["label"] for c in chapters] == ["Chapter 1", "Chapter 2", "Chapter 3"]
+    assert chapters[0]["note"] == proposal.chapters[0].opening
+    assert [(c["start"], c["end"]) for c in spans] == [(s.start, s.end) for s in proposal.spans]
+    assert [c["label"] for c in spans] == ["Excerpt 1", "Excerpt 2", "Excerpt 3"]
+    assert [c["state"] for c in spans] == [flow.PROPOSED, flow.WAITING, flow.REJECTED]
+    assert [c.get("ref") for c in spans] == [None, "request-2", None]
+    assert spans[0]["note"] == proposal.spans[0].opening
+
+
+def test_a_labelled_proposal_s_cues_carry_the_titles_and_categories():
+    proposal = flow.label(propose(RECORDING), lambda prompt: (
+        "Welcome" if prompt.startswith("Give a title") else "song"), categories=["song"])
+    cues = flow.cues_of(proposal)
+    assert cues[0]["label"] == "Welcome"
+    assert [c["label"] for c in cues if c["kind"] == "excerpt"][0] == "Excerpt 1: song"
+
+
+def test_mark_writes_the_cues_as_this_flow_s_source():
+    sent = []
+
+    def invoke(tool, params):
+        sent.append((tool, params))
+        return {"project_id": params["project_id"], "cues": params["cues"]}
+
+    proposal = propose(RECORDING)
+    marked = flow.mark(invoke, PROJECT_ID, proposal, {1: flow.APPROVED})
+    assert sent[0][0] == "alfred_cues_set"
+    assert sent[0][1]["source"] == flow.CUE_SOURCE == "alfred-excerpts"
+    assert sent[0][1]["project_id"] == PROJECT_ID
+    assert sent[0][1]["cues"] == flow.cues_of(proposal, {1: flow.APPROVED})
+    assert marked["cues"] == sent[0][1]["cues"]
+
+
+def marks_apart(tools):
+    """The tools a run called, the marks on the timeline set aside."""
+    return [tool for tool in tools if tool != "alfred_cues_set"]
+
+
 class _FlowSpec:
     """Metaflow's `FlowSpec` as far as the steps use it: `next` names the next step."""
 
@@ -757,8 +805,21 @@ def test_chosen_excerpts_are_cut_rendered_approved_and_delivered(
               approval={1: APPROVE, 3: REJECT}, deliver=True)
     assert ran.line == ("3 excerpts in 3 chapters of 'Set at the Hall' offered, 2 approved, "
                         "2 rendered, 1 approved as excerpts, 1 delivered.")
-    assert ran.tools == sorted(READ_TOOLS + ["alfred_captions"] + ["alfred_render_enqueue"] * 2
-                               + ["alfred_render_status"] * 4 + ["alfred_render_deliver"])
+    assert marks_apart(ran.tools) == sorted(
+        READ_TOOLS + ["alfred_captions"] + ["alfred_render_enqueue"] * 2
+        + ["alfred_render_status"] * 4 + ["alfred_render_deliver"])
+    # The timeline is marked as the run goes: once proposed, twice per review,
+    # once queued, once rendered, once answered, once delivered.
+    assert ran.tools.count("alfred_cues_set") == 1 + 2 * 3 + 1 + 1 + 1 + 1
+    cues = fake.projects[PROJECT_ID]["cues"]
+    assert [c["label"] for c in cues if c["kind"] == "chapter"] == [
+        "Chapter 1", "Chapter 2", "Chapter 3"]
+    assert [(c["label"], c["state"], c["ref"]) for c in cues if c["kind"] == "excerpt"] == [
+        ("Excerpt 1", flow.DELIVERED, render_id(1)),
+        ("Excerpt 2", flow.REJECTED, f"alfred-excerpt-{PROJECT_ID}-2-run-1"),
+        ("Excerpt 3", flow.REJECTED, render_id(2)),
+    ]
+    assert all(c["source"] == "alfred-excerpts" for c in cues)
     reviews, approvals = ran.asked[:3], ran.asked[3:]
     assert [r["request_id"] for r in reviews] == [
         f"alfred-excerpt-{PROJECT_ID}-{n}-run-1" for n in (1, 2, 3)]
@@ -794,7 +855,10 @@ def test_excerpts_nobody_chooses_render_nothing(flow_file, monkeypatch, server, 
     """Mutation: render whatever the review's answer -- red."""
     ran = run(flow_file, monkeypatch, server, review=REJECT)
     assert ran.line == "3 excerpts in 3 chapters of 'Set at the Hall' offered, 0 approved."
-    assert ran.tools == sorted(READ_TOOLS) and fake.queued == [] and len(ran.asked) == 3
+    assert marks_apart(ran.tools) == sorted(READ_TOOLS)
+    assert fake.queued == [] and len(ran.asked) == 3
+    states = [c["state"] for c in fake.projects[PROJECT_ID]["cues"] if c["kind"] == "excerpt"]
+    assert states == [flow.REJECTED] * 3
 
 
 def test_a_review_nobody_answers_is_counted(flow_file, monkeypatch, server, fake):
@@ -833,8 +897,8 @@ def test_a_project_without_captions_is_transcribed_first(
     ran = run(flow_file, monkeypatch, server, review=REJECT)
     assert ran.line == "3 excerpts in 3 chapters of 'Set at the Hall' offered, 0 approved."
     # The captions looked at before transcribing, and twice while the job moves.
-    assert ran.tools == sorted(["alfred_project", "alfred_captions_transcribe"]
-                               + ["alfred_captions"] * 3)
+    assert marks_apart(ran.tools) == sorted(["alfred_project", "alfred_captions_transcribe"]
+                                            + ["alfred_captions"] * 3)
 
 
 def test_a_project_the_run_may_not_transcribe_asks_nobody(

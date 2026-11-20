@@ -67,6 +67,7 @@ Drives alfred, a self-hosted video editor, over its HTTP API. Provides:
 - `alfred_render_enqueue`, `alfred_render_status` and `alfred_render_deliver`:
   a saved timeline or an explicit EDL rendered, followed to a download link,
   and sent to a destination alfred offers
+- `alfred_cues_set`: a project's timeline marked, for its editor to draw
 - `alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set`: a
   project's captions read, transcribed by alfred's audio engine, and corrected
 - `alfred_health`: whether alfred has a renderer running and an audio engine

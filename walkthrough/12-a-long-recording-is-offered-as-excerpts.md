@@ -66,6 +66,10 @@ recording, and keeps every request:
     ...                                 "quality": None}})
     ...     if asked == ("GET", f"/project/{PROJECT}/captions"):
     ...         return httpx.Response(200, json=held)
+    ...     if asked == ("PUT", f"/project/{PROJECT}/cues"):
+    ...         body = json.loads(request.content)
+    ...         return httpx.Response(200, json={"cues": [
+    ...             {**cue, "source": body.get("source")} for cue in body["cues"]]})
     ...     if asked == ("POST", "/render"):
     ...         return httpx.Response(200, json=RENDER)
     ...     if asked == ("GET", f"/render/{RENDER}/status"):
@@ -170,6 +174,31 @@ since every line of a span is too long to listen to:
     >>> alfred_render.wait_for_answer(client, review["request_id"], timeout_seconds=600)
     'approve'
 
+## The timeline is marked as it goes
+
+The proposal is drawn on the project's timeline as cues, which alfred's
+editor shows in a lane under the clips: each chapter, titled where the
+labeller titled it, and each span with where it stands. Here the first span
+was rejected and the second is waiting on the queue, by its request:
+
+    >>> states = {1: flow.REJECTED, 2: flow.WAITING}
+    >>> cues = flow.cues_of(proposal, states, {2: review["request_id"]})
+    >>> for cue in cues:
+    ...     print(cue["kind"], f"{cue['start']}-{cue['end']}", cue["label"], "|",
+    ...           cue.get("state") or "-", cue.get("ref") or "-")
+    chapter 5.0-15.0 The Welcome | - -
+    chapter 21.0-34.4 Late Checkout | - -
+    chapter 100.0-105.0 The Welcome | - -
+    excerpt 5.0-15.0 Excerpt 1: story | rejected -
+    excerpt 21.0-34.4 Excerpt 2: story | waiting alfred-excerpt-6a78b0420eea42d905943615-2-page-12
+
+They are written as this flow's, so a run replaces the last run's cues and
+leaves whatever else marked the timeline:
+
+    >>> marked = flow.mark(invoke, PROJECT, proposal, states, {2: review["request_id"]})
+    >>> len(marked["cues"]), marked["cues"][4]["source"]
+    (5, 'alfred-excerpts')
+
 ## The excerpt is cut from the timeline and rendered
 
 An approved span is rendered as an excerpt of its own: `alfred_render_enqueue`
@@ -235,6 +264,7 @@ Sorted, because the listing orders by creation time alone:
     ...                   if r["correlation_id"] == "alfred-excerpts-page-12"):
     ...     print(*row)
     alfred_captions success
+    alfred_cues_set success
     alfred_project success
     alfred_render_enqueue success
     alfred_render_status success

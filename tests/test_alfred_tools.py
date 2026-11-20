@@ -656,13 +656,70 @@ def test_link_expiry_reads_exp_or_says_nothing(value, expected):
     assert alfred.link_expiry(value) == expected
 
 
+# --- alfred_cues_set ---------------------------------------------------------
+
+
+PROJECT = "6a78b0420eea42d905943615"
+EXCERPT = {"start": 1.0, "end": 2.5, "label": "Excerpt 1", "kind": "excerpt",
+           "state": "waiting"}
+
+
+def test_cues_are_sent_with_their_source_and_answered_as_alfred_stores_them(tools):
+    def stores(request):
+        body = json.loads(request.content)
+        assert body == {"cues": [EXCERPT], "source": "alfred-excerpts"}
+        return httpx.Response(200, json={"cues": [
+            {**EXCERPT, "source": "alfred-excerpts", "ref": None, "note": None}]})
+
+    tools.route("PUT", f"/project/{PROJECT}/cues", stores)
+    answer = alfred.alfred_cues_set({"project_id": PROJECT, "cues": [EXCERPT],
+                                     "source": "alfred-excerpts"})
+    assert answer["project_id"] == PROJECT
+    assert answer["cues"][0]["source"] == "alfred-excerpts"
+    assert len(tools.calls("PUT", f"/project/{PROJECT}/cues")) == 1
+
+
+def test_cues_without_a_source_replace_every_cue(tools):
+    """Mutation: send a source alfred did not get -- red."""
+    def stores(request):
+        assert "source" not in json.loads(request.content)
+        return httpx.Response(200, json={"cues": []})
+
+    tools.route("PUT", f"/project/{PROJECT}/cues", stores)
+    assert alfred.alfred_cues_set({"project_id": PROJECT, "cues": []})["cues"] == []
+
+
+def test_an_answer_without_the_cues_is_read_back(tools):
+    tools.route("PUT", f"/project/{PROJECT}/cues", lambda request: httpx.Response(200, json={}))
+    tools.route("GET", f"/project/{PROJECT}/cues", {"cues": [EXCERPT]})
+    assert alfred.alfred_cues_set({"project_id": PROJECT, "cues": [EXCERPT]})["cues"] == [EXCERPT]
+
+
+@pytest.mark.parametrize("params,why", [
+    ({"cues": [EXCERPT]}, "project_id"),
+    ({"project_id": PROJECT}, "cues must be a list"),
+    ({"project_id": PROJECT, "cues": "soon"}, "cues must be a list"),
+    ({"project_id": PROJECT, "cues": [], "source": 3}, "source must be a string"),
+])
+def test_cues_that_fit_no_form_are_refused_before_alfred_is_asked(tools, params, why):
+    with pytest.raises(ValueError, match=why):
+        alfred.alfred_cues_set(params)
+    assert tools.calls("PUT", f"/project/{PROJECT}/cues") == []
+
+
+def test_an_alfred_without_cues_is_its_refusal(tools):
+    """An alfred from before cues answers its 404, passed on as it came."""
+    with pytest.raises(AlfredError, match="Not Found"):
+        alfred.alfred_cues_set({"project_id": PROJECT, "cues": []})
+
+
 # --- through the server --------------------------------------------------------
 
 
 def test_the_server_lists_the_alfred_tools(client):
     names = {tool["name"] for tool in client.get("/v1/tools").json()["tools"]}
     assert {"alfred_projects", "alfred_templates", "alfred_render_enqueue",
-            "alfred_render_status", "alfred_health"} <= names
+            "alfred_render_status", "alfred_health", "alfred_cues_set"} <= names
 
 
 def test_an_unconfigured_alfred_is_the_invocation_s_error(client, monkeypatch):

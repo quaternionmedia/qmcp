@@ -35,14 +35,23 @@ from qmcp.client import MCPClient
 from qmcp.client.mcp_client import default_base_url
 from qmcp.cookbook.alfred_captions import TRANSCRIBE_TIMEOUT, deliver_render
 from qmcp.cookbook.alfred_excerpts import (
+    APPROVED,
     CHAPTER_PAUSE,
+    DELIVERED,
+    FAILED,
     LABEL_TIMEOUT,
     LONGEST,
     PAUSE,
+    QUEUED,
+    REJECTED,
+    RENDERED,
     SHORTEST,
+    UNANSWERED,
+    WAITING,
     approval_request,
     label,
     local_model,
+    mark,
     propose,
     queue_excerpt,
     read_transcript,
@@ -51,6 +60,7 @@ from qmcp.cookbook.alfred_excerpts import (
 )
 from qmcp.cookbook.alfred_render import (
     APPROVE,
+    REJECT,
     ask,
     invoker,
     wait_for_answer,
@@ -74,6 +84,11 @@ class AlfredExcerptsFlow(FlowSpec):
     7. ask_person: put each rendered excerpt, with its link, to a person and wait
     8. delivery: deliver each approved excerpt, when --deliver is set
     9. end: say how it ended
+
+    After each step from propose on, the proposal is drawn on the project's
+    timeline as cues (`alfred_cues_set`): each chapter, and each span with where
+    it stands -- proposed, waiting, approved or rejected, queued, rendered,
+    delivered -- so alfred's editor shows the run as it goes.
     """
 
     project_id = Parameter("project-id", help="The alfred project to cut", required=True)
@@ -177,6 +192,16 @@ class AlfredExcerptsFlow(FlowSpec):
         return wait_for_answer(client, request["request_id"], timeout_seconds=timeout,
                                poll_interval=self.poll_interval)
 
+    def _mark(self, invoke) -> None:
+        """Draw the proposal on the project's timeline as it stands. An alfred
+        that holds no cues does not stop the run: the cues are a picture of it."""
+        if self.proposal is None:
+            return
+        try:
+            mark(invoke, self.project_id, self.proposal, self.states, self.refs)
+        except Exception as exc:  # the picture is not the run
+            print(f"The timeline was not marked: {exc}")
+
     @step
     def start(self):
         """Check the qmcp server answers."""
@@ -208,6 +233,9 @@ class AlfredExcerptsFlow(FlowSpec):
     def propose(self):
         """Chapters and spans from the transcript, labelled when asked."""
         self.proposal = None
+        # Where each span stands, and the request or render it stands by, by number.
+        self.states = {}
+        self.refs = {}
         if self.transcribed.done:
             self.proposal = propose(
                 self.transcribed.captions,
@@ -228,6 +256,8 @@ class AlfredExcerptsFlow(FlowSpec):
                       f"{chapter.opening}")
             print(f"{len(self.proposal.spans)} excerpts proposed, {self.proposal.left_out} "
                   "stretches too short to stand alone")
+            with self._client() as client:
+                self._mark(invoker(client, self._correlation()))
         self.next(self.review)
 
     @step
@@ -236,9 +266,18 @@ class AlfredExcerptsFlow(FlowSpec):
         self.reviewed = {}
         if self.proposal is not None:
             with self._client() as client:
+                invoke = invoker(client, self._correlation())
                 for span in self.proposal.spans:
                     request = review_request(self.project, span, self.proposal, self.run_id)
-                    self.reviewed[span.number] = self._ask(client, request, self.review_timeout)
+                    self.states[span.number] = WAITING
+                    self.refs[span.number] = request["request_id"]
+                    self._mark(invoke)
+                    answer = self._ask(client, request, self.review_timeout)
+                    self.reviewed[span.number] = answer
+                    self.states[span.number] = (APPROVED if answer == APPROVE
+                                                else REJECTED if answer == REJECT
+                                                else UNANSWERED)
+                    self._mark(invoke)
         self.next(self.render)
 
     @step
@@ -270,6 +309,9 @@ class AlfredExcerptsFlow(FlowSpec):
                     queued = self.queued[span.number]
                     print(f"Queued render {queued['render_id']} of {queued['name']!r} "
                           f"with {queued['captions']} captions")
+                    self.states[span.number] = QUEUED
+                    self.refs[span.number] = queued["render_id"]
+                self._mark(invoke)
         self.next(self.follow)
 
     @step
@@ -289,6 +331,9 @@ class AlfredExcerptsFlow(FlowSpec):
                 waited = self.waited[number]
                 why = f" -- {waited.why}" if waited.why else ""
                 print(f"After {waited.seconds:.0f} s excerpt {number} ended: {waited.outcome}{why}")
+                self.states[number] = RENDERED if waited.rendered else FAILED
+            if self.waited:
+                self._mark(invoke)
         self.next(self.ask_person)
 
     @step
@@ -304,6 +349,10 @@ class AlfredExcerptsFlow(FlowSpec):
                                            self.run_id, deliver=self.deliver,
                                            destination=self.destination)
                 self.answers[number] = self._ask(client, request, self.approval_timeout)
+                if self.answers[number] == REJECT:
+                    self.states[number] = REJECTED
+            if self.answers:
+                self._mark(invoker(client, self._correlation()))
         self.next(self.delivery)
 
     @step
@@ -317,6 +366,10 @@ class AlfredExcerptsFlow(FlowSpec):
                     if answer == APPROVE:
                         self.delivered[number] = deliver_render(
                             invoke, self.queued[number]["render_id"], self.destination)
+                        if self.delivered[number].ok:
+                            self.states[number] = DELIVERED
+                if self.delivered:
+                    self._mark(invoke)
         self.next(self.end)
 
     @step
