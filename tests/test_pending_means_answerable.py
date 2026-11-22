@@ -104,7 +104,7 @@ def _database(tmp_path):
     path = tmp_path / "qmcp.db"
     engine = create_engine(f"sqlite:///{path.as_posix()}")
     SQLModel.metadata.create_all(engine)
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC)
     with Session(engine) as session:
         session.add(HumanRequest(
             id="stale-fixture", request_type="approval", prompt="From January?",

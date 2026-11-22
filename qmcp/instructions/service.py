@@ -169,10 +169,7 @@ def register(app: Any, runs: VoiceRuns, engine: str = "joe",
         detail = found.detail()
         if body.heard is not None:
             detail["heard"] = body.heard
-        # Naive UTC, as the rest of this database keeps time: SQLite stores no
-        # zone, so a row read back carries none, and the row returned here
-        # must read the same as the row read later.
-        now = datetime.now(UTC).replace(tzinfo=None)
+        now = datetime.now(UTC)
         row = Instruction(text=body.text, project=found.project, source=body.source,
                           status=found.status, created_at=now, updated_at=now,
                           detail=detail)

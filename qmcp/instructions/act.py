@@ -174,8 +174,7 @@ def consent_prompt(row: Instruction, clone: Clone, runtime: str, budget: Budget,
 
 
 def _now() -> datetime:
-    # Naive UTC, as the rest of this database keeps time.
-    return datetime.now(UTC).replace(tzinfo=None)
+    return datetime.now(UTC)
 
 
 def _sleep(seconds: float) -> None:
