@@ -33,7 +33,8 @@ dev = [
 ]
 flows = [
     "metaflow>=2.12.0",
-    "pydantic-ai[openai]",
+    "pydantic-ai>=0.1.0",
+    "openai>=1.50.0",
 ]
 # PydanticAI integration - core agent framework
 # Note: pydantic-ai bundles provider SDKs, install provider packages separately if needed
