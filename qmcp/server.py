@@ -49,10 +49,9 @@ from qmcp.schemas.mcp import (
     ToolListResponse,
 )
 
-# Import builtin tools to register them, and the tools that drive alfred
-from qmcp.tools import alfred as _alfred_tools  # noqa: F401
-from qmcp.tools import builtin as _builtin_tools  # noqa: F401
-from qmcp.tools import tool_registry
+from qmcp.tools import published_registry
+
+tool_registry = published_registry()
 
 logger = get_logger(__name__)
 
