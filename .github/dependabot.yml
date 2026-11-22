@@ -1,0 +1,20 @@
+# Dependabot's updates to the locked Python dependencies, grouped: one pull
+# request a week for version updates, and one for security updates whenever an
+# advisory applies, each covering every package it moves.
+#
+# GitHub Actions are not listed. Most workflows here are copied verbatim from
+# the governance seed, and an action's version moves there and arrives with a
+# pin bump.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        applies-to: version-updates
+        patterns: ["*"]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
