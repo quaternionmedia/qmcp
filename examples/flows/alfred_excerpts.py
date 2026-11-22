@@ -1,16 +1,16 @@
 """Cut a long alfred project into excerpts a person chooses, and render each one.
 
 alfred holds the project's transcript, made by its audio engine when it holds
-none; the transcript's own timing proposes chapters and spans; a person is
-asked about each span on qmcp's human queue, and approves or rejects it; each
-approved span is rendered as an excerpt of its own, cut from the project's saved
-timeline with its captions burned in, followed until it renders and put to a
-person with its download link; and an approved excerpt is delivered, when the run
-is asked to deliver. A local model, when the run names one, titles each
-chapter and sorts each span into a category the run names. Every call to
-alfred is one of qmcp's alfred tools, made through the qmcp server, so the
-server must be configured for alfred (docs/integrations/alfred.md). The steps
-are `qmcp.cookbook.alfred_excerpts`.
+none; alfred's `excerpts` recipe, run by its worker, cuts the project into
+drafts, each a project of its own; a person is asked about each draft on
+qmcp's human queue, and approves or rejects it; a rejected draft is dropped,
+and each approved one is rendered as an excerpt of its own, its captions
+burned in, followed until it renders and put to a person with its download
+link; and an approved excerpt is delivered, when the run is asked to deliver.
+A local model, when the run names one, sorts each draft into a category the
+run names. Every call to alfred is one of qmcp's alfred tools, made through
+the qmcp server, so the server must be configured for alfred
+(docs/integrations/alfred.md). The steps are `qmcp.cookbook.alfred_excerpts`.
 
 Usage:
     # The server, with alfred configured
@@ -36,8 +36,8 @@ from qmcp.client.mcp_client import default_base_url
 from qmcp.cookbook.alfred_captions import TRANSCRIBE_TIMEOUT, deliver_render
 from qmcp.cookbook.alfred_excerpts import (
     APPROVED,
-    CHAPTER_PAUSE,
     DELIVERED,
+    DRAFTS_TIMEOUT,
     FAILED,
     LABEL_TIMEOUT,
     LONGEST,
@@ -48,7 +48,9 @@ from qmcp.cookbook.alfred_excerpts import (
     SHORTEST,
     UNANSWERED,
     WAITING,
+    DraftsFailedError,
     approval_request,
+    drop,
     label,
     local_model,
     mark,
@@ -99,10 +101,6 @@ class AlfredExcerptsFlow(FlowSpec):
     pause = Parameter(
         "pause", help="Seconds of silence that end a span", default=PAUSE, type=float
     )
-    chapter_pause = Parameter(
-        "chapter-pause", help="Seconds of silence that end a chapter", default=CHAPTER_PAUSE,
-        type=float,
-    )
     shortest = Parameter(
         "shortest", help="The shortest an excerpt may run, in seconds", default=SHORTEST, type=float
     )
@@ -148,6 +146,12 @@ class AlfredExcerptsFlow(FlowSpec):
         "mcp-url",
         help="URL of the qmcp server",
         default=os.getenv("MCP_URL") or default_base_url(),
+    )
+    drafts_timeout = Parameter(
+        "drafts-timeout",
+        help="Seconds alfred's worker has to leave the drafts",
+        default=DRAFTS_TIMEOUT,
+        type=float,
     )
     transcribe_timeout = Parameter(
         "transcribe-timeout",
@@ -231,86 +235,98 @@ class AlfredExcerptsFlow(FlowSpec):
 
     @step
     def propose(self):
-        """Chapters and spans from the transcript, labelled when asked."""
+        """alfred's excerpts recipe run over the project, its drafts labelled when asked."""
         self.proposal = None
-        # Where each span stands, and the request or render it stands by, by number.
+        self.failure = None
+        # Where each draft stands, and the request or render it stands by, by number.
         self.states = {}
         self.refs = {}
+        if self.label_with not in ("none", "local"):
+            raise ValueError(f"--label-with is none or local, not {self.label_with!r}")
         if self.transcribed.done:
-            self.proposal = propose(
-                self.transcribed.captions,
-                pause=self.pause,
-                chapter_pause=self.chapter_pause,
-                shortest=self.shortest,
-                longest=self.longest,
-            )
-            if self.label_with == "local":
-                categories = [c.strip() for c in self.categories.split(",") if c.strip()]
-                asker = local_model(self.llm_base_url, self.llm_model, timeout=self.llm_timeout)
-                self.proposal = label(self.proposal, asker, categories=categories)
-            elif self.label_with != "none":
-                raise ValueError(f"--label-with is none or local, not {self.label_with!r}")
-            for chapter in self.proposal.chapters:
-                title = f" {chapter.title!r}" if chapter.title else ""
-                print(f"chapter {chapter.number}{title}: {chapter.spans} excerpts, "
-                      f"{chapter.opening}")
-            print(f"{len(self.proposal.spans)} excerpts proposed, {self.proposal.left_out} "
-                  "stretches too short to stand alone")
             with self._client() as client:
-                self._mark(invoker(client, self._correlation()))
+                invoke = invoker(client, self._correlation())
+                try:
+                    self.proposal = propose(
+                        invoke,
+                        self.project_id,
+                        pause=self.pause,
+                        shortest=self.shortest,
+                        longest=self.longest,
+                        timeout=self.drafts_timeout,
+                        poll_interval=self.poll_interval,
+                    )
+                except DraftsFailedError as exc:
+                    self.failure = str(exc)
+                    print(self.failure)
+                if self.proposal is not None:
+                    if self.label_with == "local":
+                        categories = [c.strip() for c in self.categories.split(",")
+                                      if c.strip()]
+                        asker = local_model(self.llm_base_url, self.llm_model,
+                                            timeout=self.llm_timeout)
+                        self.proposal = label(self.proposal, asker, categories=categories)
+                    for draft in self.proposal.drafts:
+                        labelled = f" ({draft.label})" if draft.label else ""
+                        print(f"excerpt {draft.number} {draft.title!r}{labelled}: "
+                              f"{draft.seconds:.0f} s, {draft.opening}")
+                    notes = f"; {' '.join(self.proposal.notes)}" if self.proposal.notes else ""
+                    print(f"{len(self.proposal.drafts)} excerpts proposed by alfred{notes}")
+                    self._mark(invoke)
         self.next(self.review)
 
     @step
     def review(self):
-        """Put each span to a person, in order, and wait for each answer."""
+        """Put each draft to a person, in order, wait for each answer, and drop
+        the drafts rejected."""
         self.reviewed = {}
         if self.proposal is not None:
             with self._client() as client:
                 invoke = invoker(client, self._correlation())
-                for span in self.proposal.spans:
-                    request = review_request(self.project, span, self.proposal, self.run_id)
-                    self.states[span.number] = WAITING
-                    self.refs[span.number] = request["request_id"]
+                for draft in self.proposal.drafts:
+                    request = review_request(self.project, draft, self.proposal, self.run_id)
+                    self.states[draft.number] = WAITING
+                    self.refs[draft.number] = request["request_id"]
                     self._mark(invoke)
                     answer = self._ask(client, request, self.review_timeout)
-                    self.reviewed[span.number] = answer
-                    self.states[span.number] = (APPROVED if answer == APPROVE
-                                                else REJECTED if answer == REJECT
-                                                else UNANSWERED)
+                    self.reviewed[draft.number] = answer
+                    self.states[draft.number] = (APPROVED if answer == APPROVE
+                                                 else REJECTED if answer == REJECT
+                                                 else UNANSWERED)
                     self._mark(invoke)
+                rejected = [draft for draft in self.proposal.drafts
+                            if self.reviewed.get(draft.number) == REJECT]
+                if rejected:
+                    dropped = drop(invoke, self.project_id, rejected)
+                    print(f"Dropped {len(dropped.get('dropped') or [])} excerpts nobody chose")
         self.next(self.render)
 
     @step
     def render(self):
-        """Queue an excerpt of each approved span, cut from the project's timeline,
-        with the captions alfred holds now: a correction saved in alfred during
-        the review is in the excerpt."""
+        """Queue a render of each approved draft's own timeline, with the captions
+        alfred holds on it now: a correction saved in alfred during the review
+        is in the excerpt."""
         self.queued = {}
-        approved = [span for span in (self.proposal.spans if self.proposal else ())
-                    if self.reviewed.get(span.number) == APPROVE]
+        approved = [draft for draft in (self.proposal.drafts if self.proposal else ())
+                    if self.reviewed.get(draft.number) == APPROVE]
         if approved:
             with self._client() as client:
                 invoke = invoker(client, self._correlation())
-                captions = style = None
-                if self.captions:
-                    held = invoke("alfred_captions", {"project_id": self.project_id})
-                    captions, style = held.get("captions") or [], held.get("style")
-                for span in approved:
-                    self.queued[span.number] = queue_excerpt(
+                for draft in approved:
+                    self.queued[draft.number] = queue_excerpt(
                         invoke,
                         self.project,
-                        span,
-                        captions=captions,
-                        style=style,
+                        draft,
+                        captions=self.captions,
                         width=self.width,
                         height=self.height,
                         quality=self.quality,
                     )
-                    queued = self.queued[span.number]
+                    queued = self.queued[draft.number]
                     print(f"Queued render {queued['render_id']} of {queued['name']!r} "
                           f"with {queued['captions']} captions")
-                    self.states[span.number] = QUEUED
-                    self.refs[span.number] = queued["render_id"]
+                    self.states[draft.number] = QUEUED
+                    self.refs[draft.number] = queued["render_id"]
                 self._mark(invoke)
         self.next(self.follow)
 
@@ -340,12 +356,13 @@ class AlfredExcerptsFlow(FlowSpec):
     def ask_person(self):
         """Put each rendered excerpt, with its link, to a person, and wait for each answer."""
         self.answers = {}
-        spans = {span.number: span for span in (self.proposal.spans if self.proposal else ())}
+        drafts = {draft.number: draft
+                  for draft in (self.proposal.drafts if self.proposal else ())}
         with self._client() as client:
             for number, waited in self.waited.items():
                 if not waited.rendered:
                     continue
-                request = approval_request(self.queued[number], waited, spans[number],
+                request = approval_request(self.queued[number], waited, drafts[number],
                                            self.run_id, deliver=self.deliver,
                                            destination=self.destination)
                 self.answers[number] = self._ask(client, request, self.approval_timeout)
@@ -377,7 +394,7 @@ class AlfredExcerptsFlow(FlowSpec):
         """Say how it ended."""
         self.outcome = summary(self.project, self.transcribed, self.proposal, self.reviewed,
                                self.queued, self.waited, self.answers, self.delivered,
-                               deliver=self.deliver)
+                               deliver=self.deliver, failure=self.failure)
         print(self.outcome)
 
 

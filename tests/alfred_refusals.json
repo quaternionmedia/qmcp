@@ -75,5 +75,40 @@
       "detail": "unknown destination 'nowhere'; known: ['bucket', 'local']",
       "code": "destination_unknown"
     }
+  },
+  "no_words": {
+    "status": 422,
+    "body": {
+      "detail": "The project has no words to cut by: transcribe its timeline first.",
+      "code": "no_words"
+    }
+  },
+  "drafts_running": {
+    "status": 409,
+    "body": {
+      "detail": "Recipes are already running over this project; wait for them to finish.",
+      "code": "drafts_running"
+    }
+  },
+  "drafts_not_queued": {
+    "status": 503,
+    "body": {
+      "detail": "The run could not be queued: [Errno 111] Connection refused",
+      "code": "drafts_not_queued"
+    }
+  },
+  "not_a_draft": {
+    "status": 422,
+    "body": {
+      "detail": "not a draft of this project, so nothing was dropped.",
+      "code": "not_a_draft"
+    }
+  },
+  "unknown_recipe": {
+    "status": 404,
+    "body": {
+      "detail": "No recipe is named 'nowhere': the built-in ones are highlights, teaser, chapters, excerpts, tight-cut, quotes, and yours are listed by GET /recipes.",
+      "code": "unknown_recipe"
+    }
   }
 }

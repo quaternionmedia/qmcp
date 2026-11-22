@@ -226,8 +226,9 @@ All tools must:
 
 `alfred_projects`, `alfred_project`, `alfred_templates`, `alfred_render_enqueue`,
 `alfred_render_status`, `alfred_render_deliver`, `alfred_health`,
-`alfred_captions`, `alfred_captions_transcribe`, `alfred_captions_set` and
-`alfred_cues_set` drive
+`alfred_captions`, `alfred_captions_transcribe`, `alfred_captions_set`,
+`alfred_cues_set`, `alfred_recipes`, `alfred_drafts`, `alfred_drafts_status`
+and `alfred_drafts_drop` drive
 alfred, a self-hosted video editor, over its HTTP API;
 [integrations/alfred.md](integrations/alfred.md) is their reference.
 

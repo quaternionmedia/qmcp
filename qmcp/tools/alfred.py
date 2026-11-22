@@ -1011,6 +1011,158 @@ def alfred_cues_set(params: dict[str, Any]) -> dict[str, Any]:
     return {"project_id": str(project_id), "cues": stored["cues"]}
 
 
+def recipe_summary(recipe: dict[str, Any]) -> dict[str, Any]:
+    """A recipe as the tool answers it: alfred's view, its knobs as `{name,
+    text, default}` and its steps as the operations they name."""
+    knobs = []
+    for declared in recipe.get("fields") or []:
+        attrs = declared.get("attrs") if isinstance(declared, dict) else None
+        if isinstance(attrs, dict) and attrs.get("name"):
+            knobs.append({"name": attrs["name"], "text": attrs.get("text") or attrs["name"],
+                          "default": attrs.get("defaultValue")})
+    return {
+        "id": str(recipe.get("id")),
+        "name": recipe.get("name"),
+        "label": recipe.get("label") or recipe.get("name"),
+        "description": recipe.get("description") or "",
+        "builtin": bool(recipe.get("builtin")),
+        "knobs": knobs,
+        "steps": [step.get("op") for step in recipe.get("steps") or []
+                  if isinstance(step, dict)],
+    }
+
+
+@tool_registry.register(
+    name="alfred_recipes",
+    description=(
+        "The recipes alfred runs over a long project to cut it into drafts: the built-in "
+        "ones every account has, then the account's own, each with its id, which "
+        "alfred_drafts names it by, its knobs (name, text and default value) and the "
+        "operations its steps run. alfred's docs/drafts.md says what each operation does."
+    ),
+    input_schema={"type": "object", "properties": {}},
+)
+def alfred_recipes(params: dict[str, Any]) -> list[dict[str, Any]]:
+    listed = _expect(client().get("/recipes"), list, "GET", "/recipes")
+    return [recipe_summary(r) for r in listed if isinstance(r, dict)]
+
+
+def _recipe_requests(value: Any) -> list[dict[str, Any]]:
+    """`recipes` as alfred's drafts route takes them: each `{recipe, values}`,
+    the values as text, since a knob is typed."""
+    if not isinstance(value, list) or not value:
+        raise ValueError("recipes must be a list of {recipe, values}, with at least one")
+    asked = []
+    for item in value:
+        if not isinstance(item, dict) or not item.get("recipe"):
+            raise ValueError("each of recipes names a recipe by its id, as {recipe, values}")
+        values = item.get("values") or {}
+        if not isinstance(values, dict):
+            raise ValueError("a recipe's values are an object of knob names to values")
+        asked.append({"recipe": str(item["recipe"]),
+                      "values": {str(k): str(v) for k, v in values.items()}})
+    return asked
+
+
+@tool_registry.register(
+    name="alfred_drafts",
+    description=(
+        "Run recipes over a long alfred project: alfred's worker cuts it into drafts, each "
+        "a project of its own carrying its source, the spans it took and its scores, with "
+        "its captions and words moved into it, and marks the source's timeline with a cue "
+        "per draft. Returns the job as queued; alfred_drafts_status follows it to done. "
+        "An error says so when the project has no transcript, when recipes are already "
+        "running over it, when a recipe is not one alfred has, or when alfred could not "
+        "queue the run."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The source project's id"},
+            "recipes": {
+                "type": "array",
+                "description": "The recipes to run, each {recipe, values}: the recipe by "
+                "its id from alfred_recipes, and values for its knobs by name, each as "
+                "text; a knob left out keeps its default",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "recipe": {"type": "string"},
+                        "values": {"type": "object"},
+                    },
+                    "required": ["recipe"],
+                },
+            },
+        },
+        "required": ["project_id", "recipes"],
+    },
+)
+def alfred_drafts(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    recipes = _recipe_requests(params.get("recipes"))
+    path = f"/project/{_path_id(project_id)}/drafts"
+    queued = _expect(client().post(path, {"recipes": recipes}), dict, "POST", path)
+    return {"project_id": str(project_id), "job": queued.get("job")}
+
+
+@tool_registry.register(
+    name="alfred_drafts_status",
+    description=(
+        "Where the last run of recipes over an alfred project has got to, and the drafts "
+        "the project has: the job (state queued, running, done or failed; error; the "
+        "recipes; how many were made; notes) and each draft's id, name, description, "
+        "duration and source (the project, the recipe, the values, the spans of the "
+        "source it took, and its scores). A draft is a project: alfred_captions reads "
+        "its words and alfred_render_enqueue renders it."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The source project's id"},
+        },
+        "required": ["project_id"],
+    },
+)
+def alfred_drafts_status(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    path = f"/project/{_path_id(project_id)}/drafts"
+    answered = _expect(client().get(path), dict, "GET", path)
+    return {"project_id": str(project_id), "job": answered.get("job"),
+            "drafts": answered.get("drafts") or []}
+
+
+@tool_registry.register(
+    name="alfred_drafts_drop",
+    description=(
+        "Let go of drafts of an alfred project: deletes the drafts named, each a project "
+        "of its own, with their cues on the source. Refused, and nothing dropped, when a "
+        "project named is not one of the source's drafts. Returns the ids dropped."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The source project's id"},
+            "drafts": {
+                "type": "array",
+                "description": "The drafts to drop, by id, at least one",
+                "items": {"type": "string"},
+            },
+        },
+        "required": ["project_id", "drafts"],
+    },
+)
+def alfred_drafts_drop(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    drafts = params.get("drafts")
+    if not isinstance(drafts, list) or not drafts or not all(isinstance(d, str) and d
+                                                              for d in drafts):
+        raise ValueError("drafts must be a list of draft ids, with at least one")
+    path = f"/project/{_path_id(project_id)}/drafts"
+    answered = client().request("DELETE", path, json={"drafts": drafts})
+    answered = _expect(answered, dict, "DELETE", path)
+    return {"project_id": str(project_id), "dropped": answered.get("dropped") or []}
+
+
 @tool_registry.register(
     name="alfred_health",
     description=(
@@ -1041,5 +1193,6 @@ __all__ = [
     "link_expiry",
     "project_captions",
     "project_summary",
+    "recipe_summary",
     "transcription_refusal",
 ]

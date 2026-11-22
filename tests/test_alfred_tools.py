@@ -713,13 +713,118 @@ def test_an_alfred_without_cues_is_its_refusal(tools):
         alfred.alfred_cues_set({"project_id": PROJECT, "cues": []})
 
 
+# --- alfred_recipes, alfred_drafts, alfred_drafts_status, alfred_drafts_drop ------
+
+RECIPE = {"id": "excerpts", "name": "excerpts", "label": "Excerpts",
+          "description": "Stretches cut at pauses.", "builtin": True,
+          "fields": [{"type": "Text", "attrs": {"name": "pause", "text": "A pause, seconds",
+                                                 "defaultValue": "1"}}],
+          "steps": [{"op": "spans", "pause": {"var": "pause"}}, {"op": "compose", "how": "each"}]}
+JOB = {"state": "queued", "error": None, "recipes": ["excerpts"], "made": None, "notes": [],
+       "updated_at": "2026-11-21T00:00:00+00:00"}
+DRAFT_ID = "6a7a00000000000000000001"
+DRAFT = {"id": DRAFT_ID, "name": "Set at the Hall – Excerpts 1",
+         "description": "0:05-0:15 of the source; chapter 1", "duration": 10.0,
+         "source": {"project": PROJECT, "recipe": "excerpts", "values": {"pause": "1"},
+                    "spans": [[5.0, 15.0]], "scores": {}, "made_at": "2026-11-21T00:00:00Z"}}
+
+
+def test_recipes_are_listed_with_their_knobs_and_steps(tools):
+    tools.route("GET", "/recipes", [RECIPE])
+    [listed] = alfred.alfred_recipes({})
+    assert listed == {"id": "excerpts", "name": "excerpts", "label": "Excerpts",
+                      "description": "Stretches cut at pauses.", "builtin": True,
+                      "knobs": [{"name": "pause", "text": "A pause, seconds", "default": "1"}],
+                      "steps": ["spans", "compose"]}
+
+
+def test_a_run_is_queued_with_its_recipes_and_values_as_text(tools):
+    """Mutation: send a value as the number given -- red; a knob is typed."""
+    def queues(request):
+        assert json.loads(request.content) == {"recipes": [
+            {"recipe": "excerpts", "values": {"pause": "1.5", "shortest": "10"}}]}
+        return httpx.Response(202, json={"job": JOB})
+
+    tools.route("POST", f"/project/{PROJECT}/drafts", queues)
+    answer = alfred.alfred_drafts({"project_id": PROJECT, "recipes": [
+        {"recipe": "excerpts", "values": {"pause": 1.5, "shortest": "10"}}]})
+    assert answer == {"project_id": PROJECT, "job": JOB}
+
+
+@pytest.mark.parametrize("params,why", [
+    ({"recipes": [{"recipe": "excerpts"}]}, "project_id"),
+    ({"project_id": PROJECT}, "recipes must be a list"),
+    ({"project_id": PROJECT, "recipes": []}, "recipes must be a list"),
+    ({"project_id": PROJECT, "recipes": [{"values": {}}]}, "names a recipe"),
+    ({"project_id": PROJECT, "recipes": [{"recipe": "excerpts", "values": "x"}]},
+     "values are an object"),
+])
+def test_a_run_that_fits_no_form_is_refused_before_alfred_is_asked(tools, params, why):
+    with pytest.raises(ValueError, match=why):
+        alfred.alfred_drafts(params)
+    assert tools.calls("POST", f"/project/{PROJECT}/drafts") == []
+
+
+def test_a_run_alfred_refuses_is_its_refusal_with_the_code(tools):
+    refusal = REFUSALS["no_words"]
+    tools.route("POST", f"/project/{PROJECT}/drafts",
+                lambda request: httpx.Response(refusal["status"], json=refusal["body"]))
+    with pytest.raises(AlfredError, match="no words to cut by") as refused:
+        alfred.alfred_drafts({"project_id": PROJECT, "recipes": [{"recipe": "excerpts"}]})
+    assert refused.value.code == "no_words"
+
+
+def test_the_status_is_the_job_and_the_drafts(tools):
+    tools.route("GET", f"/project/{PROJECT}/drafts",
+                {"job": {**JOB, "state": "done", "made": 1}, "drafts": [DRAFT]})
+    answer = alfred.alfred_drafts_status({"project_id": PROJECT})
+    assert answer["project_id"] == PROJECT
+    assert answer["job"]["state"] == "done" and answer["drafts"] == [DRAFT]
+
+
+def test_a_status_without_drafts_lists_none(tools):
+    tools.route("GET", f"/project/{PROJECT}/drafts", {"job": None})
+    assert alfred.alfred_drafts_status({"project_id": PROJECT})["drafts"] == []
+
+
+def test_drafts_are_dropped_by_id(tools):
+    def drops(request):
+        assert json.loads(request.content) == {"drafts": [DRAFT_ID]}
+        return httpx.Response(200, json={"dropped": [DRAFT_ID]})
+
+    tools.route("DELETE", f"/project/{PROJECT}/drafts", drops)
+    answer = alfred.alfred_drafts_drop({"project_id": PROJECT, "drafts": [DRAFT_ID]})
+    assert answer == {"project_id": PROJECT, "dropped": [DRAFT_ID]}
+
+
+@pytest.mark.parametrize("params", [
+    {"project_id": PROJECT},
+    {"project_id": PROJECT, "drafts": []},
+    {"project_id": PROJECT, "drafts": [3]},
+])
+def test_a_drop_naming_no_draft_is_refused_before_alfred_is_asked(tools, params):
+    with pytest.raises(ValueError, match="drafts must be a list"):
+        alfred.alfred_drafts_drop(params)
+    assert tools.calls("DELETE", f"/project/{PROJECT}/drafts") == []
+
+
+def test_a_drop_alfred_refuses_names_what_was_not_a_draft(tools):
+    refusal = REFUSALS["not_a_draft"]
+    tools.route("DELETE", f"/project/{PROJECT}/drafts",
+                lambda request: httpx.Response(refusal["status"], json=refusal["body"]))
+    with pytest.raises(AlfredError, match="not a draft of this project") as refused:
+        alfred.alfred_drafts_drop({"project_id": PROJECT, "drafts": [DRAFT_ID]})
+    assert refused.value.code == "not_a_draft"
+
+
 # --- through the server --------------------------------------------------------
 
 
 def test_the_server_lists_the_alfred_tools(client):
     names = {tool["name"] for tool in client.get("/v1/tools").json()["tools"]}
     assert {"alfred_projects", "alfred_templates", "alfred_render_enqueue",
-            "alfred_render_status", "alfred_health", "alfred_cues_set"} <= names
+            "alfred_render_status", "alfred_health", "alfred_cues_set", "alfred_recipes",
+            "alfred_drafts", "alfred_drafts_status", "alfred_drafts_drop"} <= names
 
 
 def test_an_unconfigured_alfred_is_the_invocation_s_error(client, monkeypatch):
