@@ -4,23 +4,25 @@
 
     read      `alfred_project` for the saved timeline, and `alfred_captions`
               for the transcript -- made first, as the caption flow makes it,
-              when the project holds none
-    propose   chapters and spans from the transcript's own timing: a chapter
-              ends at a long pause, a span at a pause or at a sentence's end,
-              within the length an excerpt may have; a labeller, when the run has
-              one, titles each chapter and sorts each span into a category
-    review    one request on qmcp's human queue per span, carrying its words:
-              approve renders it as an excerpt of its own, reject leaves it out
-    render    `alfred_render_enqueue` with a timeline cut from the project's
-              for each approved span, its captions burned in when asked, then
-              `alfred_render_status` until each settles (`alfred_render`)
+              when the project holds none, since alfred cuts by the words
+    propose   `alfred_drafts` with alfred's `excerpts` recipe, followed with
+              `alfred_drafts_status` until alfred's worker is done: each draft
+              is a project of its own, cut from the source with its captions
+              and its words, read back with `alfred_captions`; a labeller,
+              when the run has one, sorts each draft into a category
+    review    one request on qmcp's human queue per draft, carrying its words:
+              approve renders it as an excerpt of its own, reject drops it
+              (`alfred_drafts_drop`)
+    render    `alfred_render_enqueue` of each approved draft's own timeline,
+              its captions burned in when asked, then `alfred_render_status`
+              until each settles (`alfred_render`)
     ask       a request per rendered excerpt, with its link, saying what
               approval does
     deliver   `alfred_render_deliver` for each approved excerpt, when the run was
               asked to deliver
-    mark      after each of those, `alfred_cues_set` with the proposal as cues on
-              the project's timeline: each chapter, and each span with where it
-              stands, which alfred's editor draws under the clips
+    mark      after each of those, `alfred_cues_set` with where each draft
+              stands as cues on the project's timeline, beside the cues
+              alfred's own run left, which alfred's editor draws under the clips
 
 Every call to alfred is a qmcp tool invocation, so the run is in qmcp's
 record. The steps take the tool caller (`Invoke`) and the queue client as
@@ -28,14 +30,16 @@ arguments, a wait takes its `sleep` and `clock`, and a labeller is a function
 from a prompt to an answer, so a test drives them without a flow, a model or
 alfred. Nothing here imports Metaflow.
 
-What a span is comes from the transcript alone: when the words were said and
-whether a caption ends a sentence. Nothing here hears the sound, so a song the
-engine wrote no words for is a pause, and where it falls is a chapter's edge.
+What a draft is comes from alfred (its docs/drafts.md): the `excerpts` recipe
+cuts the transcript at pauses and at the ends of sentences, within the length
+an excerpt may have, and alfred's worker leaves each stretch as a project
+carrying its source. Nothing here reads a pause or cuts a timeline.
 """
 
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -60,42 +64,51 @@ from qmcp.cookbook.alfred_render import (
     sentence,
 )
 
-# Seconds of nothing said that end a span: a breath between thoughts.
+# alfred's recipe that proposes excerpts, by the name every account reads it by.
+RECIPE = "excerpts"
+# The recipe's knobs, as the run sets them: seconds of nothing said that end a
+# stretch, and the shortest and longest an excerpt may run, in seconds.
 PAUSE = 1.0
-# Seconds of nothing said that end a chapter: a change of subject, or a song.
-CHAPTER_PAUSE = 4.0
-# The shortest and longest a span may run, in seconds. A stretch shorter than
-# `SHORTEST` is joined to a neighbour when that fits, else left out; one
-# longer than `LONGEST` is cut at the ends of sentences.
 SHORTEST = 10.0
 LONGEST = 90.0
-# How much of a span or a chapter a prompt quotes, in characters.
+# Seconds alfred's worker has to leave the drafts, and how often it is asked.
+DRAFTS_TIMEOUT = 600.0
+DRAFTS_POLL = 5.0
+# How much of a draft a prompt quotes, in characters.
 OPENING_CHARS = 80
-TITLE_CHARS = 60
 LABEL_CHARS = 4000
-# What a labeller may say back, in tokens; a title or a category needs few.
+# What a labeller may say back, in tokens; a category needs few.
 LABEL_TOKENS = 32
-# Seconds one answer from a model may take before the span stays unlabelled.
+# Seconds one answer from a model may take before the draft stays unlabelled.
 LABEL_TIMEOUT = 30.0
+# What alfred's worker says a run is, from queued to done or failed.
+JOB_DONE = "done"
+JOB_FAILED = "failed"
 
-# What ends a sentence, once closing quotes and brackets are set aside.
-_SENTENCE_END = (".", "!", "?", "…")
-_CLOSERS = "\"')”’»]"
 _FIRST_SENTENCE = re.compile(r"^(.*?[.!?…][\"')”’»\]]*)(?:\s|$)")
 
 
+class DraftsFailedError(RuntimeError):
+    """alfred's run of the recipe failed, or did not finish in time: one line."""
+
+
 @dataclass(frozen=True)
-class Span:
-    """A stretch of the transcript offered as an excerpt: `number` counts spans
-    from 1 in timeline order, `chapter` is the chapter's number from 1,
-    `start` and `end` are timeline seconds, `captions` what is said in it, and
-    `label` the category a labeller gave it, empty until one does."""
+class Draft:
+    """A draft alfred left, offered as an excerpt: `number` counts drafts from 1
+    in timeline order, `id` is the draft's own project id, `name` and
+    `description` are alfred's, `start` and `end` are the stretch of the
+    source it took in the source's seconds, `captions` what is said in it in
+    its own seconds, `scores` what the recipe scored it by, and `label` the
+    category a labeller gave it, empty until one does."""
 
     number: int
-    chapter: int
+    id: str
+    name: str
+    description: str
     start: float
     end: float
     captions: tuple[dict[str, Any], ...]
+    scores: dict[str, float]
     label: str = ""
 
     @property
@@ -110,35 +123,21 @@ class Span:
     def opening(self) -> str:
         return opening(self.text)
 
-
-@dataclass(frozen=True)
-class Chapter:
-    """A part of the recording between long pauses: `number` from 1, its
-    `start` and `end` in timeline seconds, how many `spans` it holds, the
-    `opening` of what is said in it, and the `title` a labeller gave it,
-    empty until one does."""
-
-    number: int
-    start: float
-    end: float
-    spans: int
-    opening: str
-    title: str = ""
+    @property
+    def title(self) -> str:
+        """What alfred's name says beyond the source's: the topic the language
+        engine had live over the draft, or the recipe's label and the number."""
+        return self.name.split(" – ", 1)[-1] if " – " in self.name else self.name
 
 
 @dataclass(frozen=True)
 class Proposal:
-    """What the transcript offers: its chapters, its spans in timeline order,
-    how many stretches were `left_out` for being too short to stand alone,
-    and the `settings` they were cut with."""
+    """What alfred's run left: the drafts in timeline order, the run's `notes`,
+    and the `settings` the recipe was run with."""
 
-    chapters: tuple[Chapter, ...]
-    spans: tuple[Span, ...]
-    left_out: int
+    drafts: tuple[Draft, ...]
+    notes: tuple[str, ...]
     settings: dict[str, float]
-
-    def chapter_of(self, span: Span) -> Chapter:
-        return self.chapters[span.chapter - 1]
 
 
 # --- the transcript ------------------------------------------------------------------
@@ -157,7 +156,8 @@ def read_transcript(
     transcription of the project is running now, which is followed instead. A
     project with none is transcribed as the caption flow transcribes it
     (`alfred_captions.transcribe`, which `limits` reach) when `transcribe` is
-    true, and ends the run as `NO_CAPTIONS` otherwise.
+    true, and ends the run as `NO_CAPTIONS` otherwise. alfred cuts a source by
+    its words, which a transcription leaves beside the captions.
     """
     held = invoke("alfred_captions", {"project_id": project_id})
     captions = held.get("captions") or []
@@ -181,25 +181,6 @@ def _time(value: Any) -> float | None:
     return float(value)
 
 
-def spoken(captions: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The captions that say something, each with a start and an end after it,
-    in the order they start. Anything else is not a stretch of speech."""
-    kept = []
-    for caption in captions:
-        start, end = _time(caption.get("start")), _time(caption.get("end"))
-        text = str(caption.get("text") or "").strip()
-        if start is None or end is None or end <= start or not text:
-            continue
-        kept.append({**caption, "start": start, "end": end, "text": text})
-    return sorted(kept, key=lambda c: (c["start"], c["end"]))
-
-
-def ends_sentence(text: str) -> bool:
-    """Whether `text` ends a sentence: a full stop, a question or exclamation
-    mark, or an ellipsis, with any closing quote or bracket after it."""
-    return text.rstrip().rstrip(_CLOSERS).endswith(_SENTENCE_END)
-
-
 def opening(text: str, limit: int = OPENING_CHARS) -> str:
     """The first sentence of `text`, or its first `limit` characters when the
     sentence runs longer, with an ellipsis where it was cut."""
@@ -211,106 +192,84 @@ def opening(text: str, limit: int = OPENING_CHARS) -> str:
     return first[: limit - 1].rstrip() + "…"
 
 
-def stretches(captions: Sequence[dict[str, Any]], gap: float) -> list[list[dict[str, Any]]]:
-    """`captions`, already `spoken`, cut wherever `gap` seconds or more pass
-    between one caption's end and the next's start."""
-    runs: list[list[dict[str, Any]]] = []
-    for caption in captions:
-        if runs and caption["start"] - runs[-1][-1]["end"] < gap:
-            runs[-1].append(caption)
-        else:
-            runs.append([caption])
-    return runs
+def _span_of(listed: Mapping[str, Any]) -> tuple[float, float]:
+    """Where a listed draft lies in its source: from its first span's start to
+    its last span's end; 0 to 0 for one alfred lists without spans."""
+    spans = [s for s in (listed.get("source") or {}).get("spans") or []
+             if isinstance(s, (list, tuple)) and len(s) == 2
+             and _time(s[0]) is not None and _time(s[1]) is not None]
+    if not spans:
+        return 0.0, 0.0
+    return float(min(s[0] for s in spans)), float(max(s[1] for s in spans))
 
 
-def _length(run: Sequence[dict[str, Any]]) -> float:
-    return run[-1]["end"] - run[0]["start"]
-
-
-def pieces(stretch: Sequence[dict[str, Any]], longest: float) -> list[list[dict[str, Any]]]:
-    """One stretch cut into runs of at most `longest` seconds, each ending at
-    the last caption within that length that ends a sentence, or at the last
-    caption within it when none does. A caption longer than `longest` on its
-    own is a piece on its own."""
-    cut: list[list[dict[str, Any]]] = []
-    i = 0
-    while i < len(stretch):
-        start = stretch[i]["start"]
-        last_fit, last_sentence = i, None
-        j = i
-        while j < len(stretch) and stretch[j]["end"] - start <= longest:
-            last_fit = j
-            if ends_sentence(stretch[j]["text"]):
-                last_sentence = j
-            j += 1
-        end = last_fit if last_sentence is None else last_sentence
-        cut.append(list(stretch[i:end + 1]))
-        i = end + 1
-    return cut
-
-
-def joined(pieces_: Sequence[Sequence[dict[str, Any]]], shortest: float,
-           longest: float) -> tuple[list[list[dict[str, Any]]], int]:
-    """The pieces of one stretch with each one shorter than `shortest` joined
-    to the piece before it, else to the one after it, where the join stays
-    within `longest`; what cannot be joined is left out, and counted."""
-    kept: list[list[dict[str, Any]]] = []
-    left_out = 0
-    pending: list[dict[str, Any]] = []
-    for piece in pieces_:
-        piece = pending + list(piece)
-        pending = []
-        if _length(piece) >= shortest:
-            kept.append(piece)
-        elif kept and _length(kept[-1] + piece) <= longest:
-            kept[-1] = kept[-1] + piece
-        else:
-            pending = piece
-    if pending:
-        left_out += 1
-    return kept, left_out
+def _draft_ids(status: Mapping[str, Any]) -> set[str]:
+    return {str(d.get("id")) for d in status.get("drafts") or [] if d.get("id")}
 
 
 def propose(
-    captions: Sequence[dict[str, Any]],
+    invoke: Invoke,
+    project_id: str,
     *,
     pause: float = PAUSE,
-    chapter_pause: float = CHAPTER_PAUSE,
     shortest: float = SHORTEST,
     longest: float = LONGEST,
+    timeout: float = DRAFTS_TIMEOUT,
+    poll_interval: float = DRAFTS_POLL,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
 ) -> Proposal:
-    """Chapters and spans from the transcript's timing.
+    """The drafts alfred's `excerpts` recipe leaves of the project, run with
+    `pause`, `shortest` and `longest` as its knobs.
 
-    A chapter is what lies between pauses of `chapter_pause` seconds or more.
-    Within it, a stretch is what lies between pauses of `pause` seconds or
-    more, and a stretch is a span when it runs `shortest` seconds or more and
-    `longest` or fewer; one that runs longer is cut at the ends of sentences
-    (`pieces`), and one that runs shorter is joined to a neighbour or left out
-    (`joined`). Spans and chapters are numbered from 1 in timeline order.
+    `alfred_drafts` queues the run; `alfred_drafts_status` is asked every
+    `poll_interval` seconds until alfred's worker says done, and the drafts
+    the run added, told from those the project held before, are the proposal,
+    in timeline order, each with its captions read by `alfred_captions`. A
+    run that fails, or is not done within `timeout` seconds, raises
+    `DraftsFailedError` with alfred's reason; a tool error raises as it came.
     """
-    if not 0 < shortest <= longest:
-        raise ValueError(f"shortest ({shortest}) must be positive and at most longest ({longest})")
-    if not 0 < pause <= chapter_pause:
-        raise ValueError(f"pause ({pause}) must be positive and at most chapter_pause "
-                         f"({chapter_pause})")
-    chapters: list[Chapter] = []
-    spans: list[Span] = []
-    left_out = 0
-    for part in stretches(spoken(captions), chapter_pause):
-        number = len(chapters) + 1
-        held = 0
-        for stretch in stretches(part, pause):
-            kept, dropped = joined(pieces(stretch, longest), shortest, longest)
-            left_out += dropped
-            for run in kept:
-                spans.append(Span(len(spans) + 1, number, run[0]["start"], run[-1]["end"],
-                                  tuple(run)))
-                held += 1
-        chapters.append(Chapter(number, part[0]["start"], part[-1]["end"], held,
-                                opening(" ".join(c["text"] for c in part))))
-    return Proposal(tuple(chapters), tuple(spans), left_out,
-                    {"pause": pause, "chapter_pause": chapter_pause,
-                     "shortest": shortest, "longest": longest})
+    project_id = str(project_id)
+    before = _draft_ids(invoke("alfred_drafts_status", {"project_id": project_id}))
+    values = {"pause": f"{pause:g}", "shortest": f"{shortest:g}", "longest": f"{longest:g}"}
+    invoke("alfred_drafts", {"project_id": project_id,
+                             "recipes": [{"recipe": RECIPE, "values": values}]})
+    started = clock()
+    while True:
+        status = invoke("alfred_drafts_status", {"project_id": project_id})
+        job = status.get("job") if isinstance(status.get("job"), dict) else {}
+        state = job.get("state")
+        if state == JOB_DONE:
+            break
+        if state == JOB_FAILED:
+            raise DraftsFailedError(f"alfred's run of the {RECIPE} recipe failed: "
+                               f"{job.get('error') or 'alfred gave no reason'}")
+        waited = clock() - started
+        if waited >= timeout:
+            raise DraftsFailedError(f"alfred's run of the {RECIPE} recipe was still "
+                               f"{state or 'unreported'} after {waited:.0f} s")
+        sleep(poll_interval)
+    added = [d for d in status.get("drafts") or []
+             if str(d.get("id")) not in before and d.get("id")]
+    added.sort(key=lambda d: _span_of(d))
+    drafts = []
+    for number, listed in enumerate(added, start=1):
+        start, end = _span_of(listed)
+        held = invoke("alfred_captions", {"project_id": str(listed["id"])})
+        drafts.append(Draft(
+            number=number,
+            id=str(listed["id"]),
+            name=str(listed.get("name") or f"draft {number}"),
+            description=str(listed.get("description") or ""),
+            start=start,
+            end=end,
+            captions=tuple(dict(c) for c in held.get("captions") or []),
+            scores={str(k): float(v) for k, v in ((listed.get("source") or {}).get("scores")
+                                                  or {}).items()
+                    if _time(v) is not None},
+        ))
+    return Proposal(tuple(drafts), tuple(str(n) for n in job.get("notes") or []),
+                    {"pause": pause, "shortest": shortest, "longest": longest})
 
 
 # --- the labeller ----------------------------------------------------------------------
@@ -319,23 +278,9 @@ Ask = Callable[[str], str]
 """A labeller: a model's answer to one prompt, or an exception when it gives none."""
 
 
-def title_prompt(chapter_text: str) -> str:
-    return ("Give a title of at most six words to this part of a recording. Answer with "
-            f"the title alone.\n\n{chapter_text[:LABEL_CHARS]}")
-
-
-def category_prompt(span_text: str, categories: Sequence[str]) -> str:
+def category_prompt(draft_text: str, categories: Sequence[str]) -> str:
     return (f"Which one of these categories fits this excerpt best: {', '.join(categories)}? "
-            f"Answer with the category alone.\n\n{span_text[:LABEL_CHARS]}")
-
-
-def title_from(answer: str) -> str:
-    """The first line of `answer`, its quotes dropped, at most `TITLE_CHARS`."""
-    for line in answer.splitlines():
-        line = line.strip().strip("\"'“”‘’").strip()
-        if line:
-            return line if len(line) <= TITLE_CHARS else line[: TITLE_CHARS - 1].rstrip() + "…"
-    return ""
+            f"Answer with the category alone.\n\n{draft_text[:LABEL_CHARS]}")
 
 
 def category_from(answer: str, categories: Sequence[str]) -> str:
@@ -349,27 +294,23 @@ def category_from(answer: str, categories: Sequence[str]) -> str:
 
 
 def label(proposal: Proposal, ask: Ask, *, categories: Sequence[str] = ()) -> Proposal:
-    """`proposal` with each chapter titled by `ask`, and each span sorted into
-    one of `categories` by it, when any are given. An answer that names no
-    category, or an `ask` that raises, leaves that title or label empty, so a
+    """`proposal` with each draft sorted into one of `categories` by `ask`, when
+    any are given; a draft's title is alfred's, from its name. An answer that
+    names no category, or an `ask` that raises, leaves that label empty, so a
     model that stalls on one prompt leaves the rest of the proposal readable."""
+    if not categories:
+        return proposal
+
     def answer(prompt: str) -> str:
         try:
             return str(ask(prompt) or "")
         except Exception:  # noqa: BLE001 -- whatever a model's client raises
             return ""
 
-    chapters = []
-    for chapter in proposal.chapters:
-        words = " ".join(span.text for span in proposal.spans if span.chapter == chapter.number)
-        chapters.append(replace(chapter, title=title_from(answer(title_prompt(words or
-                                                                               chapter.opening)))))
-    spans = list(proposal.spans)
-    if categories:
-        spans = [replace(span, label=category_from(answer(category_prompt(span.text, categories)),
-                                                   categories))
-                 for span in spans]
-    return replace(proposal, chapters=tuple(chapters), spans=tuple(spans))
+    drafts = [replace(draft, label=category_from(answer(category_prompt(draft.text, categories)),
+                                                 categories))
+              for draft in proposal.drafts]
+    return replace(proposal, drafts=tuple(drafts))
 
 
 def local_model(
@@ -400,135 +341,58 @@ def local_model(
     return ask
 
 
-# --- the excerpt's timeline ---------------------------------------------------------------
+# --- the excerpt ------------------------------------------------------------------------
 
 
-def _number(value: Any, default: float = 0.0) -> float:
-    found = _time(value)
-    return default if found is None else found
-
-
-def excerpt_edl(edl: dict[str, Any], start: float, end: float) -> dict[str, Any]:
-    """The part of `edl` between `start` and `end`, in timeline seconds, as a
-    timeline of its own that begins at 0.
-
-    Each clip that plays in the span is kept, with every field it had, and
-    re-timed as otto reads a clip (`otto.render.clipTiming`): its `start`
-    moved by the span's, its `inpoint` and `outpoint` set to the part of its
-    source the span holds, and `duration` their difference; a deprecated
-    `offset` is folded into them. An image keeps a `duration` alone, being
-    one picture throughout. An edge the span cut gets no fade (`fadeIn` or
-    `fadeOut` 0), as alfred's own cuts have none; an edge the span did not
-    cut keeps the clip's. The span is held to the timeline's `duration` when
-    it has one, and a span with nothing in it is refused.
-    """
-    duration = _time(edl.get("duration"))
-    if duration is not None and end > duration:
-        end = duration
-    if not 0 <= start < end:
-        raise ValueError(f"nothing to cut between {start} and {end} seconds")
-    clips = []
-    for index, clip in enumerate(edl.get("clips") or []):
-        offset = _number(clip.get("offset"))
-        clip_start = _number(clip.get("start")) + max(offset, 0.0)
-        inpoint = _number(clip.get("inpoint")) + max(-offset, 0.0)
-        outpoint = _time(clip.get("outpoint"))
-        length = outpoint - inpoint if outpoint is not None else _number(clip.get("duration"), 5.0)
-        if length <= 0:
-            raise ValueError(f"clip {index} ({clip.get('name')!r}) has no length: "
-                             "otto would refuse the timeline")
-        clip_end = clip_start + length
-        low, high = max(clip_start, start), min(clip_end, end)
-        if high <= low:
-            continue
-        cut = {key: value for key, value in clip.items() if key != "offset"}
-        cut["start"] = round(low - start, 3)
-        cut["duration"] = round(high - low, 3)
-        if clip.get("type") == "image":
-            cut.pop("inpoint", None)
-            cut.pop("outpoint", None)
-        else:
-            cut["inpoint"] = round(inpoint + (low - clip_start), 3)
-            cut["outpoint"] = round(cut["inpoint"] + (high - low), 3)
-        if low > clip_start:
-            cut["fadeIn"] = 0
-        if high < clip_end:
-            cut["fadeOut"] = 0
-        clips.append(cut)
-    if not clips:
-        raise ValueError(f"no clip of the timeline plays between {start} and {end} seconds")
-    return {"clips": clips, "duration": round(end - start, 3)}
-
-
-def excerpt_captions(captions: Sequence[dict[str, Any]], start: float,
-                     end: float) -> list[dict[str, Any]]:
-    """The captions that lie between `start` and `end`, in the excerpt's own
-    seconds: moved by `start`, trimmed where the span cuts one, and dropped
-    where nothing of one is left."""
-    kept = []
-    for caption in spoken(captions):
-        low, high = max(caption["start"], start), min(caption["end"], end)
-        if high <= low:
-            continue
-        kept.append({**caption, "start": round(low - start, 3), "end": round(high - start, 3)})
-    return kept
-
-
-def excerpt_name(project_name: str | None, span: Span) -> str:
-    return f"{project_name or 'alfred project'} - excerpt {span.number}"
-
-
-def excerpt_description(project_name: str | None, span: Span) -> str:
+def excerpt_description(project_name: str | None, draft: Draft) -> str:
     """What alfred's Deliver stage shows under the excerpt's name: where it lies
-    in the recording, its chapter, and its label when it has one."""
-    where = (f"{timecode(span.start)}-{timecode(span.end)} of "
-             f"{project_name or 'the recording'!r}, chapter {span.chapter}")
-    return f"{where}: {span.label}" if span.label else where
+    in the recording, and its label when it has one."""
+    where = f"{timecode(draft.start)}-{timecode(draft.end)} of {project_name or 'the recording'!r}"
+    return f"{where}: {draft.label}" if draft.label else where
 
 
 def queue_excerpt(
     invoke: Invoke,
     project: dict[str, Any],
-    span: Span,
+    draft: Draft,
     *,
-    captions: Sequence[dict[str, Any]] | None = None,
-    style: dict[str, Any] | None = None,
+    captions: bool = True,
     **options: Any,
 ) -> dict[str, Any]:
-    """Queue a render of the span as an excerpt of its own: `alfred_render_enqueue`
-    with the timeline cut from the project's saved one, named for the project
-    and the span, with the project's captions that fall in it burned in when
-    `captions` are given, in `style`: the captions alfred holds when the excerpt is
-    queued, so a correction saved in alfred during the review is in the excerpt.
-    `options` left as None are the project's saved settings, else alfred's.
-    Returns what the tool returned."""
-    edl = excerpt_edl(project["edl"], span.start, span.end)
+    """Queue a render of the draft as an excerpt of its own: `alfred_render_enqueue`
+    of the draft's own saved timeline, under alfred's name for it, with the
+    draft's captions burned in when `captions` is true and it has any -- the
+    captions alfred holds on the draft when the excerpt is queued, so a
+    correction saved in alfred's editor during the review is in the excerpt.
+    `options` left as None are the draft's saved settings, which are its
+    source's, else alfred's. Returns what the tool returned."""
     params: dict[str, Any] = {
-        "edl": edl,
-        "name": excerpt_name(project.get("name"), span),
-        "description": excerpt_description(project.get("name"), span),
+        "project_id": draft.id,
+        "name": draft.name,
+        "description": excerpt_description(project.get("name"), draft),
+        "captions": bool(captions and draft.captions),
     }
-    saved = project.get("render_settings") or {}
     for key in ("width", "height", "fps", "quality"):
-        value = options.get(key)
-        value = value if value is not None else saved.get(key)
-        if value is not None:
-            params[key] = value
-    if captions is not None:
-        # Held to the excerpt, as the timeline was: a caption past its end is left.
-        burned = excerpt_captions(captions, span.start, span.start + edl["duration"])
-        if burned:
-            params["captions"] = burned
-            params["caption_style"] = dict(style or {})
+        if options.get(key) is not None:
+            params[key] = options[key]
     return invoke("alfred_render_enqueue", params)
+
+
+def drop(invoke: Invoke, project_id: Any, drafts: Sequence[Draft]) -> dict[str, Any]:
+    """Let go of `drafts`, each with its cue on the source: `alfred_drafts_drop`.
+    Nothing is asked for none. Returns what the tool returned."""
+    if not drafts:
+        return {"project_id": str(project_id), "dropped": []}
+    return invoke("alfred_drafts_drop", {"project_id": str(project_id),
+                                         "drafts": [draft.id for draft in drafts]})
 
 
 # --- the cues on alfred's timeline -----------------------------------------------------
 
 # Whose the cues are: this flow's, so a run replaces the last run's and leaves
-# what anything else marked.
+# what anything else marked, alfred's own `alfred-drafts` cues among them.
 CUE_SOURCE = "alfred-excerpts"
-# Where a span stands, as its cue says: proposed and not yet asked about;
+# Where a draft stands, as its cue says: proposed and not yet asked about;
 # waiting for an answer on the queue; approved or rejected by it, or
 # unanswered when the wait ran out; queued as a render; rendered, or failed;
 # and delivered.
@@ -548,34 +412,26 @@ def cues_of(
     states: Mapping[int, str] | None = None,
     refs: Mapping[int, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """The proposal as cues on the project's timeline: one per chapter, titled
-    when a labeller titled it, and one per span, labelled by its number and
-    its category, with its `state` and `ref` from `states` and `refs` by span
-    number -- `proposed`, and no reference, until they say otherwise -- and
-    the opening of what is said in it as its note."""
+    """The proposal as cues on the project's timeline: one per draft, over the
+    stretch of the source it took, labelled by its number and its category,
+    with its `state` and `ref` from `states` and `refs` by draft number --
+    `proposed`, and no reference, until they say otherwise -- and the opening
+    of what is said in it as its note."""
     states = states or {}
     refs = refs or {}
     cues: list[dict[str, Any]] = []
-    for chapter in proposal.chapters:
-        cues.append({
-            "start": chapter.start,
-            "end": chapter.end,
-            "label": chapter.title or f"Chapter {chapter.number}",
-            "kind": "chapter",
-            "note": chapter.opening,
-        })
-    for span in proposal.spans:
-        label = f"Excerpt {span.number}" + (f": {span.label}" if span.label else "")
+    for draft in proposal.drafts:
+        label = f"Excerpt {draft.number}" + (f": {draft.label}" if draft.label else "")
         cue: dict[str, Any] = {
-            "start": span.start,
-            "end": span.end,
+            "start": draft.start,
+            "end": draft.end,
             "label": label,
             "kind": "excerpt",
-            "state": states.get(span.number, PROPOSED),
-            "note": span.opening,
+            "state": states.get(draft.number, PROPOSED),
+            "note": draft.opening,
         }
-        if refs.get(span.number):
-            cue["ref"] = refs[span.number]
+        if refs.get(draft.number):
+            cue["ref"] = refs[draft.number]
         cues.append(cue)
     return cues
 
@@ -600,48 +456,53 @@ def mark(
 # --- what a person is asked --------------------------------------------------------------
 
 
-def review_request(project: dict[str, Any], span: Span, proposal: Proposal,
+def _placed(draft: Draft) -> list[dict[str, Any]]:
+    """The draft's captions in the source's seconds, for a person reading the
+    recording's clock."""
+    return [{**c, "start": round(float(c.get("start") or 0.0) + draft.start, 3),
+             "end": round(float(c.get("end") or 0.0) + draft.start, 3)}
+            for c in draft.captions]
+
+
+def review_request(project: dict[str, Any], draft: Draft, proposal: Proposal,
                    run_id: str) -> dict[str, Any]:
-    """What a person is asked about one span: the request's id, prompt, options
+    """What a person is asked about one draft: the request's id, prompt, options
     and context, as `MCPClient.create_human_request` takes them. The prompt
-    places the span in the recording and quotes its words; the context's
-    `spoken` is the same question in a breath, for a voice reader, which
-    speaks it in place of the prompt."""
+    places the draft in the recording, names it as alfred did and quotes its
+    words; the context's `spoken` is the same question in a breath, for a
+    voice reader, which speaks it in place of the prompt."""
     project_id = str(project.get("id"))
     name = project.get("name") or project_id
-    chapter = proposal.chapter_of(span)
-    place = f"chapter {span.chapter} of {len(proposal.chapters)}"
-    if chapter.title:
-        place += f" ({chapter.title})"
-    labelled = f", {span.label}" if span.label else ""
-    lines = "\n".join(f"  {line}" for line in transcript(list(span.captions)))
+    labelled = f", {draft.label}" if draft.label else ""
+    lines = "\n".join(f"  {line}" for line in transcript(_placed(draft)))
     prompt = (
-        f"Excerpt {span.number} of {len(proposal.spans)} from {name!r}, {place}, "
-        f"{timecode(span.start)}-{timecode(span.end)} ({span.seconds:.0f} s{labelled}):\n{lines}\n"
-        "Answer approve to render it as an excerpt of its own to review, or reject to leave it out."
+        f"Excerpt {draft.number} of {len(proposal.drafts)} from {name!r}, "
+        f"{timecode(draft.start)}-{timecode(draft.end)} ({draft.seconds:.0f} s{labelled}), "
+        f"alfred's {draft.title!r}:\n{lines}\n"
+        "Answer approve to render it as an excerpt of its own to review, or reject to drop it."
     )
     spoken = (
-        f"Excerpt {span.number} of {len(proposal.spans)} from {name}, {place}, "
-        f"{span.seconds:.0f} seconds{labelled}. It opens: {span.opening} "
-        "Approve to render it as an excerpt of its own, or reject to leave it out."
+        f"Excerpt {draft.number} of {len(proposal.drafts)} from {name}, "
+        f"{draft.seconds:.0f} seconds{labelled}, {draft.title}. It opens: {draft.opening} "
+        "Approve to render it as an excerpt of its own, or reject to drop it."
     )
     return {
-        "request_id": f"alfred-excerpt-{project_id}-{span.number}-{run_id}",
+        "request_id": f"alfred-excerpt-{project_id}-{draft.number}-{run_id}",
         "prompt": prompt,
         "options": list(OPTIONS),
         "context": {
             "spoken": spoken,
             "project_id": project_id,
             "name": name,
-            "excerpt": span.number,
-            "of": len(proposal.spans),
-            "chapter": span.chapter,
-            "chapter_title": chapter.title,
-            "start": span.start,
-            "end": span.end,
-            "seconds": span.seconds,
-            "label": span.label,
-            "captions": list(span.captions),
+            "excerpt": draft.number,
+            "of": len(proposal.drafts),
+            "draft": draft.id,
+            "draft_name": draft.name,
+            "start": draft.start,
+            "end": draft.end,
+            "seconds": draft.seconds,
+            "label": draft.label,
+            "captions": list(draft.captions),
             "flow_run_id": run_id,
         },
     }
@@ -650,7 +511,7 @@ def review_request(project: dict[str, Any], span: Span, proposal: Proposal,
 def approval_request(
     queued: dict[str, Any],
     waited: Waited,
-    span: Span,
+    draft: Draft,
     run_id: str,
     *,
     deliver: bool = False,
@@ -661,8 +522,8 @@ def approval_request(
     and saying what approval does -- deliver the excerpt, when the run was asked
     to, or nothing more."""
     request = alfred_render.approval_request(queued, waited, run_id)
-    where = f" It is {timecode(span.start)}-{timecode(span.end)} of the recording"
-    where += f", {span.label}." if span.label else "."
+    where = f" It is {timecode(draft.start)}-{timecode(draft.end)} of the recording"
+    where += f", {draft.label}." if draft.label else "."
     if deliver:
         then = (f" Answer approve to deliver it to {destination or 'alfred\'s default destination'}"
                 ", or reject to leave it undelivered.")
@@ -673,8 +534,8 @@ def approval_request(
     # The prompt carries a link, which is for a page; the ear gets the place.
     name = queued.get("name") or queued.get("render_id")
     spoken = f"{name} is rendered.{where}{then}"
-    request["context"].update(spoken=spoken, excerpt=span.number, start=span.start,
-                              end=span.end, label=span.label,
+    request["context"].update(spoken=spoken, excerpt=draft.number, draft=draft.id,
+                              start=draft.start, end=draft.end, label=draft.label,
                               captions=queued.get("captions"), deliver=deliver,
                               destination=destination)
     return request
@@ -698,28 +559,32 @@ def summary(
     delivered: dict[int, Delivered] | None = None,
     *,
     deliver: bool = False,
+    failure: str | None = None,
 ) -> str:
     """One line saying how the run ended."""
     project_id = str(project.get("id"))
     name = project.get("name") or project_id
     if not transcribed.done:
         return alfred_captions.summary(project_id, transcribed)
-    if proposal is None or not proposal.spans:
-        shortest = (proposal.settings if proposal else {}).get("shortest", SHORTEST)
-        return (f"Nothing was asked: the transcript of {name!r} "
-                f"({counted(len(transcribed.captions), 'caption')}) has no stretch of "
-                f"{shortest:g} s or more to offer as an excerpt.")
+    if failure:
+        return sentence(f"Nothing was asked: {failure}")
+    if proposal is None or not proposal.drafts:
+        notes = f": {'; '.join(proposal.notes)}" if proposal and proposal.notes else ""
+        return sentence(f"Nothing was asked: the {RECIPE} recipe left no draft of {name!r} "
+                        f"({counted(len(transcribed.captions), 'caption')}){notes}")
     reviewed, queued, waited = reviewed or {}, queued or {}, waited or {}
     answers, delivered = answers or {}, delivered or {}
     approved = sum(answer == APPROVE for answer in reviewed.values())
+    dropped = sum(answer == REJECT for answer in reviewed.values())
     unanswered = sum(answer is None for answer in reviewed.values())
     rendered = sum(w.rendered for w in waited.values())
     kept = sum(answer == APPROVE for answer in answers.values())
-    parts = [f"{counted(len(proposal.spans), 'excerpt')} in "
-             f"{counted(len(proposal.chapters), 'chapter')} of {name!r} offered",
+    parts = [f"{counted(len(proposal.drafts), 'excerpt')} of {name!r} offered",
              f"{approved} approved"]
     if unanswered:
         parts[-1] += f" ({unanswered} unanswered)"
+    if dropped:
+        parts.append(f"{dropped} dropped")
     if approved:
         parts.append(f"{rendered} rendered")
         failed = [f"excerpt {n} {w.why}" for n, w in sorted(waited.items()) if not w.rendered]
@@ -737,35 +602,31 @@ def summary(
 
 __all__ = [
     "APPROVE",
-    "CHAPTER_PAUSE",
+    "DRAFTS_POLL",
+    "DRAFTS_TIMEOUT",
     "LABEL_TIMEOUT",
     "LABEL_TOKENS",
     "LONGEST",
     "PAUSE",
+    "RECIPE",
     "REJECT",
     "SHORTEST",
     "Ask",
-    "Chapter",
+    "Draft",
+    "DraftsFailedError",
     "Proposal",
-    "Span",
     "approval_request",
     "category_from",
+    "cues_of",
+    "drop",
     "excerpt_description",
-    "excerpt_name",
-    "ends_sentence",
-    "excerpt_captions",
-    "excerpt_edl",
-    "joined",
     "label",
     "local_model",
+    "mark",
     "opening",
-    "pieces",
     "propose",
     "queue_excerpt",
     "read_transcript",
     "review_request",
-    "spoken",
-    "stretches",
     "summary",
-    "title_from",
 ]

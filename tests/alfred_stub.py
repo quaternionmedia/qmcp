@@ -176,6 +176,7 @@ SIGNED_UNTIL = 1893456000  # the `exp` on every download link, 2030-01-01T00:00:
 
 _CAPTIONS = re.compile(r"/project/([^/]+)/captions(/transcribe)?")
 _CUES = re.compile(r"/project/([^/]+)/cues")
+_DRAFTS = re.compile(r"/project/([^/]+)/drafts")
 _PROJECT = re.compile(r"/project/([^/]+)")
 _RENDER = re.compile(r"/render/([^/]+)/(status|deliver)")
 _OBJECT_ID = re.compile(r"[0-9a-fA-F]{24}")
@@ -185,10 +186,64 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _timecode(seconds: float) -> str:
+    whole = int(max(0, seconds))
+    return f"{whole // 60}:{whole % 60:02d}"
+
+
 def render_id(n: int) -> str:
     """The id of the `n`th render the stand-in queues: an ObjectId's 24 hex
     digits, as alfred's `POST /render` answers."""
     return f"6a79{n:020d}"
+
+
+def draft_id(n: int) -> str:
+    """The id of the `n`th draft the stand-in's worker leaves, an ObjectId's 24 hex digits."""
+    return f"6a7a{n:020d}"
+
+
+# The recipes the stand-in has: alfred's `excerpts`, which the excerpt flow
+# runs, and `chapters`, listed so a list has two. Their knobs are alfred's
+# (alfred/core/utils/recipes_builtin.py).
+RECIPES: list[dict[str, Any]] = [
+    {"id": "excerpts", "name": "excerpts", "label": "Excerpts",
+     "description": "Stretches cut at pauses and at the ends of sentences, as the excerpt "
+                    "flow proposes them, each a draft of its own.",
+     "fields": [
+         {"type": "Text", "attrs": {"name": "pause", "text": "A pause this long ends a "
+                                                             "stretch, seconds",
+                                    "defaultValue": "1"}},
+         {"type": "Text", "attrs": {"name": "shortest", "text": "Shortest excerpt, seconds",
+                                    "defaultValue": "10"}},
+         {"type": "Text", "attrs": {"name": "longest", "text": "Longest excerpt, seconds",
+                                    "defaultValue": "90"}}],
+     "steps": [{"op": "spans", "pause": {"var": "pause"}, "shortest": {"var": "shortest"},
+                "longest": {"var": "longest"}}, {"op": "label"},
+               {"op": "compose", "how": "each"}],
+     "builtin": True},
+    {"id": "chapters", "name": "chapters", "label": "Chapters",
+     "description": "One draft for each stretch between long pauses.",
+     "fields": [{"type": "Text", "attrs": {"name": "pause", "text": "A pause this long ends "
+                                                                    "a chapter, seconds",
+                                           "defaultValue": "4"}}],
+     "steps": [{"op": "chapters", "pause": {"var": "pause"}}, {"op": "label"},
+               {"op": "compose", "how": "each"}],
+     "builtin": True},
+]
+RECIPE_NAMES = [recipe["name"] for recipe in RECIPES]
+# A stretch is cut at a pause this long into a chapter of its own (alfred's `spans`).
+CHAPTER_PAUSE = 4.0
+
+
+def unknown_recipe(name: str) -> str:
+    """alfred's sentence for a recipe it does not have."""
+    return (f"No recipe is named {name!r}: the built-in ones are highlights, teaser, chapters, "
+            "excerpts, tight-cut, quotes, and yours are listed by GET /recipes.")
+
+
+def not_a_draft(ids: list[str]) -> str:
+    """alfred's sentence for a drop naming a project that is not a draft of the source."""
+    return f"{', '.join(ids)}: not a draft of this project, so nothing was dropped."
 
 
 # The most captions alfred keeps on a project (alfred/core/utils/captions.py).
@@ -286,7 +341,12 @@ class CaptionedAlfred(FakeAlfred):
     `heard`, or failed, as when it heard nothing, with the captions the
     project had kept -- while `workers` is above 0. A render moves the
     same way, queued, rendering, rendered, on each look at its status, and is
-    delivered by `POST /render/{id}/deliver`. `GET /health` is alfred's report,
+    delivered by `POST /render/{id}/deliver`. A run of recipes
+    (`POST /project/{id}/drafts`, `RECIPES`) moves queued, running, done on
+    each look at `GET /project/{id}/drafts`, leaving the drafts the recipe's
+    arithmetic cuts (`tests/alfred_cuts.py`), each a project held beside
+    the source with its captions and a cue on the source, and
+    `DELETE /project/{id}/drafts` drops them. `GET /health` is alfred's report,
     `HEALTH`'s shape, with `workers`, the renders queued and `audio_engine`.
     Projects and renders are named as alfred names them, by ObjectId, and
     refused as alfred refuses them: a body first, then a malformed id, then an
@@ -307,6 +367,8 @@ class CaptionedAlfred(FakeAlfred):
         self.failure: dict[str, str | None] = {}
         self.renders: dict[str, dict[str, Any]] = {}
         self.queued: list[dict[str, Any]] = []  # each POST /render body, in order
+        self.drafts_asked: list[dict[str, Any]] = []  # each POST .../drafts body, in order
+        self.drafts_made = 0
 
     def add_project(
         self,
@@ -336,6 +398,7 @@ class CaptionedAlfred(FakeAlfred):
             "caption_style": style,
             "captions_job": None,
             "cues": None,
+            "drafts_job": None,
         }
         self.projects[project_id] = project
         self.heard[project_id] = list(heard or [])
@@ -350,6 +413,8 @@ class CaptionedAlfred(FakeAlfred):
             return httpx.Response(200, json=self.health())
         if (request.method, path) == ("POST", "/render"):
             return self.queue(json.loads(request.content))
+        if (request.method, path) == ("GET", "/recipes"):
+            return httpx.Response(200, json=RECIPES)
         # As alfred refuses: a body FastAPI will not take, then an id that is
         # not an ObjectId, then one nobody holds; only then the route's own.
         if match := _CAPTIONS.fullmatch(path):
@@ -363,6 +428,15 @@ class CaptionedAlfred(FakeAlfred):
                 return self._with(self.projects, match[1], self.look)
             if (request.method, transcribing) == ("POST", True):
                 return self._with(self.projects, match[1], self.transcribe)
+        elif match := _DRAFTS.fullmatch(path):
+            if request.method == "POST":
+                body = json.loads(request.content)
+                return self._with(self.projects, match[1], lambda p: self.sculpt(p, body))
+            if request.method == "GET":
+                return self._with(self.projects, match[1], self.drafts_of)
+            if request.method == "DELETE":
+                body = json.loads(request.content)
+                return self._with(self.projects, match[1], lambda p: self.drop(p, body))
         elif match := _CUES.fullmatch(path):
             if request.method == "PUT":
                 body = json.loads(request.content)
@@ -490,6 +564,123 @@ class CaptionedAlfred(FakeAlfred):
         stop = lambda cue: cue["start"] if cue.get("end") is None else cue["end"]  # noqa: E731
         project["cues"] = sorted(kept + sent, key=lambda cue: (cue["start"], stop(cue)))
         return httpx.Response(200, json={"cues": project["cues"]})
+
+    # --- drafts ------------------------------------------------------------------
+
+    def sculpt(self, project: dict[str, Any], body: dict[str, Any]) -> httpx.Response:
+        """`POST /project/{id}/drafts`, as alfred queues a run: refused without
+        words, for a recipe alfred lacks, while a run is under way, and while
+        `broker` is false, with the job recorded failed."""
+        if not project.get("captions"):
+            return self.refuse("no_words")
+        asked = body.get("recipes") or []
+        for item in asked:
+            if item.get("recipe") not in RECIPE_NAMES:
+                return self.refuse("unknown_recipe", unknown_recipe(str(item.get("recipe"))))
+        job = project.get("drafts_job")
+        if job and job["state"] in ("queued", "running"):
+            return self.refuse("drafts_running")
+        self.drafts_asked.append(body)
+        project["drafts_job"] = {"state": "queued", "error": None,
+                                 "recipes": [item["recipe"] for item in asked],
+                                 "made": None, "notes": [], "updated_at": _now()}
+        project["_asked"] = asked
+        if not self.broker:
+            project["drafts_job"].update(state="failed", error=NOT_QUEUED_ERROR)
+            return self.refuse("drafts_not_queued")
+        return httpx.Response(202, json={"job": project["drafts_job"]})
+
+    def drafts_of(self, project: dict[str, Any]) -> httpx.Response:
+        """`GET /project/{id}/drafts`, which moves the job one step first."""
+        self.tick_drafts(project)
+        drafts = [self.draft_view(d) for d in self.projects.values()
+                  if (d.get("source") or {}).get("project") == project["_id"]]
+        return httpx.Response(200, json={"job": project.get("drafts_job"), "drafts": drafts})
+
+    @staticmethod
+    def draft_view(draft: dict[str, Any]) -> dict[str, Any]:
+        return {"id": draft["_id"], "name": draft["name"], "description": draft["description"],
+                "duration": draft["edl"]["duration"], "source": draft["source"]}
+
+    def tick_drafts(self, project: dict[str, Any]) -> None:
+        """One step of the project's run of recipes, when a worker runs: queued,
+        running, then done with the drafts the recipes' arithmetic leaves."""
+        job = project.get("drafts_job")
+        if not job or self.workers < 1 or job["state"] not in ("queued", "running"):
+            return
+        job["updated_at"] = _now()
+        if job["state"] == "queued":
+            job["state"] = "running"
+            return
+        made = 0
+        for item in project.get("_asked") or []:
+            made += self.make_drafts(project, item["recipe"], item.get("values") or {})
+        job.update(state="done", made=made)
+
+    def make_drafts(self, source: dict[str, Any], recipe: str, values: dict[str, Any]) -> int:
+        """The drafts one recipe leaves of `source`: `excerpts` cuts the
+        transcript as the flow's proposal cut it, `chapters` at long pauses;
+        each a project of the source's with its captions, timeline and source,
+        and a cue on the source under `alfred-drafts`."""
+        from tests import alfred_cuts as cuts
+
+        captions = source.get("captions") or []
+        knob = lambda name, default: float(values.get(name, default))  # noqa: E731
+        if recipe == "excerpts":
+            spans = cuts.spans_of(captions, pause=knob("pause", 1.0),
+                                  chapter_pause=CHAPTER_PAUSE,
+                                  shortest=knob("shortest", 10.0), longest=knob("longest", 90.0))
+        else:
+            spans = [(part[0]["start"], part[-1]["end"], n) for n, part in enumerate(
+                cuts.stretches(cuts.spoken(captions), knob("pause", 4.0)), start=1)]
+        label = next(r["label"] for r in RECIPES if r["name"] == recipe)
+        cues = [c for c in source.get("cues") or [] if c.get("source") != "alfred-drafts"]
+        for number, (start, end, chapter) in enumerate(spans, start=1):
+            self.drafts_made += 1
+            made = draft_id(self.drafts_made)
+            edl = cuts.cut_edl(source["edl"], start, end)
+            where = f"{_timecode(start)}-{_timecode(end)} of the source"
+            description = f"{where}; chapter {chapter}" if recipe == "excerpts" else where
+            style = source.get("caption_style")
+            self.projects[made] = {
+                "_id": made,
+                "name": f"{source['name']} – {label} {number}",
+                "description": description,
+                "logic": {},
+                "edl": edl,
+                "render_settings": source.get("render_settings"),
+                "captions": cuts.cut_captions(captions, start, end),
+                "caption_style": None if style is None else {**style, "enabled": False},
+                "captions_job": None,
+                "cues": None,
+                "drafts_job": None,
+                "source": {"project": source["_id"], "recipe": recipe,
+                           "values": dict(values), "spans": [[start, end]], "scores": {},
+                           "made_at": _now()},
+            }
+            self.heard[made] = []
+            self.failure[made] = None
+            cues.append({"start": start, "end": end, "label": f"{label} {number}",
+                         "kind": "draft", "source": "alfred-drafts", "ref": made,
+                         "note": description})
+        source["cues"] = sorted(cues, key=lambda c: (c["start"], c.get("end") or c["start"]))
+        return len(spans)
+
+    def drop(self, project: dict[str, Any], body: dict[str, Any]) -> httpx.Response:
+        """`DELETE /project/{id}/drafts`: the drafts named dropped with their
+        cues, or refused whole when one is not a draft of this source."""
+        asked = [str(d) for d in body.get("drafts") or []]
+        mine = {d["_id"] for d in self.projects.values()
+                if (d.get("source") or {}).get("project") == project["_id"]}
+        missing = [d for d in asked if d not in mine]
+        if missing:
+            return self.refuse("not_a_draft", not_a_draft(missing))
+        for draft in asked:
+            del self.projects[draft]
+        project["cues"] = [c for c in project.get("cues") or [] if c.get("ref") not in asked]
+        return httpx.Response(200, json={"dropped": asked})
+
+    # --- renders -----------------------------------------------------------------
 
     def queue(self, body: dict[str, Any]) -> httpx.Response:
         self.queued.append(body)

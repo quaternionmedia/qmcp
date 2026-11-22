@@ -66,6 +66,10 @@ tool against it, from the qmcp checkout beside alfred's or the one
 | `alfred_captions_transcribe` | `project_id` | `{project_id, job}` | `POST /project/{id}/captions/transcribe` |
 | `alfred_captions_set` | `project_id`; `captions`, `style`, or both | `{project_id, captions, style, job}` | `PUT /project/{id}/captions`, and `GET` for what is left out |
 | `alfred_cues_set` | `project_id`, `cues`; `source` (optional) | `{project_id, cues}` | `PUT /project/{id}/cues` |
+| `alfred_recipes` | none | `[{id, name, label, description, builtin, knobs: [{name, text, default}], steps: [op]}]` | `GET /recipes` |
+| `alfred_drafts` | `project_id`, `recipes`: `[{recipe, values}]` | `{project_id, job}` | `POST /project/{id}/drafts` |
+| `alfred_drafts_status` | `project_id` | `{project_id, job, drafts: [{id, name, description, duration, source}]}` | `GET /project/{id}/drafts` |
+| `alfred_drafts_drop` | `project_id`, `drafts` | `{project_id, dropped}` | `DELETE /project/{id}/drafts` |
 | `alfred_health` | none | alfred's report as alfred answers it, `{api, db, renderer: {ok, workers}, queue: {pending}, audio_engine: {configured, ok, detail}}` | `GET /health` |
 
 **`alfred_projects`**: `clips` counts the clips on each project's timeline, 0
@@ -209,6 +213,28 @@ tool raises as an error.
 
 Transcribing needs an audio engine configured and answering, and a render
 worker to mix the timeline.
+
+**`alfred_recipes`** lists what alfred's Sculpt stage runs over a long
+project: the built-in recipes every account has, then the account's own, each
+with its knobs and the operations its steps run (alfred's `docs/drafts.md` is
+their reference). **`alfred_drafts`** runs recipes over a project, each named
+by its `id` with `values` for its knobs, every value sent as text since a knob
+is typed; alfred's worker cuts the project into drafts, each a project of its
+own carrying `source` -- the project, the recipe, the values, the spans of the
+source it took and its scores -- with its captions and words moved into it,
+named by the topic alfred's language engine had live over it where one was
+and by the recipe otherwise, and marks the source's timeline with a cue per
+draft under the source `alfred-drafts`. The tool returns the job as queued;
+**`alfred_drafts_status`** follows it, `queued`, `running`, then `done` with
+how many were made and the run's notes, or `failed` with why, and lists the
+drafts the project has, from every run. alfred refuses a run while the
+project has no transcript (`no_words`), while one is under way
+(`drafts_running`), for a recipe it lacks (`unknown_recipe`), and when its
+broker will not take it (`drafts_not_queued`), each the tool's error with
+alfred's code. **`alfred_drafts_drop`** deletes drafts by id with their cues on
+the source, all or none: a project named that is not one of the source's
+drafts is refused (`not_a_draft`). A draft is a project, so `alfred_captions`
+reads its words and `alfred_render_enqueue` with its id renders it.
 
 ## Errors
 
@@ -378,11 +404,11 @@ Both answers are waited for as `alfred-render` waits for its one.
 ## The excerpt flow
 
 `examples/flows/alfred_excerpts.py` cuts a long project into excerpts a person
-chooses. The transcript's own timing proposes chapters and spans; a person is
-asked about each span; each approved span is rendered as an excerpt of its own,
-cut from the project's saved timeline with its captions burned in; each
-rendered excerpt is put to a person with its link; and an approved excerpt is
-delivered, when the run is asked to.
+chooses. alfred's `excerpts` recipe, run by its worker, proposes the drafts; a
+person is asked about each draft; a rejected draft is dropped, and each
+approved one is rendered as an excerpt of its own, its own timeline with its
+captions burned in; each rendered excerpt is put to a person with its link;
+and an approved excerpt is delivered, when the run is asked to.
 
 ```bash
 uv run qmcp serve                    # with the QMCP_ALFRED_* settings
@@ -401,10 +427,10 @@ correlation id `alfred-excerpts-<run id>`.
 | Step | What it does |
 |---|---|
 | `start` | checks the qmcp server answers |
-| `read` | `alfred_project` for the saved timeline, and `alfred_captions` for the transcript: captions alfred holds are used as they are, and a project with none is transcribed as `alfred-caption-render` transcribes it, unless `--transcribe False` |
-| `propose` | chapters and spans from the transcript's timing (below); with `--label-with local`, the model `qmcp localmodel` stands up titles each chapter and sorts each span into one of `--categories`; then `alfred_cues_set` draws them on the project's timeline (below) |
-| `review` | one approval per span, in order, placing it in the recording and quoting its words, that expires after `--review-timeout`; approve renders it, reject leaves it out |
-| `render` | `alfred_render_enqueue` for each approved span, with a timeline cut from the project's saved one and, unless `--captions False`, the captions alfred holds when the excerpt is queued that fall in it, in the project's caption style switched on, so a correction saved in alfred during the review is in the excerpt; `--width`, `--height` and `--quality` when given |
+| `read` | `alfred_project` for the saved timeline, and `alfred_captions` for the transcript: captions alfred holds are used as they are, and a project with none is transcribed as `alfred-caption-render` transcribes it, unless `--transcribe False`; alfred cuts by the words a transcription leaves |
+| `propose` | `alfred_drafts` with alfred's `excerpts` recipe, its knobs `--pause`, `--shortest` and `--longest`, followed with `alfred_drafts_status` every `--poll-interval` seconds until done, within `--drafts-timeout`; the drafts the run added, in timeline order, each with its captions from `alfred_captions` (below); with `--label-with local`, the model `qmcp localmodel` stands up sorts each draft into one of `--categories`; then `alfred_cues_set` draws them on the project's timeline (below) |
+| `review` | one approval per draft, in order, placing it in the recording, naming it as alfred did and quoting its words, that expires after `--review-timeout`; approve renders it, reject drops it, and the drafts rejected are dropped together with `alfred_drafts_drop` once every answer is in |
+| `render` | `alfred_render_enqueue` of each approved draft's own timeline, by its id, and, unless `--captions False`, with the draft's captions burned in as alfred holds them when the excerpt is queued, so a correction saved on the draft in alfred's editor during the review is in the excerpt; `--width`, `--height` and `--quality` when given |
 | `follow` | `alfred_render_status` for each excerpt until it settles, as `alfred-render` follows one |
 | `ask_person` | for each rendered excerpt: an approval with its link that expires after `--approval-timeout`, then the answer |
 | `delivery` | for each approved excerpt, only when `--deliver True`: `alfred_render_deliver`, to `--destination` or alfred's choice |
@@ -412,9 +438,10 @@ correlation id `alfred-excerpts-<run id>`.
 
 **The cues.** From `propose` on, the proposal is on the project's timeline as
 cues of the source `alfred-excerpts`, which a run replaces and anything else's
-cues survive: one per chapter, titled when a labeller titled it, and one per
-span, `Excerpt n` with its category, carrying the opening of what is said in
-it. Each span's `state` follows the run -- `proposed`; `waiting` while its
+cues survive, alfred's own `alfred-drafts` cues among them: one per draft,
+`Excerpt n` with its category, over the stretch of the source the draft took,
+carrying the opening of what is said in it. Each draft's `state` follows the
+run -- `proposed`; `waiting` while its
 review is on the queue, with the request's id as its `ref`; `approved`,
 `rejected` or `unanswered`; `queued` with the render's id; `rendered` or
 `failed`; `rejected` again when the render is; `delivered` -- and alfred's
@@ -422,39 +449,28 @@ editor, which reads the cues again every few seconds while any waits, shows
 the run as it goes in its Cues lane. An alfred without the cues route does
 not stop the run: the mark is printed as not made and the run goes on.
 
-**What a span is.** The proposal comes from the transcript and nothing else:
-when the words were said, and whether a caption ends a sentence. A pause of
-`--chapter-pause` seconds or more (4 unless given) ends a chapter, and within
-one a pause of `--pause` seconds or more (1) ends a stretch. A stretch that
-runs between `--shortest` (10) and `--longest` (90) seconds is a span; one
-that runs longer is cut at the last sentence end that fits, or at the last
-caption that fits when none ends a sentence; one that runs shorter is joined
-to the span before it, else after it, when the join still fits, and is
-otherwise left out and counted. Nothing hears the sound, so a song the engine
-wrote no words for is a pause, and where it falls is a chapter's edge; a
-person chooses each span, and the editor is where a span is refined.
-
-**The excerpt's timeline** is the part of the project's saved timeline between
-the span's start and end, as a timeline of its own that begins at 0: each
-clip that plays in it is kept with every field it had and re-timed as otto
-reads a clip, its in-point and out-point set to the part of its source the
-span holds. An edge the span cut gets no fade, as alfred's own cuts have none;
-an edge it did not cut keeps the clip's. An image keeps a duration alone. The
-captions that fall in the span go with it, moved to the excerpt's own seconds and
-trimmed where the span cuts one.
+**What a draft is.** The proposal is alfred's: its `excerpts` recipe cuts the
+transcript at pauses of `--pause` seconds or more (1 unless given) and at the
+ends of sentences, into stretches between `--shortest` (10) and `--longest`
+(90) seconds, and its worker leaves each as a project carrying its source,
+with the captions and the words that fall in it moved into it and its
+timeline cut from the source's; alfred's `docs/drafts.md` says how. Nothing in
+qmcp reads a pause or cuts a timeline; a person chooses each draft, and
+alfred's editor is where a draft is refined. A run that alfred's worker fails,
+or does not finish within `--drafts-timeout`, ends the run saying why.
 
 **The labeller** is a function from a prompt to an answer, one short answer
 per prompt. `--label-with local` builds it over the chat route at
 `--llm-base-url` for `--llm-model`, at a temperature of 0, a few tokens at
 most, within `--llm-timeout` seconds each; a prompt the model does not answer
-in time leaves that title or label empty and the rest of the proposal
-readable. Without categories, chapters are titled and no span is labelled.
-`--label-with none`, the default, asks no model.
+in time leaves that label empty and the rest of the proposal readable. A
+draft's title is alfred's, from its name. Without categories, no draft is
+labelled. `--label-with none`, the default, asks no model.
 
-**What the person reads.** Each span's request is
+**What the person reads.** Each draft's request is
 `alfred-excerpt-<project id>-<excerpt number>-<run id>`: the excerpt's number and
-how many there are, its chapter and the chapter's title when it has one, its
-times and length, its category when it has one, and its captions, one
+how many there are, its times and length, its category when it has one, the
+name alfred gave the draft, and its captions in the recording's seconds, one
 `m:ss.s-m:ss.s  text` line each. Each rendered excerpt's request is
 `alfred-excerpt-render-<render id>-<run id>`: `alfred-render`'s approval, with
 the link and when it stops working, placing the excerpt in the recording and
@@ -462,13 +478,14 @@ saying what approving does. Both carry a `spoken` form in their context, the
 same question in a breath, which a voice reader speaks in place of the
 prompt (`qmcp.integrations.voice`). The answers are waited for as
 `alfred-render` waits for its one. In alfred's Deliver stage an excerpt is the
-render named `<project> - excerpt <n>`, described by its times in the recording,
-its chapter and its label.
+render named as alfred named the draft, described by its times in the
+recording and its label.
 
-**The last line** counts each stage: how many excerpts in how many chapters were
-offered, how many a person approved and how many went unanswered, how many
-rendered and which did not, how many were approved as excerpts, and, when the run
-was asked to deliver, how many were delivered and which alfred refused.
+**The last line** counts each stage: how many excerpts were offered, how many
+a person approved, how many went unanswered and how many were dropped, how
+many rendered and which did not, how many were approved as excerpts, and, when
+the run was asked to deliver, how many were delivered and which alfred
+refused.
 
 ## What is checked
 
@@ -480,8 +497,10 @@ one state per look. One run of `alfred-render`'s steps goes through a qmcp
 server on an ephemeral port and its queue. The caption flow's file and the
 excerpt flow's are run step by step there, over a stand-in for Metaflow's
 classes and decorators, through each way a run can end; the excerpt flow's
-proposal, cut timeline and labeller are tested on their own, with no alfred at
-all. Each guard names the mutation that turns it red.
+proposal, requests and labeller are tested on their own over a stand-in for
+the tools, with no alfred at all; the stand-in alfred cuts drafts with an
+arithmetic of its own (`tests/alfred_cuts.py`), which claims nothing of
+alfred's. Each guard names the mutation that turns it red.
 
 Not in the suite: a running alfred, and Metaflow where it cannot be imported
 (`import fcntl`). `tests/test_examples_smoke.py` imports the three flows where it
