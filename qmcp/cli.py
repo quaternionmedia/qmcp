@@ -528,12 +528,10 @@ def tools() -> None:
 
 @tools.command("list")
 def list_tools() -> None:
-    """List all registered tools."""
-    # Import to trigger tool registration
-    from qmcp.tools import builtin as _  # noqa: F401
-    from qmcp.tools import tool_registry
+    """List every tool the server publishes."""
+    from qmcp.tools import published_registry
 
-    tools = tool_registry.list_tools()
+    tools = published_registry().list_tools()
 
     if not tools:
         click.echo("No tools registered.")

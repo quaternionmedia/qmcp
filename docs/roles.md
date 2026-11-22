@@ -87,5 +87,3 @@ qmcp up can be surprised:
   not only in the client.
 - The cookbook command group holds both the Docker flow recipes and the
   offline checks of the voice and instruction paths.
-- `qmcp tools list` imports only the built-in tools; the server also registers
-  the `alfred_*` tools, which `GET /v1/tools` lists.
