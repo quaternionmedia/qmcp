@@ -17,7 +17,7 @@ and the flows' steps against a stand-in alfred.
 
 | Setting | Meaning |
 |---|---|
-| `QMCP_ALFRED_URL` | Where alfred's API answers, such as `http://localhost:8000`. A path is kept: `https://host/alfred` sends `/project` to `https://host/alfred/project`. Unset, every tool says alfred is not configured |
+| `QMCP_ALFRED_URL` | Where alfred's API answers, such as `http://127.0.0.1:1732`. A path is kept: `https://host/alfred` sends `/project` to `https://host/alfred/project`. Unset, every tool says alfred is not configured |
 | `QMCP_ALFRED_EMAIL`, `QMCP_ALFRED_PASSWORD` | An alfred account qmcp logs in as. Both or neither |
 | `QMCP_ALFRED_TOKEN` | A token alfred issued, sent before any login |
 | `QMCP_ALFRED_TIMEOUT` | Seconds alfred has to answer one request; the default is in `qmcp/config.py`. A connection must open within `CONNECT_TIMEOUT` (`qmcp.tools.alfred`) |
@@ -29,10 +29,11 @@ ignores `.env`. The password and token are kept as secrets, out of every
 `repr`.
 
 **A local alfred.** In alfred's checkout, `./al family up` starts alfred with
-joe as its audio engine and prints the `QMCP_ALFRED_URL` to use. `./al family
-smoke` then runs qmcp's `alfred_health` tool against it, from the qmcp checkout
-beside alfred's or the one `ALFRED_FAMILY_QMCP` names. alfred's
-`docs/family.md` has the rest.
+joe as its audio engine and prints the `QMCP_ALFRED_URL` to use,
+`http://127.0.0.1:1732`: 1732 is alfred's port in qm's allocation, root three,
+as qmcp's 3141 is pi. `./al family smoke` then runs qmcp's `alfred_health`
+tool against it, from the qmcp checkout beside alfred's or the one
+`ALFRED_FAMILY_QMCP` names. alfred's `docs/family.md` has the rest.
 
 **How qmcp signs in.**
 

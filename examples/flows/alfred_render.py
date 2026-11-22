@@ -8,7 +8,7 @@ are `qmcp.cookbook.alfred_render`.
 
 Usage:
     # The server, with alfred configured
-    QMCP_ALFRED_URL=http://localhost:8000 uv run qmcp serve
+    QMCP_ALFRED_URL=http://127.0.0.1:1732 uv run qmcp serve
 
     # In another terminal, the flow
     uv run python examples/flows/alfred_render.py run --project-id <id>
