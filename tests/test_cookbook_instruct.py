@@ -316,7 +316,8 @@ def test_continuity_fails_when_the_second_answer_is_the_first_said_again():
     same = "The file that describes what qmcp is is README.md."
     clone = Path(check.__file__).resolve().parents[2]
 
-    ok = check.run_continuity(echo=lines.append, runtime=_composing(same, same), clone=clone)
+    ok = check.run_continuity(echo=lines.append, runtime=_composing(same, same), clone=clone,
+                              project="qmcp")
 
     assert ok is False
     assert any(f"the second answer said the first again: 'Done in qmcp. {same}'" in line
@@ -330,7 +331,8 @@ def test_continuity_passes_a_runtime_whose_second_answer_is_its_own():
     clone = Path(check.__file__).resolve().parents[2]
     runtime = _composing("README.md says what qmcp is.", "It says qmcp exposes tools.")
 
-    assert check.run_continuity(echo=lines.append, runtime=runtime, clone=clone) is True
+    assert check.run_continuity(echo=lines.append, runtime=runtime, clone=clone,
+                                project="qmcp") is True
 
 
 def test_continuity_refuses_a_clone_that_is_no_rostered_project(tmp_path):
@@ -562,7 +564,8 @@ def test_continuity_passes_two_answers_that_open_with_the_same_sentence():
     runtime = _composing(f"{SHARED} README.md says so, in its opening lines.",
                          f"{SHARED} That is what it is for.")
 
-    assert check.run_continuity(echo=lines.append, runtime=runtime, clone=clone) is True, lines
+    assert check.run_continuity(echo=lines.append, runtime=runtime, clone=clone,
+                                project="qmcp") is True, lines
 
 
 def test_the_session_passes_two_answers_that_open_with_the_same_sentence():
