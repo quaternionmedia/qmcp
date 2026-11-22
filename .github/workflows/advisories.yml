@@ -1,0 +1,51 @@
+name: Advisories
+
+# Every version uv.lock pins, read against the public advisory database
+# (pip-audit, the PyPI advisory service). A locked version inside an advisory's
+# range fails the pull request, whether or not the pull request touched a
+# dependency: nothing merges over a known advisory. Dependabot's grouped
+# security update is the usual way back to green.
+#
+# The default token cannot read this repository's Dependabot alerts, so this
+# reads the database those alerts come from rather than the alerts themselves.
+# The two can differ for a day or so around a new advisory.
+#
+# The audit covers the packages the lock resolves for every extra. The local
+# package and vendor/vox, installed from the checkout, are not audited.
+#
+# Seen to fail: run against the uv.lock of qmcp commit 8aece3e, it exits 1
+# with 18 findings across authlib, dnspython, joserfc, opentelemetry-api and
+# pyasn1.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: No locked version is in an advisory's range
+        run: |
+          uv export --frozen --all-extras --no-hashes --no-emit-project \
+            -o "$RUNNER_TEMP/locked-raw.txt"
+          grep -v -E '^\s*(-e|\.|#)' "$RUNNER_TEMP/locked-raw.txt" \
+            | grep -v '^$' > "$RUNNER_TEMP/locked.txt"
+          echo "auditing $(grep -c '==' "$RUNNER_TEMP/locked.txt") locked version(s)"
+          uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/locked.txt" \
+            --no-deps --disable-pip --progress-spinner off
