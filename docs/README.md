@@ -9,7 +9,7 @@ one of them.
 - [`roles.md`](roles.md): the roles, what each owns, and what qmcp leaves to the programs around it
 - [`setup/README.md`](setup/README.md): the shared install, and which server and which queue a command reaches
 - [`http-api.md`](http-api.md): every route, by role, and which are served off loopback
-- [`architecture.md`](architecture.md): the client, server and storage planes
+- [`architecture.md`](architecture.md): the seam, its clients and engines, and the rules every part holds
 - [`deployment.md`](deployment.md): running qmcp as a service, and `qmcp db`
 - [`ROADMAP.md`](ROADMAP.md): the phases, built and planned
 
