@@ -4948,6 +4948,7 @@ dev = [
 ]
 flows = [
     { name = "metaflow" },
+    { name = "openai" },
     { name = "pydantic-ai" },
 ]
 mcp = [
@@ -4979,12 +4980,13 @@ requires-dist = [
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0.0,<2" },
     { name = "metaflow", marker = "extra == 'flows'", specifier = ">=2.12.0" },
     { name = "openai", marker = "extra == 'all-providers'", specifier = ">=1.50.0" },
+    { name = "openai", marker = "extra == 'flows'", specifier = ">=1.50.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.50.0" },
     { name = "pydantic-ai", marker = "extra == 'all-providers'", specifier = ">=0.1.0" },
     { name = "pydantic-ai", marker = "extra == 'anthropic'", specifier = ">=0.1.0" },
+    { name = "pydantic-ai", marker = "extra == 'flows'", specifier = ">=0.1.0" },
     { name = "pydantic-ai", marker = "extra == 'openai'", specifier = ">=0.1.0" },
     { name = "pydantic-ai", marker = "extra == 'pydantic-ai'", specifier = ">=0.1.0" },
-    { name = "pydantic-ai", extras = ["openai"], marker = "extra == 'flows'" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
