@@ -18,3 +18,9 @@ updates:
       python-security:
         applies-to: security-updates
         patterns: ["*"]
+    # pyproject.toml caps mcp below 2: qmcp_mcp.py imports FastMCP, which 2.x
+    # removed. An update offering 2.x rewrites that cap and the stdio server
+    # stops starting. Lift this when qmcp_mcp.py moves to 2.x.
+    ignore:
+      - dependency-name: mcp
+        versions: [">=2"]
