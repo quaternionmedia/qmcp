@@ -458,8 +458,7 @@ def create_app() -> FastAPI:
             if status_filter:
                 query = query.where(HumanRequest.status == status_filter)
             if status_filter == HumanRequestStatus.PENDING:
-                # SQLite stores naive datetimes, treat as UTC
-                now = datetime.now(UTC).replace(tzinfo=None)
+                now = datetime.now(UTC)
                 query = query.where(
                     (HumanRequest.expires_at == None) | (HumanRequest.expires_at > now)  # noqa: E711
                 )
