@@ -17,7 +17,7 @@ This document outlines the phased implementation plan for building a production-
 - ✅ Structured logging with structlog
 - ✅ Request tracing middleware (correlation IDs)
 - ✅ Prometheus-compatible metrics endpoint
-- ✅ 4 built-in tools, and 9 `alfred_*` tools that drive alfred's projects, renders and captions
+- ✅ The built-in tools, and the `alfred_*` tools that drive alfred's projects, renders and captions; `qmcp tools list` names them
 - ✅ Agent framework schemas + mixins
 - ✅ PydanticAI integration for agent execution
 - ✅ A test suite that runs under `uv run pytest -q` and in `tests.yml`; a reader who wants the count runs it
@@ -385,7 +385,7 @@ One pull request each, in this order; each is useful before the next exists.
 ### Constraints going in
 
 - **Endpointing is tuned for short answers.** The engine ends a take a set pause after the speaker stops, and an instruction has pauses mid-thought. The pause is a parameter of vox's engine contract, sent only on the instruction's take, so the vendored vox must carry it
-- **Whether project names transcribe reliably is unmeasured.** Resolution confirms rather than trusts, so it does not have to be
+- **Project names transcribe reliably on synthesized speech, except `vox` in noise and `pi`; on a person's voice it is unmeasured.** `governance/qm/perspectives/2026-10-25-what-whisper-heard.md` measured it: `qmcp`, `joe` and `qm` were heard as said, `vox` was heard as "box" on every noisy take, and "pi" was never written as said. Resolution confirms rather than trusts, so a misheard name is asked back, not acted on
 - **Latency on a sentence-length utterance is unmeasured.** The faster-whisper comparison in `governance/qm/perspectives/2026-09-28-the-voice-loop-meets-the-field.md` bears on it, and is evidence rather than a decision
 - **A small local model is a quick reader, not a reviewer.** It reads a few files and answers; the person who said approve hears what it found and judges it. Against the service it was built on, the model did not use the service's tool field, so its tools are a protocol stated in its prompt
 - **The local model service can stall.** On this phase's live runs a generation that reused a cached prompt prefix stopped producing tokens until its call's cap cancelled it, and later calls queued behind it until the model was unloaded. Every call is capped, so a stall is a failed run that names the endpoint, not a hang
