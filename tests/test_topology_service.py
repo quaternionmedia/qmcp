@@ -174,6 +174,50 @@ def test_min_share_is_bounded(everything):
         "/v1/topology/relations/dossier?min_share=3").status_code == 422
 
 
+def _corpus(tmp_path, *names):
+    roster = tmp_path / "ci" / "workspace.yaml"
+    roster.parent.mkdir(parents=True)
+    roster.write_text("repositories:\n" + "".join(
+        f"  - name: {name}\n" for name in names), encoding="utf-8")
+    return tmp_path
+
+
+def test_a_rostered_subject_has_its_address_whatever_its_case(tmp_path, monkeypatch):
+    """Mutation: return "" from `_rostered_address` and this fails."""
+    from qmcp import identity
+
+    monkeypatch.setattr(identity, "owner", lambda: "owner")
+    corpus = _corpus(tmp_path, "alpha", "ShowRunner")
+    assert ts._rostered_address("alpha", corpus) == "owner/alpha"
+    assert ts._rostered_address("showrunner", corpus) == "owner/ShowRunner"
+
+
+def test_a_subject_the_roster_does_not_name_gets_no_address(tmp_path, monkeypatch):
+    """No owner is guessed. Mutation: return `f"owner/{subject}"` for any
+    subject and this fails."""
+    from qmcp import identity
+
+    monkeypatch.setattr(identity, "owner", lambda: "owner")
+    assert ts._rostered_address("gamma", _corpus(tmp_path, "alpha")) == ""
+    # And with no roster to read there is nothing to say.
+    assert ts._rostered_address("alpha", tmp_path / "absent") == ""
+
+
+def test_the_relations_route_gives_a_rostered_subject_its_address(everything, monkeypatch):
+    """The route, with the archive stood in for: a subject with no relations
+    is still drawn at its address.
+
+    Mutation: drop `address=` from the route's call and this fails.
+    """
+    monkeypatch.setattr(ts, "_survey", lambda root, subject, min_share=None: ([], 3))
+    monkeypatch.setattr(ts, "_rostered_address",
+                        lambda subject, corpus=None: f"owner/{subject}")
+    answer = everything.get("/v1/topology/relations/alpha")
+    assert answer.status_code == 200
+    boxes = answer.json()["payload"]["boxes"]
+    assert [(b["id"], b["note"]) for b in boxes] == [("subject", "owner/alpha")]
+
+
 def test_a_survey_counts_threads_and_relations_separately(tmp_path):
     """Zero relations and zero threads are different answers, and a single
     number cannot carry both."""

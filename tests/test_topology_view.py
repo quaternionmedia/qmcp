@@ -259,6 +259,27 @@ def test_several_relations_to_one_address_share_one_box():
     assert {a.to for a in view.arrows} == {workers[0].id}
 
 
+def test_a_subject_with_no_relations_carries_the_address_it_is_given():
+    """A subject the archive says nothing about has no relation to read an
+    owner from, and still carries the address the caller knows.
+
+    Mutation: drop `address or` in `from_relations` and this fails.
+    """
+    view = tv.from_relations("alpha", [], address="owner/alpha")
+    assert [(b.id, b.note) for b in view.boxes] == [("subject", "owner/alpha")]
+    # Without one, and with no relation, there is no owner to read.
+    assert tv.from_relations("alpha", []).boxes[0].note == ""
+
+
+def test_a_given_address_wins_over_one_read_from_the_relations():
+    """Mutation: write `_subject_address(...) or address` and this fails."""
+    view = tv.from_relations("alpha", [
+        {"target": "other/beta/delta/w", "relation": "crosses", "weight": 0.5,
+         "evidence": [{"basis": "mentions"}]},
+    ], address="owner/alpha")
+    assert view.boxes[0].note == "owner/alpha"
+
+
 def test_two_addresses_sharing_a_tail_stay_two_boxes():
     """The label is abbreviated; the identity is not. Two different deltas
     called `the-work` under two projects are two things.
