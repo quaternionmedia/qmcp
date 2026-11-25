@@ -75,6 +75,7 @@ holds `Scripts/qmcp.exe`, so stop it before a sync that reinstalls qmcp.
 | the local model | `qmcp/localmodel.py` |
 | gates, the dashboard, deltas | `qmcp/selfcheck.py`, `qmcp/dashboard.py`, `qmcp/cookbook/delta.py`, `qmcp/addresses.py` |
 | the thread archive | `qmcp/threads/` |
+| the roadmap review | `qmcp/tour.py` |
 | topologies and the orchestration plane | `qmcp/topology_*.py`, `qmcp/orchestration*.py`, `qmcp/governed.py` |
 | cookbook flows | `qmcp/cookbook/`, `examples/flows/`, `docker/` |
 | agent schemas and PydanticAI | `qmcp/agentframework/`, `qmcp/integrations/pydantic_ai/` |
