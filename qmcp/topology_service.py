@@ -187,11 +187,32 @@ def register_readings(app: Any, root: Path) -> None:
 
         view = tv.from_relations(
             subject, relations,
-            caption=f"what the archive says about {subject}")
+            caption=f"what the archive says about {subject}",
+            address=_rostered_address(subject))
         return {"schema": 1, "payload": tv.as_payload(view),
                 "encoding": tv.encoding_payload(),
                 "source": "thread archive", "surveyed": surveyed,
                 "relations": len(relations)}
+
+
+def _rostered_address(subject: str, corpus: Path | None = None) -> str:
+    """`<owner>/<name>` for a subject the corpus's roster names, else "".
+
+    The roster is the one the survey reads, so a subject the archive says
+    nothing about still carries the address every other system gives it. The
+    name is matched whatever its case and returned as the roster spells it. A
+    subject the roster does not name gets no address: no owner is guessed.
+    """
+    from qmcp.threads import consolidate
+
+    corpus = corpus or Path("governance") / "qm"
+    if not (corpus / "ci" / "workspace.yaml").is_file():
+        return ""
+    names = consolidate.roster(corpus)
+    if subject in names:
+        return names[subject]
+    folded = {name.casefold(): address for name, address in names.items()}
+    return folded.get(subject.casefold(), "")
 
 
 def _survey(root: Path, subject: str,

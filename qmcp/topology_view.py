@@ -298,7 +298,7 @@ def _subject_address(subject: str, relations: list[dict[str, Any]]) -> str:
 
 
 def from_relations(subject: str, relations: list[dict[str, Any]],
-                   caption: str = "") -> View:
+                   caption: str = "", address: str = "") -> View:
     """A view of one thing and what it is related to, with the edges weighted.
 
     Each relation carries a `weight` and the `evidence` it was read from, both
@@ -311,10 +311,14 @@ def from_relations(subject: str, relations: list[dict[str, Any]],
     same address are evidence about one thing
     (`records/DRAFT-a-route-is-an-address.md`). The arrows are not merged, so
     each relation keeps its own weight and basis.
+
+    `address` is the subject's own address when the caller knows it, as the
+    relations route does for a repository the roster names. Without one the
+    owner is read from the relations, and a subject with neither carries no
+    address.
     """
-    # The subject carries its own address, like every relation target. Its
-    # owner is read from the relations, which are resolved addresses.
-    subject_address = _subject_address(subject, relations)
+    # The subject carries its own address, like every relation target.
+    subject_address = address or _subject_address(subject, relations)
     boxes = [Box("subject", subject, INPUT, note=subject_address)]
     arrows = []
     box_of: dict[str, str] = {}
