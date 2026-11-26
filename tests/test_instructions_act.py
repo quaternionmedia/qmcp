@@ -659,3 +659,38 @@ def test_the_consent_is_said_in_plain_words_and_written_with_its_path():
     assert "deep" not in spoken
     assert act_module.consent_prompt(row, clone, "scripted", Budget(authorised=2), carried=3,
                                      spoken=True) == "Run in qmcp: Deploy qmcp. A script, two runs, with what came before."
+
+
+# --- a host over the agent host protocol -------------------------------------------------
+
+
+def test_an_ahp_host_runs_after_the_consent_and_its_denials_are_recorded(inbox, clone):
+    """The adapter in `qmcp.integrations.agents.adapters.ahp`, driven as any
+    runtime is: nothing reaches the host before the approve, the turn runs in
+    the clone, and the row keeps which tool calls were denied. Mutation: have
+    the adapter approve the tool call -- red, the host's tool runs."""
+    from qmcp.integrations.agents.adapters import ahp
+    from tests.test_agents_ahp import COMPLETE, READY_TOOL, START_TOOL, URL, _Host, _text
+
+    host = _Host(turn=[START_TOOL, READY_TOOL],
+                 after_denial=[_text("p-1", "The build directory is still there."), COMPLETE])
+    runtime = ahp.Runtime(url=URL, connect=host.connect, clock=host.clock)
+    instruction_id = inbox.record()
+
+    held, _ = _act(inbox, instruction_id, _Queue({f"instruction-{instruction_id}": "hold"}),
+                   runtime=runtime, cwd=clone)
+    assert held.status == "refused" and host.sent == []
+
+    again = inbox.record("Clean the build directory.")
+    done, _ = _act(inbox, again, _Queue({f"instruction-{again}": "approve"}),
+                   runtime=runtime, cwd=clone)
+
+    assert done.status == "done" and done.outcome.text.startswith("The build directory is still")
+    assert host.requests("createSession")[0]["workingDirectories"] == [clone.resolve().as_uri()]
+    assert "Clean the build directory." in host.dispatched("chat/turnStarted")[0]["message"]["text"]
+    row = inbox.read(again)
+    assert (row.runtime, row.exit_code) == ("ahp", 0)
+    assert [a["approved"] for a in host.dispatched("chat/toolCallConfirmed")] == [False]
+    assert row.detail["outcome"]["denied_count"] == 1
+    assert row.detail["outcome"]["denied"][0]["tool"] == "run_in_terminal"
+    assert row.detail["outcome"]["url"] == URL
