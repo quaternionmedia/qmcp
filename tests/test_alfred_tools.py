@@ -493,6 +493,68 @@ def test_an_edl_without_a_clip_list_is_refused_here(tools):
         alfred.alfred_render_enqueue({"edl": {"clips": "title"}})
 
 
+CUT_CAPTIONS = [{"start": 0.0, "end": 2.0, "text": "A clip's own captions."}]
+
+
+def test_captions_given_with_an_edl_are_burned_in_with_their_style_switched_on(tools):
+    """Mutation: refuse a list, as a project's captions are refused with an
+    edl -- red; or send the style as given -- red, alfred draws none."""
+    tools.route("POST", "/render", "r4")
+    edl = {"clips": [{"type": "video", "name": "videos/talk.mp4", "inpoint": 3, "outpoint": 5}],
+           "duration": 2.0}
+    queued = alfred.alfred_render_enqueue({
+        "edl": edl, "captions": CUT_CAPTIONS, "caption_style": {"fontsize": 40.0}})
+    assert render_body(tools) == {"edl": edl, "duration": 2.0, "captions": CUT_CAPTIONS,
+                                  "caption_style": {"fontsize": 40.0, "enabled": True}}
+    assert queued["captions"] == 1
+    # No style given: switched on, and nothing else said.
+    alfred.alfred_render_enqueue({"edl": edl, "captions": CUT_CAPTIONS})
+    assert json.loads(tools.calls("POST", "/render")[1].content)["caption_style"] == {
+        "enabled": True}
+
+
+def test_an_empty_list_of_captions_with_an_edl_sends_none(tools):
+    tools.route("POST", "/render", "r5")
+    queued = alfred.alfred_render_enqueue({"edl": {"clips": [{"name": "x"}]}, "captions": []})
+    assert "captions" not in render_body(tools) and queued["captions"] == 0
+
+
+@pytest.mark.parametrize("params,why", [
+    ({"project_id": "p1", "captions": CUT_CAPTIONS}, "a saved project's captions are alfred's"),
+    ({"edl": {"clips": []}, "captions": "yes"}, "captions is true, false, or left out, or a list"),
+    ({"edl": {"clips": []}, "caption_style": {}}, "caption_style goes with a list"),
+    ({"edl": {"clips": []}, "captions": CUT_CAPTIONS, "caption_style": "big"},
+     "caption_style is an object"),
+])
+def test_captions_that_fit_neither_form_are_refused_before_alfred_is_asked(tools, params, why):
+    with pytest.raises(ValueError, match=why):
+        alfred.alfred_render_enqueue(params)
+    assert tools.requests == []
+
+
+def test_a_project_is_read_whole_with_its_timeline_and_settings(tools):
+    """Mutation: answer the summary alone -- red, the timeline is missing."""
+    tools.route("GET", "/project/6a78b0420eea42d905943615", {
+        "_id": "6a78b0420eea42d905943615", "name": "Timeline demo", "edl": SAVED_EDL,
+        "render_settings": {"width": 1280, "height": 720, "fps": 30.0, "quality": None},
+        "captions": [], "logic": {}})
+    assert alfred.alfred_project({"project_id": "6a78b0420eea42d905943615"}) == {
+        "id": "6a78b0420eea42d905943615", "name": "Timeline demo", "clips": 2, "duration": 5.0,
+        "edl": SAVED_EDL,
+        "render_settings": {"width": 1280, "height": 720, "fps": 30.0, "quality": None}}
+
+
+def test_a_project_needs_an_id(tools):
+    with pytest.raises(ValueError, match="project_id is required"):
+        alfred.alfred_project({})
+    assert tools.requests == []
+
+
+def test_a_project_nobody_holds_is_alfred_s_refusal(tools):
+    with pytest.raises(AlfredError, match="404"):
+        alfred.alfred_project({"project_id": "6a78b0420eea42d905943699"})
+
+
 def test_a_refused_render_carries_alfred_s_detail_and_code(tools):
     """alfred's refusal of a clip the library does not hold, as alfred answers it."""
     refused_edl = REFUSALS["edl_refused"]
@@ -594,13 +656,70 @@ def test_link_expiry_reads_exp_or_says_nothing(value, expected):
     assert alfred.link_expiry(value) == expected
 
 
+# --- alfred_cues_set ---------------------------------------------------------
+
+
+PROJECT = "6a78b0420eea42d905943615"
+EXCERPT = {"start": 1.0, "end": 2.5, "label": "Excerpt 1", "kind": "excerpt",
+           "state": "waiting"}
+
+
+def test_cues_are_sent_with_their_source_and_answered_as_alfred_stores_them(tools):
+    def stores(request):
+        body = json.loads(request.content)
+        assert body == {"cues": [EXCERPT], "source": "alfred-excerpts"}
+        return httpx.Response(200, json={"cues": [
+            {**EXCERPT, "source": "alfred-excerpts", "ref": None, "note": None}]})
+
+    tools.route("PUT", f"/project/{PROJECT}/cues", stores)
+    answer = alfred.alfred_cues_set({"project_id": PROJECT, "cues": [EXCERPT],
+                                     "source": "alfred-excerpts"})
+    assert answer["project_id"] == PROJECT
+    assert answer["cues"][0]["source"] == "alfred-excerpts"
+    assert len(tools.calls("PUT", f"/project/{PROJECT}/cues")) == 1
+
+
+def test_cues_without_a_source_replace_every_cue(tools):
+    """Mutation: send a source alfred did not get -- red."""
+    def stores(request):
+        assert "source" not in json.loads(request.content)
+        return httpx.Response(200, json={"cues": []})
+
+    tools.route("PUT", f"/project/{PROJECT}/cues", stores)
+    assert alfred.alfred_cues_set({"project_id": PROJECT, "cues": []})["cues"] == []
+
+
+def test_an_answer_without_the_cues_is_read_back(tools):
+    tools.route("PUT", f"/project/{PROJECT}/cues", lambda request: httpx.Response(200, json={}))
+    tools.route("GET", f"/project/{PROJECT}/cues", {"cues": [EXCERPT]})
+    assert alfred.alfred_cues_set({"project_id": PROJECT, "cues": [EXCERPT]})["cues"] == [EXCERPT]
+
+
+@pytest.mark.parametrize("params,why", [
+    ({"cues": [EXCERPT]}, "project_id"),
+    ({"project_id": PROJECT}, "cues must be a list"),
+    ({"project_id": PROJECT, "cues": "soon"}, "cues must be a list"),
+    ({"project_id": PROJECT, "cues": [], "source": 3}, "source must be a string"),
+])
+def test_cues_that_fit_no_form_are_refused_before_alfred_is_asked(tools, params, why):
+    with pytest.raises(ValueError, match=why):
+        alfred.alfred_cues_set(params)
+    assert tools.calls("PUT", f"/project/{PROJECT}/cues") == []
+
+
+def test_an_alfred_without_cues_is_its_refusal(tools):
+    """An alfred from before cues answers its 404, passed on as it came."""
+    with pytest.raises(AlfredError, match="Not Found"):
+        alfred.alfred_cues_set({"project_id": PROJECT, "cues": []})
+
+
 # --- through the server --------------------------------------------------------
 
 
 def test_the_server_lists_the_alfred_tools(client):
     names = {tool["name"] for tool in client.get("/v1/tools").json()["tools"]}
     assert {"alfred_projects", "alfred_templates", "alfred_render_enqueue",
-            "alfred_render_status", "alfred_health"} <= names
+            "alfred_render_status", "alfred_health", "alfred_cues_set"} <= names
 
 
 def test_an_unconfigured_alfred_is_the_invocation_s_error(client, monkeypatch):

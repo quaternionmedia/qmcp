@@ -60,14 +60,18 @@ Inside a container, `MCP_URL` and `LLM_BASE_URL` (or `--mcp-url` and
 
 The `alfred_*` tools drive a running alfred: `QMCP_ALFRED_URL` says where it
 answers, and an account or a token says who qmcp is to it. Unset, every alfred
-tool says alfred is not configured.
+tool says alfred is not configured. `alfred-render` puts a render to a person,
+`alfred-caption-render` the transcript and then the render, and
+`alfred-excerpts` the stretches of a long recording's transcript that stand
+alone, each rendered as an excerpt once a person chooses it.
 
 ```bash
 uv run qmcp cookbook run alfred-render --project-id <id>
+uv run qmcp cookbook run alfred-excerpts --project-id <id>
 ```
 
 [`../integrations/alfred.md`](../integrations/alfred.md) is the reference: the
-settings, the tools, and the two recipes.
+settings, the tools, and the three recipes.
 
 ## Reference
 

@@ -1,9 +1,10 @@
 """Tools that drive alfred, the self-hosted video editor, over its HTTP API.
 
 `alfred_projects`, `alfred_templates`, `alfred_render_enqueue`,
-`alfred_render_status`, `alfred_render_deliver`, `alfred_health`, and the
+`alfred_render_status`, `alfred_render_deliver`, `alfred_health`, the
 caption tools `alfred_captions`, `alfred_captions_transcribe` and
-`alfred_captions_set` each ask the alfred named by `QMCP_ALFRED_URL` and
+`alfred_captions_set`, and `alfred_cues_set`, which marks a project's
+timeline, each ask the alfred named by `QMCP_ALFRED_URL` and
 return what it answered, reshaped for a caller that is not alfred's own
 editor. `docs/integrations/alfred.md` is the reference: the settings, each
 tool's input and output, and the errors.
@@ -566,13 +567,40 @@ def alfred_templates(params: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 @tool_registry.register(
+    name="alfred_project",
+    description=(
+        "One alfred project as alfred holds it: its id, name, saved timeline (edl), saved "
+        "render settings, how many clips the timeline has and how long it runs. The "
+        "timeline is what alfred_render_enqueue renders for the project; a timeline cut "
+        "from it, given as edl, renders part of it."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The project's id"},
+        },
+        "required": ["project_id"],
+    },
+)
+def alfred_project(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    path = f"/project/{_path_id(project_id)}"
+    project = _expect(client().get(path), dict, "GET", path)
+    return {
+        **project_summary(project),
+        "edl": project.get("edl"),
+        "render_settings": project.get("render_settings"),
+    }
+
+
+@tool_registry.register(
     name="alfred_render_enqueue",
     description=(
         "Queue a render in alfred, of a saved project's timeline sent exactly as it is "
         "stored (project_id) or of an explicit EDL (edl); give one of the two. A project "
-        "whose caption style is enabled has its captions burned in. Returns the render's "
-        "id, the settings it was queued with, and how many captions went with it; "
-        "alfred_render_status follows it."
+        "whose caption style is enabled has its captions burned in; an EDL has the captions "
+        "given with it burned in. Returns the render's id, the settings it was queued "
+        "with, and how many captions went with it; alfred_render_status follows it."
     ),
     input_schema={
         "type": "object",
@@ -607,11 +635,19 @@ def alfred_templates(params: dict[str, Any]) -> list[dict[str, Any]]:
                 "description": "An encoding preset alfred offers: draft, standard or high",
             },
             "captions": {
-                "type": "boolean",
+                "type": ["boolean", "array"],
                 "description": (
-                    "Burn a project's captions in: true sends them with its caption style "
-                    "switched on, false sends none; unset sends them when the project's "
-                    "caption style is enabled"
+                    "With project_id, burn the project's captions in: true sends them with "
+                    "its caption style switched on, false sends none; unset sends them when "
+                    "the project's caption style is enabled. With edl, a list of captions "
+                    "to burn in, each {start, end, text} in the EDL's seconds"
+                ),
+            },
+            "caption_style": {
+                "type": "object",
+                "description": (
+                    "With edl and a list of captions, the style they are drawn in, as "
+                    "alfred_captions answers one; it is sent switched on"
                 ),
             },
         },
@@ -623,8 +659,19 @@ def alfred_render_enqueue(params: dict[str, Any]) -> dict[str, Any]:
     if (project_id is None) == (edl is None):
         raise ValueError("give exactly one of project_id, to render a saved project, or edl")
     wanted = params.get("captions")
-    if wanted is not None and not isinstance(wanted, bool):
-        raise ValueError("captions is true, false, or left out")
+    given: list[Any] | None = None
+    style = params.get("caption_style")
+    if isinstance(wanted, list):
+        if project_id is not None:
+            raise ValueError("a saved project's captions are alfred's: with project_id, "
+                             "captions is true, false, or left out")
+        if style is not None and not isinstance(style, dict):
+            raise ValueError("caption_style is an object, as alfred_captions answers one")
+        given, wanted = wanted, None
+    elif wanted is not None and not isinstance(wanted, bool):
+        raise ValueError("captions is true, false, or left out, or a list of captions with edl")
+    elif style is not None:
+        raise ValueError("caption_style goes with a list of captions and edl")
     if wanted and project_id is None:
         raise ValueError("captions come from a saved project: give project_id to burn them in")
 
@@ -647,6 +694,10 @@ def alfred_render_enqueue(params: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(edl, dict) or not isinstance(edl.get("clips"), list):
             raise ValueError('edl must be an object with a list of clips: {"clips": [...]}')
         body, saved = {}, {}
+        if given:
+            # As given, in the EDL's own seconds: alfred checks each one and
+            # turns them into clips, as it does a project's.
+            burned = list(given), {**(style or {}), "enabled": True}
 
     # The EDL goes as alfred gave it or the caller sent it: a null is a value
     # (`fadeIn: null` is no fade, where an absent `fadeIn` is the engine's).
@@ -895,6 +946,69 @@ def alfred_captions_set(params: dict[str, Any]) -> dict[str, Any]:
             and "style" in stored):
         stored = _expect(alfred.get(path), dict, "GET", path)
     return captions_view(project_id, stored)
+
+
+@tool_registry.register(
+    name="alfred_cues_set",
+    description=(
+        "Mark an alfred project's timeline: store its cues, each a moment or a stretch in "
+        "timeline seconds with a label, which the editor draws under the clips -- a chapter, a "
+        "stretch proposed as an excerpt with where it stands, a mark to come back to. With a "
+        "source, replaces the cues that source wrote and keeps every other writer's; without "
+        "one, replaces them all. Returns the cues alfred then holds, in order of start."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "project_id": {"type": "string", "description": "The alfred project's id"},
+            "cues": {
+                "type": "array",
+                "description": "Every cue of this source: start, and end for a stretch, in "
+                "timeline seconds; a label of at most 200 characters; kind and state, each a "
+                "word such as chapter, excerpt or mark and proposed, waiting, approved, "
+                "rejected, rendered or delivered; ref, the writer's own reference; and note, "
+                "what a reader may want to know",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start": {"type": "number"},
+                        "end": {"type": ["number", "null"]},
+                        "label": {"type": "string"},
+                        "kind": {"type": "string"},
+                        "state": {"type": "string"},
+                        "ref": {"type": "string"},
+                        "note": {"type": "string"},
+                    },
+                    "required": ["start", "label"],
+                },
+            },
+            "source": {
+                "type": "string",
+                "description": "Who these cues are: given, the cues replace this source's "
+                "alone and are stamped with it; left out, they replace every cue",
+            },
+        },
+        "required": ["project_id", "cues"],
+    },
+)
+def alfred_cues_set(params: dict[str, Any]) -> dict[str, Any]:
+    project_id = _required(params, "project_id")
+    cues = params.get("cues")
+    if not isinstance(cues, list):
+        raise ValueError("cues must be a list of {start, end, label, kind, state, ref, note}")
+    source = params.get("source")
+    if source is not None and not isinstance(source, str):
+        raise ValueError("source must be a string")
+
+    alfred = client()
+    path = f"/project/{_path_id(project_id)}/cues"
+    body: dict[str, Any] = {"cues": cues}
+    if source:
+        body["source"] = source
+    stored = alfred.put(path, body)
+    if not (isinstance(stored, dict) and isinstance(stored.get("cues"), list)):
+        stored = _expect(alfred.get(path), dict, "GET", path)
+    return {"project_id": str(project_id), "cues": stored["cues"]}
 
 
 @tool_registry.register(

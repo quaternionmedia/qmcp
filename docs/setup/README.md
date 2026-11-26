@@ -12,7 +12,7 @@ says what each job owns and where it stops.
 | run a repository's gates and hand the results to dossier | harness | [`harness.md`](harness.md) | a dossier checkout, for the panel |
 | speak instructions at the machine and hear what the model found | instruction loop | [`../voice-loop-demo.md`](../voice-loop-demo.md) | Ollama, joe, the projects' clones |
 | declare how agents are arranged, and save a design | topology designer | [`../agentframework/topologies.md`](../agentframework/topologies.md) | nothing, on a loopback bind |
-| run the cookbook's flows, alfred renders among them | flow host | [`flows.md`](flows.md) | Docker Desktop |
+| run the cookbook's flows, alfred's renders, captions and excerpts among them | flow host | [`flows.md`](flows.md) | Docker Desktop |
 | build agents whose tool calls are recorded here | agent library | [`../integrations/pydantic-ai.md`](../integrations/pydantic-ai.md) | a provider extra and its API key |
 
 ## Once, for every role

@@ -425,7 +425,7 @@ habit is something the record shows, not something designed in advance.
 
 ## Current Sprint
 
-Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work, Phase 10 is built (#58, #61, #62, #63), and Phase 11 follows its use. Outside the phases, qmcp drives alfred's projects, renders and captions with a person's approval (#85, `docs/integrations/alfred.md`). QMCP is an MCP server with PydanticAI integration and composable workflow building blocks; it authenticates nobody, so it serves loopback unless told otherwise:
+Phases 1 through 8 are complete and Phase 9's routes are shipped; its runtime items above are the open work, Phase 10 is built (#58, #61, #62, #63), and Phase 11 follows its use. Outside the phases, qmcp drives alfred's projects, renders and captions with a person's approval (#85, `docs/integrations/alfred.md`), and cuts a long project into excerpts a person chooses from its transcript. QMCP is an MCP server with PydanticAI integration and composable workflow building blocks; it authenticates nobody, so it serves loopback unless told otherwise:
 
 **Phase Summary:**
 | Phase | Description |

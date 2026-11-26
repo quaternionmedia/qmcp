@@ -62,10 +62,12 @@ VoiceApprovalLoop(stt=stt, tts=Pyttsx3TTS()).run_once("deploy-001")
 ### [alfred](alfred.md)
 
 Drives alfred, a self-hosted video editor, over its HTTP API. Provides:
-- `alfred_projects` and `alfred_templates`: what alfred holds
+- `alfred_projects`, `alfred_project` and `alfred_templates`: what alfred holds, a
+  project's saved timeline included
 - `alfred_render_enqueue`, `alfred_render_status` and `alfred_render_deliver`:
   a saved timeline or an explicit EDL rendered, followed to a download link,
   and sent to a destination alfred offers
+- `alfred_cues_set`: a project's timeline marked, for its editor to draw
 - `alfred_captions`, `alfred_captions_transcribe` and `alfred_captions_set`: a
   project's captions read, transcribed by alfred's audio engine, and corrected
 - `alfred_health`: whether alfred has a renderer running and an audio engine
@@ -74,11 +76,15 @@ Drives alfred, a self-hosted video editor, over its HTTP API. Provides:
 - `examples/flows/alfred_caption_render.py`: the transcript put to a person
   before it is burned in, then the render, then delivery on approval when asked
   for
+- `examples/flows/alfred_excerpts.py`: a long recording's transcript cut into
+  chapters and the stretches that stand alone, each put to a person, each
+  approved one rendered as an excerpt of its own with its captions, and put to
+  a person again with its link
 
 Configured by the `QMCP_ALFRED_*` settings; imports nothing from alfred.
 
-**Status**: Tested against a stand-in alfred, as walkthrough pages 10 and 11
-show; a running alfred is checked by hand.
+**Status**: Tested against a stand-in alfred, as walkthrough pages 10, 11 and
+12 show; a running alfred is checked by hand.
 
 ## Decision Matrix
 
