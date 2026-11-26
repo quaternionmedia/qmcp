@@ -434,7 +434,8 @@ looks for a clone named for the project ("Talking to qmcp").
 `--runtime` has no default (`QMCP_AGENT_RUNTIME` stands in for it). `local` is
 the model `qmcp localmodel` stands up on this machine, reading the clone with
 tools that cannot write and spending nothing; a coding assistant's command line
-is another runtime behind the same contract, given the same brief. A product is
+is another runtime behind the same contract, given the same brief, and `ahp` is
+a host that speaks the Agent Host Protocol, reached at `QMCP_AHP_URL`. A product is
 named only in its adapter under `qmcp.integrations.agents.adapters`, and
 `scripted` runs nothing and is for checks. `--budget` is runs, and zero -- the
 default -- declares and stops. The row's status says where the act got to: `asking`,
@@ -489,6 +490,34 @@ second timeout is a failed run.
 
 `GET /v1/instructions/voice` reports an act as it reports a conversation, with
 `kind: act`.
+
+### The AHP runtime
+
+`--runtime ahp` is a host that speaks the
+[Agent Host Protocol](https://microsoft.github.io/agent-host-protocol/), with
+qmcp as its client. `QMCP_AHP_URL` is the host's WebSocket address, such as
+`ws://127.0.0.1:8123`, and the transport needs the `ahp` extra
+(`uv sync --extra ahp`). With no address set, or no host answering there, the
+run is a sentence saying so and nothing else.
+
+One run is one connection, one session whose working directory is the clone,
+one chat and one turn carrying the brief. The text the host streams for that
+turn is the outcome. What the host's agent may read or change in the clone is
+the host's to decide; qmcp cannot confine it, and `spent` is unknown, because
+the host does not report a turn's cost to this runtime.
+
+It approves nothing. A tool call the host holds for confirmation is answered
+denied, a tool result held for confirmation is answered denied, and the row's
+`detail` counts and names them; the consent a person gave was for the run, not
+for each thing the host's agent then asks to do. A question the host asks
+mid-turn has nobody to answer it, so the turn is cancelled.
+
+Each wait for a message, the whole run and the collected text are bounded
+(`MESSAGE_TIMEOUT`, `TURN_TIMEOUT` and `TEXT_CHARS` in
+`qmcp.integrations.agents.adapters.ahp`), and a run that stops on a bound tells
+the host to cancel the turn. The session it created stays on the host.
+`tests/test_agents_ahp.py` runs the exchange against a host in the same
+process.
 
 ## The result, spoken
 

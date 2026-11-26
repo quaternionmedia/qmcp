@@ -56,6 +56,11 @@ openai = [
 mcp = [
     "mcp>=1.0.0,<2",
 ]
+# The WebSocket transport of `--runtime ahp` (qmcp/integrations/agents/adapters/ahp.py),
+# imported only when that runtime connects.
+ahp = [
+    "websockets>=15.0",
+]
 all-providers = [
     "pydantic-ai>=2.71.0",
     "anthropic>=2.11.0",

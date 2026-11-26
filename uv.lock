@@ -5083,6 +5083,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+ahp = [
+    { name = "websockets" },
+]
 all-providers = [
     { name = "anthropic" },
     { name = "google-generativeai" },
@@ -5149,8 +5152,9 @@ requires-dist = [
     { name = "structlog", specifier = ">=25.1.0" },
     { name = "uvicorn", specifier = ">=0.54.0" },
     { name = "vox", editable = "vendor/vox" },
+    { name = "websockets", marker = "extra == 'ahp'", specifier = ">=15.0" },
 ]
-provides-extras = ["dev", "flows", "pydantic-ai", "anthropic", "openai", "mcp", "all-providers"]
+provides-extras = ["dev", "flows", "pydantic-ai", "anthropic", "openai", "mcp", "ahp", "all-providers"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest-asyncio", specifier = ">=1.5.0" }]

@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     alfred_timeout: float = 10.0
     alfred_deliver_timeout: float = 300.0
 
+    # The Agent Host Protocol host `--runtime ahp` connects to, as a WebSocket
+    # address such as ws://127.0.0.1:8123. With none set the runtime runs nothing
+    # and says what to set.
+    ahp_url: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
