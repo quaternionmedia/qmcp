@@ -137,14 +137,23 @@ That proves the two agree with each other. Both were read from the same type
 definitions, so it does not prove either against another program's client or
 host.
 
-The host role holds against the protocol's published TypeScript client,
-`@microsoft/agent-host-protocol` 1.1.0, in a run made by hand and repeated by
-no test here. In that run the client negotiates its version, creates a
-session and a chat, starts a turn, and answers the consent `approve` in one
-turn and `hold` in another. Its reducers, given every action the host sent,
-hold the same chat and session state as the host's own snapshots, during the
-turn and after it, and every envelope and state the host sent is valid under
-the protocol's JSON schemas. The run needs Node and the published package,
-which this repository does not install.
+`tests/test_agents_host_published_client.py` holds the host role to the
+protocol's published TypeScript client, `@microsoft/agent-host-protocol`, at
+the version `tests/published_client/package.json` pins. The client
+negotiates its version, creates a session and a chat, starts a turn, and
+answers the consent `approve` in one turn and `hold` in another, against a
+server on a socket and a database of its own. Its reducers, given every
+action the host sent, hold the same chat and session state as the host's own
+snapshots, during the turn and after it.
+
+Those tests need Node and the package:
+
+```bash
+npm ci --ignore-scripts --prefix tests/published_client
+```
+
+Without them the tests are skipped. With `QMCP_PUBLISHED_CLIENT=required`,
+which the workflow sets, they fail instead. The package does not carry the
+protocol's JSON schemas, so no test holds the host's messages to them.
 
 The client role has run against no host another program provides.

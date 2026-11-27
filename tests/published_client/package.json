@@ -1,0 +1,12 @@
+{
+  "name": "qmcp-published-client-check",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Agent Host Protocol's published client, which tests/test_agents_host_published_client.py drives qmcp's host with.",
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {
+    "@microsoft/agent-host-protocol": "1.1.0",
+    "ws": "8.23.1"
+  }
+}
