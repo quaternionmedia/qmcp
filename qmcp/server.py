@@ -2,13 +2,13 @@
 
 Routes for tool discovery, invocation and history, the human queue, the
 topology vocabulary and the orchestration plane; on a loopback bind only, also
-saved designs, the thread archive, the voice routes and the instruction inbox.
-`docs/http-api.md` lists them by role.
+saved designs, the thread archive, the voice routes, the instruction inbox and
+the Agent Host Protocol's WebSocket. `docs/http-api.md` lists them by role.
 
 It starts processes of its own, only on a loopback bind: the standing
 conversation `serve --converse` asks for, a spoken answer to one human request,
 a spoken instruction, and `qmcp instructions act`, which asks a person's
-consent before it acts. Tools do not call each other, and nothing here answers
+consent before it acts and which a turn over the Agent Host Protocol starts too. Tools do not call each other, and nothing here answers
 a human request.
 """
 
@@ -34,6 +34,7 @@ from qmcp.threads.cache import DEFAULT_ROOT as THREAD_CACHE
 from qmcp.threads.service import register as register_threads
 from qmcp.integrations.voice.service import register as register_voice
 from qmcp.instructions.service import register as register_instructions
+from qmcp.integrations.agents.host import register as register_agent_host
 from qmcp.topology_designs import register as register_topology_designs
 from qmcp.topology_service import register as register_topology
 from qmcp.topology_service import register_readings as register_topology_readings
@@ -192,6 +193,10 @@ def create_app() -> FastAPI:
             app, settings.voice_engine, settings.voice_engine_url)
         register_instructions(app, app.state.voice_runs,
                               settings.voice_engine, settings.voice_engine_url)
+        # The Agent Host Protocol's clients start acts, through the same
+        # tracker, so a turn and a conversation exclude each other.
+        register_agent_host(app, app.state.voice_runs,
+                            f"http://{settings.host}:{settings.port}")
     else:
         logger.info(
             "thread_archive_not_served",

@@ -45,6 +45,7 @@ server asks nobody who they are.
 | `/v1/instructions/voice` | POST | loopback | Take an instruction by speech |
 | `/v1/instructions/voice` | GET | loopback | The spoken instruction's progress |
 | `/v1/voice/vocabulary` | GET | loopback | What can be said, and what each phrase does |
+| `/v1/ahp` | WebSocket | loopback | The Agent Host Protocol's clients: a turn is an instruction acted on ([integrations/agent-host-protocol.md](integrations/agent-host-protocol.md)) |
 
 ## Harness and thread archive
 
