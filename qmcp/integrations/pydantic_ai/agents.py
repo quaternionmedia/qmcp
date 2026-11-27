@@ -21,7 +21,7 @@ except ImportError:
     Agent = None  # type: ignore
     AgentRunResult = None  # type: ignore
 
-from .models import model_to_pydantic_ai, get_model_settings, get_usage_limits
+from .models import model_to_pydantic_ai, get_model_settings
 
 T = TypeVar("T")
 DepsT = TypeVar("DepsT")

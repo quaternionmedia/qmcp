@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-import sqlmodel
+import sqlmodel  # noqa: F401 -- every revision carries the template's imports
 from alembic import op
 
 revision: str = 'adf10cb9cbff'

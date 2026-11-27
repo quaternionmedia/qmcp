@@ -7,8 +7,6 @@ database beside the real one -- a backup of nothing, reported as a success.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from qmcp.db.paths import database_file
 
 

@@ -11,7 +11,7 @@ explains levels, kinds, channels and readings.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from qmcp.agentframework.models.enums import TopologyType

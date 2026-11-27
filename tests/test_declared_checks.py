@@ -145,7 +145,7 @@ def test_a_check_that_outlives_its_minutes_is_stopped(tmp_path):
 # --- through the gate ------------------------------------------------------------------
 
 
-def test_a_check_is_asked_with_its_command_and_runs_only_on_approve(inbox, clone):
+def test_a_check_is_asked_with_its_command_and_runs_only_on_approve(inbox, clone):  # noqa: F811
     """The written consent names the command, the spoken one calls it a declared
     check and claims no history, and the declaration says it spends nothing.
     Mutation: drop the command from the written consent -- red."""
@@ -166,7 +166,7 @@ def test_a_check_is_asked_with_its_command_and_runs_only_on_approve(inbox, clone
     assert inbox.read(instruction_id).runtime == "check"
 
 
-def test_a_held_check_runs_nothing(inbox, clone, tmp_path):
+def test_a_held_check_runs_nothing(inbox, clone, tmp_path):  # noqa: F811
     marker = tmp_path / "ran"
     instruction_id = inbox.record(f"Run the probe in {PROJECT}.")
     queue = _Queue({f"instruction-{instruction_id}": "hold"})
@@ -217,7 +217,7 @@ def test_the_conversation_runs_a_named_check_and_the_model_otherwise(monkeypatch
     assert checker_prompt(PERSPECTIVES[0], used[3].prompt) in used[3].command
 
 
-def test_crosscheck_runs_only_after_its_full_consent(inbox, clone):
+def test_crosscheck_runs_only_after_its_full_consent(inbox, clone):  # noqa: F811
     _, earlier, _ = _approved(inbox, f"Read the README in {PROJECT}.", cwd=clone)
     assert earlier.status == "done"
     held_id = inbox.record(f"Cross-check the claim in {PROJECT}.")

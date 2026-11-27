@@ -305,10 +305,7 @@ class Conversation:
 
     def _take(self, heard: str) -> Turn:
         """One instruction: read back and recorded, then acted on with consent, then said."""
-        from qmcp.instructions.act import RULE_SIBLING, act
-        from qmcp.instructions.spoken import starting, summarise
         from qmcp.integrations.voice.adapter import UnclearResponse
-        from qmcp.spend import Budget
 
         dialog = InstructionDialog(stt=self.stt, tts=self.tts, client=self.client,
                                    names=self.names, max_retries=self.max_retries,

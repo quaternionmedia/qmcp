@@ -238,7 +238,7 @@ class TestMCPToolInvokerWithPersistence:
 
     def test_invoke_persists_invocation(self, tmp_path):
         """Invoker logs MCP call to persistence when provided."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         from qmcp.schemas.mcp import ToolInvokeResponse
 
         db_path = str(tmp_path / "test.db")
@@ -328,7 +328,7 @@ class TestCookbookPackageImports:
     """Verify public API is accessible from qmcp.cookbook."""
 
     def test_all_symbols_importable(self):
-        from qmcp.cookbook import (
+        from qmcp.cookbook import (  # noqa: F401 -- the import is the assertion
             LocalLLMConfig,
             build_local_agent,
             build_qmcp_agent,

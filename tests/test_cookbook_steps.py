@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -77,7 +76,7 @@ class TestAgentStepRun:
 
         with FlowPersistence(db_path, "TestFlow", "run-1") as fp:
             with _patch_build_local_agent(output):
-                result = step.run(_mock_config(), "Test prompt", persistence=fp)
+                step.run(_mock_config(), "Test prompt", persistence=fp)
 
             # Verify persistence
             with Session(fp.engine) as session:
@@ -250,7 +249,7 @@ class TestAgentPipeline:
 
         with FlowPersistence(db_path, "PipelineTest", "run-pipe") as fp:
             with patch("qmcp.cookbook.steps.build_local_agent", side_effect=mock_build):
-                results = pipeline.run(_mock_config(), "Go", persistence=fp)
+                pipeline.run(_mock_config(), "Go", persistence=fp)
 
             with Session(fp.engine) as session:
                 agent_runs = session.exec(select(AgentRun)).all()

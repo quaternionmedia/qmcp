@@ -1,6 +1,6 @@
 import pytest
 
-from qmcp.client.mcp_client import HumanRequest, HumanRequestExpiredError, HumanResponse
+from qmcp.client.mcp_client import HumanRequest, HumanResponse
 from qmcp.integrations.voice.adapter import (
     UnclearResponse,
     VoiceApprovalLoop,

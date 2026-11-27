@@ -38,7 +38,7 @@ class _Model:
                             detail={"model_calls": 1, "read": []})
 
 
-def _say(words, answer, inbox, clone, service, model=None):
+def _say(words, answer, inbox, clone, service, model=None):  # noqa: F811
     """One spoken command through the real gate; returns the act and its consent."""
     command = match_topology_command(words)
     assert command is not None, words
@@ -49,7 +49,7 @@ def _say(words, answer, inbox, clone, service, model=None):
     return done, queue.requests[f"instruction-{instruction_id}"]
 
 
-def test_a_design_is_built_by_voice_persisted_and_run(inbox, clone, service):
+def test_a_design_is_built_by_voice_persisted_and_run(inbox, clone, service):  # noqa: F811
     """Mutation: apply a change before the approve -- red, the held change
     below is found saved."""
     _Model.prompts = []
@@ -85,7 +85,7 @@ def test_only_read_forms_parse_as_queries():
     assert match_topology_query("list topologies") is None
 
 
-def test_what_was_built_can_be_listed_and_shown_by_voice(inbox, clone, service):
+def test_what_was_built_can_be_listed_and_shown_by_voice(inbox, clone, service):  # noqa: F811
     for words in (
         "Create topology review as pipeline in qmcp",
         "Create component first with instruction Find direct evidence in qmcp",

@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from qmcp.agentframework.models.enums import TopologyType
-from qmcp.agentframework.topologies import BaseTopology, topology
+from qmcp.agentframework.topologies import BaseTopology
 
 # The two stages, and which question each answers. Fixed here rather than
 # configured, so the loop cannot be reduced to the stage that always passes.
