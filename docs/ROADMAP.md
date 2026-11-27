@@ -17,7 +17,7 @@ This document outlines the phased implementation plan for building a production-
 - ✅ Structured logging with structlog
 - ✅ Request tracing middleware (correlation IDs)
 - ✅ Prometheus-compatible metrics endpoint
-- ✅ The built-in tools, and the `alfred_*` tools that drive alfred's projects, renders and captions; `qmcp tools list` names them
+- ✅ The built-in tools, and the `alfred_*` tools that drive alfred's projects, renders and captions, and the `apothecary_*` tools that read apothecary's parts, sites and jobs; `qmcp tools list` names them
 - ✅ Agent framework schemas + mixins
 - ✅ PydanticAI integration for agent execution
 - ✅ A test suite that runs under `uv run pytest -q` and in `tests.yml`; a reader who wants the count runs it

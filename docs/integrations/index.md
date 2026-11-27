@@ -80,6 +80,23 @@ Configured by the `QMCP_ALFRED_*` settings; imports nothing from alfred.
 **Status**: Tested against a stand-in alfred, as walkthrough pages 10 and 11
 show; a running alfred is checked by hand.
 
+### [apothecary](apothecary.md)
+
+Reads apothecary, the workshop's parts and machines, over its HTTP API.
+Provides:
+- `apothecary_parts` and `apothecary_part`: the parts library, and one part
+  with its size, its parameters and what it needs bought
+- `apothecary_sites` and `apothecary_site`: the sites, and one site's
+  structures with their status and build volume
+- `apothecary_jobs` and `apothecary_job`: the jobs machines ran or are running
+- `apothecary_health`: whether apothecary answers
+
+Configured by `QMCP_APOTHECARY_URL`; imports nothing from apothecary. Every
+tool reads.
+
+**Status**: Tested against a stand-in holding an apothecary's own answers; a
+running apothecary is checked by hand.
+
 ## Decision Matrix
 
 When to use what:

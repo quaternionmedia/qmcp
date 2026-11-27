@@ -239,6 +239,18 @@ call does not log in again.
 
 ---
 
+## apothecary Tools
+
+`apothecary_parts`, `apothecary_part`, `apothecary_sites`, `apothecary_site`,
+`apothecary_jobs`, `apothecary_job` and `apothecary_health` read apothecary,
+the workshop's parts and machines, over its HTTP API;
+[integrations/apothecary.md](integrations/apothecary.md) is their reference.
+
+Each call is one GET to apothecary, made inline with a short timeout. No tool
+writes.
+
+---
+
 ## What Tools Must NOT Do
 
 - ❌ Call other tools

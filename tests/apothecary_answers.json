@@ -1,0 +1,1162 @@
+{
+ "commit": "538daf70",
+ "health": {
+  "status": "healthy",
+  "version": "0.1.0"
+ },
+ "parts": [
+  {
+   "name": "v_slot",
+   "description": "V-Slot rail segment",
+   "category": "hardware",
+   "kinematics": null,
+   "motion": null,
+   "bought": [],
+   "tags": [
+    "v-slot",
+    "rail"
+   ],
+   "readme": "parts/README.md",
+   "source_file": "parts/v_slot/v_slot.scad",
+   "has_params": true,
+   "files": {
+    "scad": {
+     "exists": true,
+     "url": "/parts/v_slot/scad",
+     "editable": true,
+     "generated": false,
+     "overlay": false,
+     "upstream_url": null
+    },
+    "stl": {
+     "exists": false,
+     "url": null,
+     "generate_url": "/parts/v_slot/stl/generate",
+     "can_generate": true,
+     "note": null
+    }
+   },
+   "geometry": {
+    "bounds": {
+     "min": [
+      -10.0,
+      -10.0,
+      0.0
+     ],
+     "max": [
+      10.0,
+      10.0,
+      20.0
+     ],
+     "size": [
+      20.0,
+      20.0,
+      20.0
+     ],
+     "center": [
+      0.0,
+      0.0,
+      10.0
+     ]
+    },
+    "color": "[0.7529411764705882, 0.7529411764705882, 0.7529411764705882]",
+    "color_hex": "#c0c0c0"
+   }
+  },
+  {
+   "name": "calibration_cube",
+   "description": "Calibration cube with XYZ axes and dimension markers",
+   "category": "calibration",
+   "kinematics": null,
+   "motion": null,
+   "bought": [],
+   "tags": [
+    "calibration",
+    "test",
+    "axes",
+    "dimensions"
+   ],
+   "readme": "parts/README.md",
+   "source_file": "parts/calibration_cube/calibration_cube.scad",
+   "has_params": true,
+   "files": {
+    "scad": {
+     "exists": true,
+     "url": "/parts/calibration_cube/scad",
+     "editable": true,
+     "generated": false,
+     "overlay": false,
+     "upstream_url": null
+    },
+    "stl": {
+     "exists": false,
+     "url": null,
+     "generate_url": "/parts/calibration_cube/stl/generate",
+     "can_generate": true,
+     "note": null
+    }
+   },
+   "geometry": {
+    "bounds": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "center": [
+      5.0,
+      5.0,
+      5.0
+     ]
+    },
+    "color": "[0.5019607843137255, 0.5019607843137255, 0.5019607843137255]",
+    "color_hex": "#808080"
+   }
+  },
+  {
+   "name": "hose_adapter",
+   "description": "A dust adapter between two round ends, its parameters its two ends; at its defaults a 40 mm hose onto a 32 mm or a 25 mm port (Python parametric)",
+   "category": "dust",
+   "kinematics": null,
+   "motion": null,
+   "bought": [],
+   "tags": [
+    "dust",
+    "hose",
+    "adapter",
+    "python"
+   ],
+   "readme": "parts/dust/README.md",
+   "source_file": "parts/dust/hose_adapter/hose_adapter.scad",
+   "has_params": true,
+   "files": {
+    "scad": {
+     "exists": true,
+     "url": "/parts/hose_adapter/scad",
+     "editable": false,
+     "generated": true,
+     "overlay": false,
+     "upstream_url": null
+    },
+    "stl": {
+     "exists": false,
+     "url": null,
+     "generate_url": "/parts/hose_adapter/stl/generate",
+     "can_generate": true,
+     "note": null
+    }
+   },
+   "geometry": {
+    "bounds": {
+     "min": [
+      -23.0,
+      -23.0,
+      0.0
+     ],
+     "max": [
+      23.0,
+      23.0,
+      101.5
+     ],
+     "size": [
+      46.0,
+      46.0,
+      101.5
+     ],
+     "center": [
+      0.0,
+      0.0,
+      50.75
+     ]
+    },
+    "color": "[0.85, 0.45, 0.1]",
+    "color_hex": "#d87219"
+   }
+  },
+  {
+   "name": "ender3",
+   "description": "Creality Ender 3 (2018): frame, bed, gantry, the power supply on the right, the electronics box front-left, the LCD, the spool holder -- from published dimensions.",
+   "category": "machine",
+   "kinematics": {
+    "param": "piece",
+    "fixed": "fixed",
+    "rest": {
+     "x": 110.0,
+     "y": 110.0,
+     "z": 150.0
+    },
+    "range": {
+     "x": [
+      0.0,
+      220.0
+     ],
+     "y": [
+      0.0,
+      220.0
+     ],
+     "z": [
+      0.0,
+      250.0
+     ]
+    },
+    "pieces": [
+     {
+      "piece": "bed",
+      "follows": {
+       "y": -1.0
+      }
+     },
+     {
+      "piece": "gantry",
+      "follows": {
+       "z": 1.0
+      }
+     },
+     {
+      "piece": "hotend",
+      "follows": {
+       "x": 1.0,
+       "z": 1.0
+      }
+     }
+    ]
+   },
+   "motion": null,
+   "bought": [],
+   "tags": [
+    "printer",
+    "ender3",
+    "creality",
+    "fdm"
+   ],
+   "readme": "parts/ender3/README.md",
+   "source_file": "parts/ender3/ender3.scad",
+   "has_params": true,
+   "files": {
+    "scad": {
+     "exists": true,
+     "url": "/parts/ender3/scad",
+     "editable": true,
+     "generated": false,
+     "overlay": false,
+     "upstream_url": null
+    },
+    "stl": {
+     "exists": false,
+     "url": null,
+     "generate_url": "/parts/ender3/stl/generate",
+     "can_generate": true,
+     "note": null
+    }
+   },
+   "geometry": {
+    "bounds": {
+     "min": [
+      -2.0,
+      -41.0,
+      0.0
+     ],
+     "max": [
+      470.0,
+      413.0,
+      570.0
+     ],
+     "size": [
+      472.0,
+      454.0,
+      570.0
+     ],
+     "center": [
+      234.0,
+      186.0,
+      285.0
+     ]
+    },
+    "color": "[0.75, 0.75, 0.78]",
+    "color_hex": "#bfbfc6"
+   }
+  }
+ ],
+ "parts_not_loaded": "gridfinity",
+ "part": {
+  "name": "v_slot",
+  "description": "V-Slot rail segment",
+  "category": "hardware",
+  "kinematics": null,
+  "motion": null,
+  "bought": [],
+  "tags": [
+   "v-slot",
+   "rail"
+  ],
+  "readme": "parts/README.md",
+  "source_file": "parts/v_slot/v_slot.scad",
+  "has_params": true,
+  "files": {
+   "scad": {
+    "exists": true,
+    "url": "/parts/v_slot/scad",
+    "editable": true,
+    "generated": false,
+    "overlay": false,
+    "upstream_url": null
+   },
+   "stl": {
+    "exists": false,
+    "url": null,
+    "generate_url": "/parts/v_slot/stl/generate",
+    "can_generate": true,
+    "note": null
+   }
+  },
+  "geometry": {
+   "bounds": {
+    "min": [
+     -10.0,
+     -10.0,
+     0.0
+    ],
+    "max": [
+     10.0,
+     10.0,
+     20.0
+    ],
+    "size": [
+     20.0,
+     20.0,
+     20.0
+    ],
+    "center": [
+     0.0,
+     0.0,
+     10.0
+    ]
+   },
+   "color": "[0.7529411764705882, 0.7529411764705882, 0.7529411764705882]",
+   "color_hex": "#c0c0c0"
+  },
+  "params": {
+   "length": 20.0
+  },
+  "include": "// Generated by Apothecary\n// Part: v_slot\n// Category: hardware\n// Tags: v-slot, rail\n// Source: parts/v_slot/v_slot.scad\n// Params: {\"length\":20.0}\n\ninclude <parts/v_slot/v_slot.scad>",
+  "download_url": "/parts/v_slot/scad"
+ },
+ "part_missing": {
+  "status": 404,
+  "body": {
+   "detail": "Part 'no_such_part' not found"
+  }
+ },
+ "sites": [
+  "apothecary",
+  "datum_core",
+  "garage",
+  "theatre"
+ ],
+ "site": {
+  "name": "Garage",
+  "structures": [
+   {
+    "name": "workbench",
+    "material": "Steel frame, pine top",
+    "status": null,
+    "position": {
+     "x": 0.0,
+     "y": 0.0,
+     "z": 0.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      1800.0,
+      600.0,
+      780.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      1800.0,
+      600.0,
+      780.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": [
+     {
+      "name": "frame_system",
+      "features": [
+       "leg_0",
+       "leg_1",
+       "leg_2",
+       "leg_3",
+       "cable_pass_through"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "printer_1",
+    "material": "Aluminum extrusion + PETG",
+    "status": "idle",
+    "position": {
+     "x": 100.0,
+     "y": 150.0,
+     "z": 780.0
+    },
+    "footprint": {
+     "min": [
+      -2.0,
+      -41.0,
+      0.0
+     ],
+     "max": [
+      468.0,
+      413.0,
+      570.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      98.0,
+      109.0,
+      780.0
+     ],
+     "max": [
+      568.0,
+      563.0,
+      1350.0
+     ]
+    },
+    "build_volume": [
+     220.0,
+     220.0,
+     250.0
+    ],
+    "substructures": [
+     {
+      "name": "frame_system",
+      "features": []
+     },
+     {
+      "name": "gantry_system",
+      "features": [
+       "left_post",
+       "right_post",
+       "gantry_bar"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "garage_building",
+    "material": "Wood-framed, steel siding",
+    "status": null,
+    "position": {
+     "x": 0.0,
+     "y": 0.0,
+     "z": 0.0
+    },
+    "footprint": null,
+    "world_bounds": null,
+    "build_volume": null,
+    "substructures": [
+     {
+      "name": "north_wall",
+      "features": []
+     },
+     {
+      "name": "south_wall",
+      "features": [
+       "door_opening"
+      ]
+     },
+     {
+      "name": "west_wall",
+      "features": [
+       "window_opening"
+      ]
+     },
+     {
+      "name": "east_wall",
+      "features": []
+     }
+    ]
+   },
+   {
+    "name": "lighting",
+    "material": "Aluminum housing, LED panel",
+    "status": null,
+    "position": {
+     "x": 900.0,
+     "y": 900.0,
+     "z": 2500.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      400.0,
+      100.0,
+      50.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      900.0,
+      900.0,
+      2500.0
+     ],
+     "max": [
+      1300.0,
+      1000.0,
+      2550.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": [
+     {
+      "name": "fixture",
+      "features": [
+       "light_output"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "hvac",
+    "material": "Galvanized steel ductwork",
+    "status": null,
+    "position": {
+     "x": 1400.0,
+     "y": 1000.0,
+     "z": 2450.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      300.0,
+      300.0,
+      100.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      1400.0,
+      1000.0,
+      2450.0
+     ],
+     "max": [
+      1700.0,
+      1300.0,
+      2550.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": [
+     {
+      "name": "fixture",
+      "features": [
+       "vent_output"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "electrical",
+    "material": "PVC junction box",
+    "status": null,
+    "position": {
+     "x": -400.0,
+     "y": 300.0,
+     "z": 900.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      100.0,
+      150.0,
+      200.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      -400.0,
+      300.0,
+      900.0
+     ],
+     "max": [
+      -300.0,
+      450.0,
+      1100.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": [
+     {
+      "name": "fixture",
+      "features": [
+       "outlet_output"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "fluids",
+    "material": "Copper pipe stub",
+    "status": null,
+    "position": {
+     "x": -400.0,
+     "y": 1200.0,
+     "z": 400.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      100.0,
+      100.0,
+      300.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      -400.0,
+      1200.0,
+      400.0
+     ],
+     "max": [
+      -300.0,
+      1300.0,
+      700.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": [
+     {
+      "name": "fixture",
+      "features": [
+       "spigot_output"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "storage_shelving",
+    "material": "Powder-coated steel",
+    "status": null,
+    "position": {
+     "x": 4900.0,
+     "y": 100.0,
+     "z": 0.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      500.0,
+      600.0,
+      2000.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      4900.0,
+      100.0,
+      0.0
+     ],
+     "max": [
+      5400.0,
+      700.0,
+      2000.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": [
+     {
+      "name": "shelf_unit",
+      "features": [
+       "shelf_1",
+       "shelf_2",
+       "shelf_3"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "cnc_stand",
+    "material": "Steel, powder-coated",
+    "status": null,
+    "position": {
+     "x": 4600.0,
+     "y": 900.0,
+     "z": 0.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      800.0,
+      1100.0,
+      750.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      4600.0,
+      900.0,
+      0.0
+     ],
+     "max": [
+      5400.0,
+      2000.0,
+      750.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": [
+     {
+      "name": "frame",
+      "features": [
+       "stand_leg_0",
+       "stand_leg_1",
+       "stand_leg_2",
+       "stand_leg_3",
+       "stand_top"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "cnc_router",
+    "material": "Aluminium beams and plates, steel rails and screws",
+    "status": "idle",
+    "position": {
+     "x": 4649.25,
+     "y": 939.25,
+     "z": 750.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      701.5,
+      1021.5,
+      469.5
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      4649.25,
+      939.25,
+      750.0
+     ],
+     "max": [
+      5350.75,
+      1960.75,
+      1219.5
+     ]
+    },
+    "build_volume": [
+     400.0,
+     600.0,
+     80.0
+    ],
+    "substructures": [
+     {
+      "name": "frame_system",
+      "features": []
+     },
+     {
+      "name": "gantry_system",
+      "features": [
+       "left_leg",
+       "right_leg",
+       "cross_beam"
+      ]
+     }
+    ]
+   },
+   {
+    "name": "router_coupon",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 4774.25,
+     "y": 1114.25,
+     "z": 855.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      120.0,
+      80.0,
+      10.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      4774.25,
+      1114.25,
+      855.0
+     ],
+     "max": [
+      4894.25,
+      1194.25,
+      865.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   },
+   {
+    "name": "bed_shims",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 250.0,
+     "y": 255.0,
+     "z": 875.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      25.541660400998964,
+      56.0,
+      1.2
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      250.0,
+      255.0,
+      875.0
+     ],
+     "max": [
+      275.541660400999,
+      311.0,
+      876.2
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   },
+   {
+    "name": "esp32_blink",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 1640.0,
+     "y": 150.0,
+     "z": 780.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      55.0,
+      28.0,
+      16.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      1640.0,
+      150.0,
+      780.0
+     ],
+     "max": [
+      1695.0,
+      178.0,
+      796.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   },
+   {
+    "name": "footpedal",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 1620.0,
+     "y": 20.0,
+     "z": 780.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      180.0,
+      100.0,
+      30.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      1620.0,
+      20.0,
+      780.0
+     ],
+     "max": [
+      1800.0,
+      120.0,
+      810.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   },
+   {
+    "name": "arduino_uno",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 1650.0,
+     "y": 210.0,
+     "z": 780.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      76.0,
+      54.0,
+      14.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      1650.0,
+      210.0,
+      780.0
+     ],
+     "max": [
+      1726.0,
+      264.0,
+      794.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   },
+   {
+    "name": "raspberry_pi_4",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 1640.0,
+     "y": 290.0,
+     "z": 780.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      88.0,
+      58.0,
+      18.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      1640.0,
+      290.0,
+      780.0
+     ],
+     "max": [
+      1728.0,
+      348.0,
+      798.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   },
+   {
+    "name": "teensy_40",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 1660.0,
+     "y": 380.0,
+     "z": 780.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      38.0,
+      18.0,
+      16.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      1660.0,
+      380.0,
+      780.0
+     ],
+     "max": [
+      1698.0,
+      398.0,
+      796.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   },
+   {
+    "name": "stream_deck",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 1650.0,
+     "y": 440.0,
+     "z": 780.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      140.0,
+      138.0,
+      110.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      1650.0,
+      440.0,
+      780.0
+     ],
+     "max": [
+      1790.0,
+      578.0,
+      890.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   },
+   {
+    "name": "whiteboard",
+    "material": null,
+    "status": null,
+    "position": {
+     "x": 3950.0,
+     "y": 5340.0,
+     "z": 900.0
+    },
+    "footprint": {
+     "min": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "max": [
+      1230.0,
+      60.0,
+      930.0
+     ]
+    },
+    "world_bounds": {
+     "min": [
+      3950.0,
+      5340.0,
+      900.0
+     ],
+     "max": [
+      5180.0,
+      5400.0,
+      1830.0
+     ]
+    },
+    "build_volume": null,
+    "substructures": []
+   }
+  ],
+  "violations": [],
+  "is_valid": true
+ },
+ "site_left_out": [
+  "tree",
+  "scad",
+  "layer_colours",
+  "facets"
+ ],
+ "jobs": [],
+ "job_missing": {
+  "status": 404,
+  "body": {
+   "detail": "no such job"
+  }
+ }
+}
