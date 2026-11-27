@@ -30,7 +30,7 @@ from typing import Any
 
 from qmcp import identity
 from qmcp.spend import Budget
-from qmcp.threads.base import THREAD_LINK, Thread, Turn
+from qmcp.threads.base import Thread, Turn
 from qmcp.threads.cache import LocalCacheSource
 
 # Where Claude Code keeps sessions. Not under the thread cache: this reads a

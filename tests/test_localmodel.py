@@ -7,8 +7,6 @@ drive has room. The system-drive tests check that.
 
 from __future__ import annotations
 
-import pytest
-
 from qmcp.localmodel import (
     MODEL,
     MODEL_BYTES,

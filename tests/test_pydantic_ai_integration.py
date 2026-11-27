@@ -5,10 +5,6 @@ import os
 import pytest
 
 from qmcp.agentframework.models import (
-    ModelConfig,
-    ModelProvider,
-    ModelFamily,
-    ModelTier,
     Models,
 )
 
@@ -191,7 +187,7 @@ class TestIntegrationExports:
 
     def test_all_exports_available(self):
         """Test that all expected exports are available."""
-        from qmcp.integrations.pydantic_ai import (
+        from qmcp.integrations.pydantic_ai import (  # noqa: F401 -- the import is the assertion
             model_to_pydantic_ai,
             get_model_settings,
             get_usage_limits,

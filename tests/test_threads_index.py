@@ -13,7 +13,6 @@ from qmcp.threads.base import Thread, Turn
 from qmcp.threads.index import (
     DIVERGED,
     GREW,
-    Entry,
     build,
     classify,
     digest_of,
@@ -250,7 +249,7 @@ def test_building_the_index_spends_nothing(tmp_path):
     spending, because `build` hands it a budget of zero.
     """
     from qmcp.spend import Budget, Refused
-    from qmcp.threads.base import Decision, Survey, ThreadSource
+    from qmcp.threads.base import Survey, ThreadSource
 
     class Metered(ThreadSource):
         name = "metered"

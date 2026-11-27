@@ -8,7 +8,6 @@ from __future__ import annotations
 import sqlite3
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -160,7 +159,7 @@ class TestRunRecipeLocal:
         mock_result.stdout = "Metaflow run complete"
         mock_result.stderr = ""
 
-        with patch("qmcp_mcp.subprocess.run", return_value=mock_result) as mock_run:
+        with patch("qmcp_mcp.subprocess.run", return_value=mock_result):
             # local-agent-chain flow file must exist for this path
             with patch("qmcp_mcp.Path.exists", return_value=True):
                 result = mcp_mod.run_recipe_local(

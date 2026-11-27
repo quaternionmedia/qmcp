@@ -30,8 +30,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sqlmodel import SQLModel  # noqa: E402
-
 from qmcp.config import get_settings  # noqa: E402
 from qmcp.db.paths import database_file  # noqa: E402
 from qmcp.db.registry import server_metadata  # noqa: E402

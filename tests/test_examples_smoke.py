@@ -53,7 +53,7 @@ def test_flow_modules_importable(monkeypatch, tmp_path: Path, filename: str, dep
 
 def test_cookbook_package_importable() -> None:
     """Verify qmcp.cookbook package imports successfully."""
-    from qmcp.cookbook import (
+    from qmcp.cookbook import (  # noqa: F401 -- the import is the assertion
         LocalLLMConfig,
         build_local_agent,
         FlowPersistence,

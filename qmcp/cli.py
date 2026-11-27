@@ -1962,8 +1962,6 @@ def human_respond(request_id: str, response: str, database: Path | None,
     somebody was asked and answered, which is a different fact and the only one
     this can establish.
     """
-    from datetime import UTC, datetime
-
     from sqlmodel import Session, create_engine, select
 
     from qmcp.db.models import HumanRequest, HumanRequestStatus, HumanResponse

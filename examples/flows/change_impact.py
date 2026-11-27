@@ -17,7 +17,6 @@ from __future__ import annotations
 import os
 
 from metaflow import FlowSpec, Parameter, current, step
-from pydantic import BaseModel, Field
 
 from qmcp.cookbook import FlowPersistence, LocalLLMConfig
 from qmcp.localmodel import MODEL as LOCAL_MODEL
@@ -32,7 +31,7 @@ from qmcp.localmodel import MODEL as LOCAL_MODEL
 # Metaflow -- which fails on Windows at `import fcntl`. Re-exported so anything
 # already importing them from this module keeps working.
 
-from qmcp.cookbook.change_impact import (  # noqa: E402
+from qmcp.cookbook.change_impact import (  # noqa: E402, F401 -- re-exported
     CHANGE_IMPACT_PIPELINE,
     ChangeSummary,
     MigrationGuide,

@@ -199,8 +199,6 @@ def test_every_declaration_says_why():
 def test_only_the_shapes_that_are_implemented_claim_to_run():
     """`can_run` is what a caller checks. It must not be true for a shape
     whose `run` still raises."""
-    import asyncio
-
     for entry in PLANE:
         if not entry.can_run:
             continue
