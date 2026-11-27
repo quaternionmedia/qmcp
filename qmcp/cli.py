@@ -865,7 +865,6 @@ def _run_server(host: str | None, port: int | None, reload: bool) -> None:
 
     actual_host = host or settings.host
     actual_port = port if port is not None else settings.port
-    _warn_if_exposed(actual_host)
 
     bound = None
     if actual_port == 0:
@@ -890,6 +889,11 @@ def _run_server(host: str | None, port: int | None, reload: bool) -> None:
     os.environ["QMCP_PORT"] = str(actual_port)
     os.environ["QMCP_RUN_FILE"] = "1"
     get_settings.cache_clear()
+
+    # After the settings above, and not before: this imports `qmcp.server`,
+    # whose app is built at import from the settings as they stand, and the
+    # app hands its own address to every act it starts.
+    _warn_if_exposed(actual_host)
 
     click.echo(f"Starting QMCP server on {actual_host}:{actual_port}")
 

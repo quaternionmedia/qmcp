@@ -77,3 +77,18 @@ def test_the_metrics_count_what_crossed_the_wire(client) -> None:
     assert "echo" in str(metrics)
     exposition = httpx.get(f"{client.base_url}/metrics").text
     assert 'tool="echo"' in exposition
+
+
+def test_a_throwaway_server_is_configured_with_the_port_it_is_bound_to(tmp_path) -> None:
+    # The app hands `http://<host>:<port>` from its settings to every act it
+    # starts, so an act on a throwaway server would ask consent on whatever
+    # serves the configured port.
+    # Mutation seen red: `QMCP_PORT` left as it was configured.
+    from urllib.parse import urlsplit
+
+    from qmcp.config import get_settings
+
+    configured = get_settings().port
+    with throwaway_server(tmp_path / "queue.db") as url:
+        assert get_settings().port == urlsplit(url).port != configured
+    assert get_settings().port == configured

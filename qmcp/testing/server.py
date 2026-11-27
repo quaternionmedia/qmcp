@@ -5,6 +5,9 @@ instruct`), by the walkthrough pages that need a server, and by the suite's
 integration tests -- every caller that must not write into the configured
 queue or bind the configured port.
 
+The app is built with the bound port as its configured one, so an act it
+starts is told this server's address and asks consent on this server's queue.
+
 What this cannot do: stand for a separate server process. The server runs in
 a thread of the caller's process, sees the caller's monkeypatches, and shares
 its settings cache and database engine, which are swapped for the run and put
@@ -37,9 +40,15 @@ def throwaway_server(database: Path) -> Iterator[str]:
     import qmcp.db.engine as db_engine
     from qmcp.server import create_app
 
-    saved_url = os.environ.get("QMCP_DATABASE_URL")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+
+    swapped = {"QMCP_DATABASE_URL": f"sqlite+aiosqlite:///{database.as_posix()}",
+               "QMCP_HOST": "127.0.0.1", "QMCP_PORT": str(port)}
+    saved = {name: os.environ.get(name) for name in swapped}
     saved_engine = db_engine._engine
-    os.environ["QMCP_DATABASE_URL"] = f"sqlite+aiosqlite:///{database.as_posix()}"
+    os.environ.update(swapped)
     qmcp.config.get_settings.cache_clear()
     db_engine._engine = None
 
@@ -51,9 +60,6 @@ def throwaway_server(database: Path) -> Iterator[str]:
     root.addHandler(quiet)
     root.setLevel(logging.WARNING)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
     server = uvicorn.Server(uvicorn.Config(create_app(), log_level="warning"))
     thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)
     thread.start()
@@ -68,10 +74,11 @@ def throwaway_server(database: Path) -> Iterator[str]:
         server.should_exit = True
         thread.join(timeout=10)
         sock.close()
-        if saved_url is None:
-            os.environ.pop("QMCP_DATABASE_URL", None)
-        else:
-            os.environ["QMCP_DATABASE_URL"] = saved_url
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
         qmcp.config.get_settings.cache_clear()
         db_engine._engine = saved_engine
         root.removeHandler(quiet)

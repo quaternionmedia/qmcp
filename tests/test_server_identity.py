@@ -144,3 +144,34 @@ def test_this_checkouts_own_server_is_used(monkeypatch) -> None:
         200, json={"status": "healthy", "database_fingerprint": own}))
 
     assert cli._foreign_server("http://127.0.0.1:1/health") is None
+
+
+def test_the_app_a_server_command_serves_is_built_for_the_port_it_was_given(tmp_path) -> None:
+    """In an interpreter of its own, since `qmcp.server` builds its app once,
+    at import. Mutation seen red: `_warn_if_exposed` called before `QMCP_PORT`
+    is set -- the protocol host was told the configured port."""
+    import socket
+    import subprocess
+    import sys
+    import textwrap
+
+    with socket.socket() as free:
+        free.bind(("127.0.0.1", 0))
+        port = free.getsockname()[1]
+    script = textwrap.dedent("""
+        import sys, uvicorn
+        from qmcp import cli
+        def run(target, **kwargs):
+            import qmcp.server as server
+            print('ASKS', server.app.state.ahp_host.acts.base_url)
+        uvicorn.run = run
+        cli._run_server('127.0.0.1', int(sys.argv[1]), False)
+        """)
+    env = {**os.environ,
+           "QMCP_DATABASE_URL": f"sqlite+aiosqlite:///{(tmp_path / 'queue.db').as_posix()}"}
+    env.pop("QMCP_PORT", None)
+
+    done = subprocess.run([sys.executable, "-c", script, str(port)], env=env,
+                          capture_output=True, text=True, timeout=120)
+
+    assert f"ASKS http://127.0.0.1:{port}" in done.stdout, done.stdout + done.stderr
