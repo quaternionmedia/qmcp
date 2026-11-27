@@ -14,13 +14,20 @@ restart forgets them.
     createSession     `provider` is a runtime's name; at most one working directory
     createChat
     disposeSession    refused while one of its turns runs
-    dispatchAction    `chat/turnStarted` starts a turn; any other action is rejected
+    dispatchAction    `chat/turnStarted` starts a turn; `chat/inputAnswerChanged`
+                      and `chat/inputCompleted` answer its consent; any other
+                      action is rejected
 
-The agents the root advertises are `runtime_names()`. The act runs under its
-own default budget, which is zero: it declares what it would need, asks
-nothing and runs nothing. A client cannot state a budget, so over the
-protocol no runtime runs. `docs/integrations/agent-host-protocol.md` says what
-that leaves a client able to do.
+The agents the root advertises are `runtime_names()`. A turn's act is issued
+against one run, so it asks consent for that run on the human queue and runs
+nothing until a person approves. The host shows the request in the chat as
+the protocol's input request, one question whose options are the queue's.
+An answer a person gives in a client attached from this machine is written
+through the queue's own route, with `RELAYED_BY` as `responded_by`, and
+meets the refusals the queue makes for any answer. A client attached from
+another address is shown the request and cannot answer it. An answer given
+on the queue completes the input request in the chat.
+`docs/integrations/agent-host-protocol.md` is the reference.
 
 One act runs at a time. A turn started while a conversation or an act runs is
 echoed to its client with a `rejectionReason`, and nothing is recorded or
@@ -37,8 +44,8 @@ reads how far it got, and each `Connection` has an `outbox` of whole JSON
 messages. `ServerActs` is `Acts` over the server's database and its run
 tracker; `register` puts a hub behind the WebSocket route.
 
-Read from the protocol's type definitions. What this cannot do: carry a
-consent answer from a client to the human queue, state a budget, stop a turn,
+Read from the protocol's type definitions. What this cannot do: say who the
+person at the client is, take a budget other than one run, stop a turn,
 replay actions to a client that reconnects, authenticate a client, or page a
 chat's earlier turns.
 """
@@ -46,6 +53,7 @@ chat's earlier turns.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import sys
 import threading
@@ -90,16 +98,33 @@ POLL_SECONDS = 1.0
 ENDED = {
     "recorded": "Nothing was asked and nothing ran.",
     "unresolved": "Nothing was asked and nothing ran.",
-    "refused": "The consent was refused on the human queue; nothing ran.",
+    "refused": "The consent was not approved; nothing ran.",
     "unanswered": "Nobody answered the consent before it expired; nothing ran.",
     "done": "The runtime finished.",
     "failed": "The runtime failed.",
 }
 ASKING = ("Consent is asked on qmcp's human queue, as request {request}. Nothing runs"
-          " until a person approves it there.")
+          " until a person approves it, there or here.")
 ACTING = "A person approved it; the runtime is running."
 
 CANNOT_STOP = "qmcp cannot stop an act once it has started"
+
+RUNS = 1
+"""The runs a turn's act is issued against."""
+
+QUESTION = "answer"
+"""The id of the one question in a consent's input request."""
+
+RELAYED_BY = "agent-host-protocol"
+"""`responded_by` on an answer a client relayed."""
+
+
+def loopback(host: Any) -> bool:
+    """Whether `host` is an address on this machine."""
+    try:
+        return ipaddress.ip_address(str(host)).is_loopback
+    except ValueError:
+        return str(host) == "localhost"
 
 
 def negotiate(offered: Iterable[Any]) -> str | None:
@@ -147,6 +172,28 @@ class Busy(Exception):
     """A conversation or an act already runs; the message names it."""
 
 
+class Refused(Exception):
+    """The queue refused an answer; the message is its reason."""
+
+
+@dataclass(frozen=True)
+class Asked:
+    """A consent request as the queue holds it."""
+
+    id: str
+    prompt: str
+    options: tuple[str, ...]
+    answer: str | None = None
+    """What was answered, by anyone, or None while it is pending or expired."""
+
+    def request(self) -> dict[str, Any]:
+        """The protocol's input request: one question, nothing selected."""
+        return {"id": self.id, "message": self.prompt, "questions": [{
+            "id": QUESTION, "kind": "single-select", "message": self.prompt,
+            "required": True,
+            "options": [{"id": option, "label": option} for option in self.options]}]}
+
+
 @dataclass(frozen=True)
 class Look:
     """How far an act on one instruction has got."""
@@ -172,10 +219,18 @@ class Acts(Protocol):
         ...
 
     def start(self, instruction_id: str, runtime: str, cwd: Path | None) -> None:
-        """Start an act under its default budget. Raises `Busy`."""
+        """Start an act issued against `RUNS`. Raises `Busy`."""
         ...
 
     def look(self, instruction_id: str) -> Look:
+        ...
+
+    def asked(self, request_id: str) -> Asked | None:
+        """The consent request the queue holds under that id, or None."""
+        ...
+
+    def answer(self, request_id: str, response: str) -> None:
+        """Write one answer through the queue's own route. Raises `Refused`."""
         ...
 
 
@@ -192,6 +247,12 @@ class Turn:
     started: float
     part_id: str
     told: list[str] = field(default_factory=list)
+    asked: Asked | None = None
+    """The consent this turn showed its chat."""
+    settled: bool = False
+    """Whether the chat was told the consent's input request is complete."""
+    draft: dict[str, Any] | None = None
+    """The answer a client has drafted and not submitted."""
 
 
 @dataclass
@@ -238,8 +299,10 @@ def _now() -> str:
 class Connection:
     """One attached client: what it subscribed to and what is waiting to be sent."""
 
-    def __init__(self, hub: Hub) -> None:
+    def __init__(self, hub: Hub, loopback: bool = False) -> None:
         self.hub = hub
+        self.loopback = loopback
+        """Whether the client is attached from this machine."""
         self.outbox: deque[dict[str, Any]] = deque()
         self.subscribed: set[str] = set()
         self.client_id: str | None = None
@@ -285,9 +348,9 @@ class Hub:
 
     # --- connections -------------------------------------------------------------
 
-    def connect(self) -> Connection:
+    def connect(self, loopback: bool = False) -> Connection:
         with self._lock:
-            connection = Connection(self)
+            connection = Connection(self, loopback)
             self.connections.append(connection)
             return connection
 
@@ -503,6 +566,8 @@ class Hub:
                          f"qmcp's host holds no chat {channel or 'channel'}")
         elif kind == "chat/turnCancelled":
             self._reject(connection, channel, action, origin, CANNOT_STOP)
+        elif kind in ("chat/inputAnswerChanged", "chat/inputCompleted"):
+            self._answered(connection, chat, action, origin)
         elif kind != "chat/turnStarted":
             self._reject(connection, channel, action, origin,
                          f"qmcp's host accepts no {kind} from a client")
@@ -549,6 +614,73 @@ class Hub:
                      "content": f"Recorded as instruction {instruction_id}; an act on it"
                                 f" is started with qmcp's {session.provider} runtime."}})
 
+    # --- a turn's consent --------------------------------------------------------
+
+    def _answered(self, connection: Connection, chat: Chat, action: dict[str, Any],
+                  origin: dict[str, Any]) -> None:
+        """A client drafts or submits an answer to the consent its chat shows."""
+        def reject(why: str) -> None:
+            self._reject(connection, chat.resource, action, origin, why)
+
+        turn = chat.turn
+        asked = turn.asked if turn is not None else None
+        if turn is None or asked is None or action.get("requestId") != asked.id:
+            reject(f"no consent is asked in this chat as {action.get('requestId')}")
+            return
+        if turn.settled:
+            reject(f"{asked.id} is answered already")
+            return
+        if not connection.loopback:
+            reject("a consent is answered from the machine qmcp runs on, and this"
+                   " client is attached from another address")
+            return
+        if action["type"] == "chat/inputAnswerChanged":
+            if action.get("questionId") != QUESTION:
+                reject(f"{asked.id} has one question, {QUESTION}")
+                return
+            turn.draft = action.get("answer") if isinstance(action.get("answer"), dict) else None
+            self._emit(chat.resource, action, origin)
+            return
+        choose = f"choose one of {', '.join(asked.options)} and accept"
+        if action.get("response") != "accept":
+            reject(f"qmcp's queue takes an answer and no {action.get('response')}; {choose}")
+            return
+        answers = action.get("answers")
+        given = answers.get(QUESTION) if isinstance(answers, dict) else None
+        given = given if isinstance(given, dict) else turn.draft or {}
+        value = given.get("value") if isinstance(given.get("value"), dict) else {}
+        chosen = value.get("value")
+        if (given.get("state") == "skipped" or value.get("kind") != "selected"
+                or chosen not in asked.options or value.get("freeformValues")):
+            reject(f"no option of {asked.id} is selected; {choose}")
+            return
+        try:
+            self.acts.answer(asked.id, str(chosen))
+        except Refused as exc:
+            reject(f"qmcp's queue refused the answer: {exc}")
+            return
+        turn.settled = True
+        self._emit(chat.resource, action, origin)
+
+    def _consent(self, turn: Turn, look: Look) -> None:
+        """Show the consent when it is asked, and close it when it is answered elsewhere."""
+        if look.status == "asking" and turn.asked is None and look.consent_request_id:
+            turn.asked = self.acts.asked(look.consent_request_id)
+            if turn.asked is not None:
+                self._emit(turn.chat, {"type": "chat/inputRequested",
+                                       "request": turn.asked.request()})
+        elif look.status != "asking" and turn.asked is not None and not turn.settled:
+            turn.settled = True
+            now = self.acts.asked(turn.asked.id)
+            answer = now.answer if now is not None else None
+            action: dict[str, Any] = {"type": "chat/inputCompleted",
+                                      "requestId": turn.asked.id,
+                                      "response": "accept" if answer else "cancel"}
+            if answer:
+                action["answers"] = {QUESTION: {"state": "submitted", "value": {
+                    "kind": "selected", "value": answer}}}
+            self._emit(turn.chat, action)
+
     def _say(self, turn: Turn, text: str) -> None:
         self._emit(turn.chat, {"type": "chat/delta", "turnId": turn.id,
                                "partId": turn.part_id, "content": f"\n\n{text}"})
@@ -566,6 +698,7 @@ class Hub:
                     self._say(turn, ASKING.format(request=look.consent_request_id))
                 elif look.status == "acting":
                     self._say(turn, ACTING)
+            self._consent(turn, look)
             if look.running:
                 return
             said = look.outcome_text or "\n".join(look.output)
@@ -599,15 +732,25 @@ class ServerActs:
     `rows` is what `qmcp.instructions.act.configured_rows` returns; `runs` is
     the tracker the voice and act routes share, so a turn and a conversation
     exclude each other. `base_url` is where the act's command reaches this
-    server's human queue.
+    server's human queue, and where this reads a consent and writes a relayed
+    answer: `queue` is the client of those routes, made once on first use.
     """
 
     def __init__(self, runs: Any, base_url: str, rows: Callable[[], Any] | None = None,
-                 names: Callable[[], Iterable[str]] | None = None) -> None:
+                 names: Callable[[], Iterable[str]] | None = None,
+                 queue: Any = None) -> None:
         self.runs = runs
         self.base_url = base_url
         self._rows = rows
         self._names = names
+        self._queue = queue
+
+    def queue(self) -> Any:
+        if self._queue is None:
+            from qmcp.client import MCPClient
+
+            self._queue = MCPClient(self.base_url)
+        return self._queue
 
     def rows(self) -> Any:
         if self._rows is None:
@@ -635,7 +778,7 @@ class ServerActs:
 
     def start(self, instruction_id: str, runtime: str, cwd: Path | None) -> None:
         argv = [sys.executable, "-m", "qmcp", "instructions", "act", instruction_id,
-                "--runtime", runtime, "--base-url", self.base_url]
+                "--runtime", runtime, "--budget", str(RUNS), "--base-url", self.base_url]
         if cwd is not None:
             argv += ["--cwd", str(cwd)]
         try:
@@ -658,6 +801,37 @@ class ServerActs:
                     outcome_text=text, exit_code=code, consent_request_id=request,
                     output=tuple(tracked.get("output") or ()) if mine else ())
 
+    def asked(self, request_id: str) -> Asked | None:
+        from qmcp.client import MCPClientError
+
+        try:
+            request, response = self.queue().get_human_request(request_id)
+        except MCPClientError:
+            return None
+        return Asked(id=request.id, prompt=request.prompt,
+                     options=tuple(request.options or ()),
+                     answer=response.response if response is not None else None)
+
+    def answer(self, request_id: str, response: str) -> None:
+        from qmcp.client import MCPClientError
+
+        try:
+            self.queue().submit_human_response(request_id, response,
+                                               responded_by=RELAYED_BY)
+        except MCPClientError as exc:
+            raise Refused(str(exc)) from exc
+        except Exception as exc:
+            # A status the queue's route refused with carries its answer;
+            # anything else is not a refusal and is raised as it came.
+            refusal = getattr(exc, "response", None)
+            if refusal is None:
+                raise
+            try:
+                why = refusal.json().get("detail")
+            except ValueError:
+                why = None
+            raise Refused(str(why or exc)) from exc
+
 
 def register(app: Any, runs: Any, base_url: str, *, acts: Acts | None = None,
              poll_seconds: float = POLL_SECONDS) -> Hub:
@@ -675,7 +849,7 @@ def register(app: Any, runs: Any, base_url: str, *, acts: Acts | None = None,
     @app.websocket("/v1/ahp")
     async def agent_host(socket: WebSocket) -> None:
         await socket.accept()
-        connection = hub.connect()
+        connection = hub.connect(loopback(socket.client.host) if socket.client else False)
         try:
             while True:
                 try:
@@ -705,10 +879,12 @@ def register(app: Any, runs: Any, base_url: str, *, acts: Acts | None = None,
 
 __all__ = [
     "Acts",
+    "Asked",
     "Busy",
     "Connection",
     "Hub",
     "Look",
+    "Refused",
     "ServerActs",
     "negotiate",
     "register",

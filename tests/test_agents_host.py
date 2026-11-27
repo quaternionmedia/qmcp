@@ -1,13 +1,14 @@
 """qmcp as an Agent Host Protocol host: the handshake, a turn as an instruction
-acted on, the one-act rule, and what is refused.
+acted on, its consent shown and relayed, the one-act rule, and what is refused.
 
 The client is `_Client`, in this process: it sends whole JSON messages to a
 `Connection` and reads its `outbox`. The instruction record is `_Acts`, which
-keeps what was recorded and started and plays the looks a test scripts, so no
-database and no process is needed. Three tests go further: `ServerActs` over
-a database file with the run tracker's launcher stood in for, the WebSocket
+keeps what was recorded, started and answered and plays the looks a test
+scripts, so no database and no process is needed. Some tests go further:
+`ServerActs` over a database file with the run tracker's launcher stood in
+for, `ServerActs` against the test server's own queue routes, the WebSocket
 route on the test server, and qmcp's own client adapter attached to the hub.
-That last one proves the two halves agree with each other; both were read
+Those last prove the two halves agree with each other; both were read
 from the same type definitions, so it does not prove either against another
 program's host or client.
 
@@ -21,21 +22,35 @@ import pytest
 from qmcp.integrations.agents import Brief, runtime_names
 from qmcp.integrations.agents import host as ahp_host
 from qmcp.integrations.agents.adapters import ahp
-from qmcp.integrations.agents.host import Busy, Hub, Look, ServerActs, negotiate
+from qmcp.integrations.agents.host import (
+    Asked,
+    Busy,
+    Hub,
+    Look,
+    Refused,
+    ServerActs,
+    negotiate,
+)
 
 SESSION, CHAT = "ahp-session:/s-1", "ahp-chat:/c-1"
 RUNTIMES = ("scripted", "local")
+CONSENT = Asked(id="instruction-i-1", prompt="Run scripted once in qmcp?",
+                options=("approve", "hold"))
 
 
 class _Acts:
     """The instruction record, stood in for."""
 
-    def __init__(self, looks=(), running=None, start_busy=None):
+    def __init__(self, looks=(), running=None, start_busy=None, consent=None,
+                 refuses=None):
         self.recorded: list[tuple[str, dict]] = []
         self.started: list[tuple[str, str, object]] = []
+        self.answered: list[tuple[str, str]] = []
         self.looks = list(looks)
         self.running = running
         self.start_busy = start_busy
+        self.consent = consent
+        self.refuses = refuses
 
     def busy(self):
         return self.running
@@ -52,12 +67,20 @@ class _Acts:
     def look(self, instruction_id):
         return self.looks.pop(0) if len(self.looks) > 1 else self.looks[0]
 
+    def asked(self, request_id):
+        return self.consent
+
+    def answer(self, request_id, response):
+        if self.refuses:
+            raise Refused(self.refuses)
+        self.answered.append((request_id, response))
+
 
 class _Client:
     """One attached client: requests by number, and everything it was sent."""
 
-    def __init__(self, hub, client_id="client-a"):
-        self.connection = hub.connect()
+    def __init__(self, hub, client_id="client-a", loopback=True):
+        self.connection = hub.connect(loopback)
         self.client_id = client_id
         self.ids = 0
         self.seq = 0
@@ -103,9 +126,9 @@ def _hub(acts=None, **options):
     return hub
 
 
-def _attached(hub, tmp_path, client_id="client-a", provider="scripted"):
+def _attached(hub, tmp_path, client_id="client-a", provider="scripted", loopback=True):
     """A client with a session and a chat, subscribed to both."""
-    client = _Client(hub, client_id)
+    client = _Client(hub, client_id, loopback)
     client.initialize()
     client.result("createSession", channel=SESSION, provider=provider,
                   workingDirectories=[tmp_path.as_uri()])
@@ -415,6 +438,214 @@ def test_an_act_that_lost_the_race_leaves_its_instruction_recorded_and_says_so(t
     assert hub.turn is None
 
 
+# --- a turn's consent ------------------------------------------------------------
+
+
+ASKING = Look(status="asking", running=True, consent_request_id=CONSENT.id)
+
+
+def _asking(tmp_path, acts=None, **attached):
+    """A hub whose one turn has shown its consent, and the client that started it."""
+    acts = acts or _Acts(looks=[ASKING], consent=CONSENT)
+    hub = _hub(acts)
+    client = _attached(hub, tmp_path, **attached)
+    client.dispatch(CHAT, _turn())
+    hub.tick()
+    return hub, acts, client
+
+
+def _accept(value="approve", **over):
+    answer = {"state": "submitted", "value": {"kind": "selected", "value": value}}
+    return {"type": "chat/inputCompleted", "requestId": CONSENT.id, "response": "accept",
+            "answers": {"answer": answer}, **over}
+
+
+def test_a_consent_is_shown_as_the_queue_holds_it_with_nothing_selected(tmp_path):
+    """Mutations: mark an option `recommended` -- red; show it on every tick
+    -- red, it is shown once."""
+    hub, _, client = _asking(tmp_path)
+    hub.tick()
+
+    shown = [a["action"] for a in client.actions() if a["action"]["type"] == "chat/inputRequested"]
+    assert shown == [{"type": "chat/inputRequested", "request": {
+        "id": CONSENT.id, "message": CONSENT.prompt, "questions": [{
+            "id": "answer", "kind": "single-select", "message": CONSENT.prompt,
+            "required": True,
+            "options": [{"id": "approve", "label": "approve"},
+                        {"id": "hold", "label": "hold"}]}]}}]
+
+
+@pytest.mark.parametrize("value", ["approve", "hold"])
+def test_an_answer_given_in_a_client_on_this_machine_is_relayed_to_the_queue(tmp_path, value):
+    """Mutations: echo the answer without writing it to the queue -- red;
+    write `approve` whatever was selected -- red."""
+    hub, acts, client = _asking(tmp_path)
+    other = _Client(hub, "client-b")
+    other.initialize()
+    other.result("subscribe", channel=CHAT)
+    client.actions()
+
+    seq = client.dispatch(CHAT, _accept(value))
+
+    assert acts.answered == [(CONSENT.id, value)]
+    for reader in (client, other):
+        (told,) = reader.actions()
+        assert told["action"] == _accept(value) and "rejectionReason" not in told
+        assert told["origin"] == {"clientId": "client-a", "clientSeq": seq}
+
+
+def test_a_client_attached_from_another_address_is_shown_the_consent_and_cannot_answer(
+        tmp_path):
+    """Mutation: drop the loopback check in `_answered` -- red."""
+    hub, acts, client = _asking(tmp_path, loopback=False)
+    assert "chat/inputRequested" in [a["action"]["type"] for a in client.actions()]
+
+    for action in (_accept(), {"type": "chat/inputAnswerChanged", "requestId": CONSENT.id,
+                               "questionId": "answer", "answer": _accept()["answers"]["answer"]}):
+        client.dispatch(CHAT, action)
+        (rejected,) = client.actions()
+        assert "another address" in rejected["rejectionReason"]
+    assert acts.answered == [] and hub.turn.draft is None
+
+
+@pytest.mark.parametrize("action,why", [
+    (_accept(response="decline"), "no decline"),
+    (_accept(response="cancel"), "no cancel"),
+    (_accept(answers=None), "no option"),
+    (_accept("yes"), "no option"),
+    (_accept(answers={"answer": {"state": "skipped", "value": {
+        "kind": "selected", "value": "approve"}}}), "no option"),
+    (_accept(answers={"answer": {"state": "submitted", "value": {
+        "kind": "text", "value": "approve"}}}), "no option"),
+    (_accept(answers={"answer": {"state": "submitted", "value": {
+        "kind": "selected", "value": "approve", "freeformValues": ["and more"]}}}),
+     "no option"),
+    (_accept(requestId="instruction-i-9"), "no consent is asked"),
+    ({"type": "chat/inputAnswerChanged", "requestId": CONSENT.id, "questionId": "other",
+      "answer": {"state": "draft", "value": {"kind": "selected", "value": "approve"}}},
+     "one question"),
+])
+def test_anything_but_one_option_of_the_queues_is_rejected_and_nothing_is_answered(
+        tmp_path, action, why):
+    """Mutations: take the answer a `decline` carries -- red; take a value
+    that is not one of the request's options -- red; take a skipped answer
+    that still carries a value -- red."""
+    hub, acts, client = _asking(tmp_path)
+    client.actions()
+
+    client.dispatch(CHAT, action)
+
+    (rejected,) = client.actions()
+    assert why in rejected["rejectionReason"]
+    assert acts.answered == [] and not hub.turn.settled
+
+
+def test_an_answer_before_any_consent_is_asked_is_rejected(tmp_path):
+    acts = _Acts(looks=[Look(status="acting", running=True)])
+    hub = _hub(acts)
+    client = _attached(hub, tmp_path)
+    client.dispatch(CHAT, _turn())
+    client.actions()
+
+    client.dispatch(CHAT, _accept())
+
+    assert "no consent is asked" in client.actions()[0]["rejectionReason"]
+    assert acts.answered == []
+
+
+def test_a_drafted_answer_is_the_one_an_accept_without_answers_submits(tmp_path):
+    """Mutation: ignore the draft -- red, the accept has no option selected.
+    Clearing the draft takes it away again."""
+    hub, acts, client = _asking(tmp_path)
+    client.actions()
+    draft = {"type": "chat/inputAnswerChanged", "requestId": CONSENT.id, "questionId": "answer",
+             "answer": {"state": "draft", "value": {"kind": "selected", "value": "hold"}}}
+
+    client.dispatch(CHAT, draft)
+    assert client.actions()[0]["action"] == draft
+    client.dispatch(CHAT, {k: v for k, v in draft.items() if k != "answer"})
+    client.actions()
+    client.dispatch(CHAT, _accept(answers=None))
+    assert "no option" in client.actions()[0]["rejectionReason"]
+
+    client.dispatch(CHAT, draft)
+    client.dispatch(CHAT, _accept(answers=None))
+
+    assert acts.answered == [(CONSENT.id, "hold")]
+
+
+def test_the_queues_refusal_reaches_the_client_and_the_consent_stays_open(tmp_path):
+    """Mutation: swallow `Refused` and echo the answer -- red."""
+    acts = _Acts(looks=[ASKING], consent=CONSENT, refuses="Request has expired")
+    hub, _, client = _asking(tmp_path, acts)
+    client.actions()
+
+    client.dispatch(CHAT, _accept())
+
+    (rejected,) = client.actions()
+    assert rejected["rejectionReason"] == "qmcp's queue refused the answer: Request has expired"
+    assert not hub.turn.settled
+
+
+def test_a_consent_is_answered_once_through_the_host(tmp_path):
+    """Mutation: drop the `settled` check -- red, the queue is written twice."""
+    hub, acts, client = _asking(tmp_path)
+    client.dispatch(CHAT, _accept("hold"))
+    client.actions()
+
+    client.dispatch(CHAT, _accept("approve"))
+
+    assert "answered already" in client.actions()[0]["rejectionReason"]
+    assert acts.answered == [(CONSENT.id, "hold")]
+
+
+@pytest.mark.parametrize("answer,completed", [
+    ("approve", {"response": "accept", "answers": {"answer": {"state": "submitted", "value": {
+        "kind": "selected", "value": "approve"}}}}),
+    (None, {"response": "cancel"}),
+])
+def test_an_answer_given_on_the_queue_completes_the_request_in_the_chat(
+        tmp_path, answer, completed):
+    """Answered where every request is, or expired with no answer.
+    Mutation: never tell the chat -- red, the question stays open in it."""
+    acts = _Acts(looks=[ASKING, ASKING, Look(status="acting", running=True)], consent=CONSENT)
+    hub, _, client = _asking(tmp_path, acts)
+    client.actions()
+    acts.consent = Asked(id=CONSENT.id, prompt=CONSENT.prompt, options=CONSENT.options,
+                         answer=answer)
+
+    hub.tick()
+    hub.tick()
+
+    told = [a for a in client.actions() if a["action"]["type"] == "chat/inputCompleted"]
+    assert [a["action"] for a in told] == [
+        {"type": "chat/inputCompleted", "requestId": CONSENT.id, **completed}]
+    assert told[0]["origin"] is None
+
+
+def test_an_answer_relayed_through_the_host_is_not_told_a_second_time(tmp_path):
+    """Mutation: complete the request on every tick after `asking` -- red."""
+    acts = _Acts(looks=[ASKING, Look(status="acting", running=True)], consent=CONSENT)
+    hub, _, client = _asking(tmp_path, acts)
+    client.dispatch(CHAT, _accept())
+    client.actions()
+
+    hub.tick()
+    hub.tick()
+
+    assert "chat/inputCompleted" not in [a["action"]["type"] for a in client.actions()]
+
+
+@pytest.mark.parametrize("host,on_this_machine", [
+    ("127.0.0.1", True), ("::1", True), ("localhost", True), ("127.8.8.8", True),
+    ("192.168.1.5", False), ("0.0.0.0", False), ("testclient", False), ("", False),
+    (None, False),
+])
+def test_an_address_on_this_machine_is_a_loopback_address(host, on_this_machine):
+    """Mutation: count the unspecified address as this machine -- red."""
+    assert ahp_host.loopback(host) is on_this_machine
+
+
 # --- what is refused -------------------------------------------------------------
 
 
@@ -496,8 +727,9 @@ class _Process:
 
 
 def test_the_servers_record_is_an_instruction_row_and_the_act_command(tmp_path):
-    """Mutations: record with another source -- red; add `--budget` to the
-    command -- red, the act's default is the budget."""
+    """Mutations: record with another source -- red; leave `--budget` off
+    the command -- red, the act would declare and stop; issue it against two
+    runs -- red."""
     from qmcp.db.models import Instruction, InstructionSource
     from qmcp.instructions.act import rows_at
     from qmcp.integrations.voice.service import VoiceRuns
@@ -505,7 +737,7 @@ def test_the_servers_record_is_an_instruction_row_and_the_act_command(tmp_path):
     started: list[_Process] = []
 
     def popen(argv, stdout, stderr, env):
-        started.append(_Process(argv, stdout, ["issued against 0 runs"]))
+        started.append(_Process(argv, stdout, ["asking consent"]))
         return started[-1]
 
     rows = rows_at(tmp_path / "inbox.db")
@@ -524,9 +756,8 @@ def test_the_servers_record_is_an_instruction_row_and_the_act_command(tmp_path):
     acts.start(instruction_id, "scripted", tmp_path)
     argv = started[0].argv
     assert argv[1:6] == ["-m", "qmcp", "instructions", "act", instruction_id]
-    assert argv[6:] == ["--runtime", "scripted", "--base-url", "http://127.0.0.1:3141",
-                        "--cwd", str(tmp_path)]
-    assert "--budget" not in argv
+    assert argv[6:] == ["--runtime", "scripted", "--budget", "1",
+                        "--base-url", "http://127.0.0.1:3141", "--cwd", str(tmp_path)]
     assert acts.busy() == instruction_id
     with pytest.raises(Busy, match=instruction_id):
         acts.start("another", "scripted", None)
@@ -535,8 +766,37 @@ def test_the_servers_record_is_an_instruction_row_and_the_act_command(tmp_path):
     assert (running.status, running.running) == ("recorded", True)
     started[0].code = 0
     ended = acts.look(instruction_id)
-    assert (ended.running, ended.output) == (False, ("issued against 0 runs",))
+    assert (ended.running, ended.output) == (False, ("asking consent",))
     assert acts.look("another").output == ()        # another act's words are not this one's
+
+
+def test_the_servers_relay_reads_and_writes_the_queues_own_routes(client):
+    """`ServerActs` against the test server's human queue, so the refusals
+    are the queue's. Mutations: write the response row with no
+    `responded_by` -- red; report the queue's 409 as answered -- red."""
+    from qmcp.client import MCPClient
+
+    queue = MCPClient("http://testserver")
+    queue._client.close()
+    queue._client = client
+    acts = ServerActs(runs=None, base_url="http://testserver", queue=queue)
+    queue.create_human_request(request_id="instruction-i-1", request_type="approval",
+                               prompt=CONSENT.prompt, options=list(CONSENT.options))
+
+    assert acts.asked("instruction-i-1") == CONSENT
+    assert acts.asked("instruction-i-404") is None
+    with pytest.raises(Refused, match="must be one of"):
+        acts.answer("instruction-i-1", "yes")
+    with pytest.raises(Refused, match="not found"):
+        acts.answer("instruction-i-404", "approve")
+
+    acts.answer("instruction-i-1", "approve")
+
+    _, response = queue.get_human_request("instruction-i-1")
+    assert (response.response, response.responded_by) == ("approve", "agent-host-protocol")
+    assert acts.asked("instruction-i-1").answer == "approve"
+    with pytest.raises(Refused, match="already been responded"):
+        acts.answer("instruction-i-1", "hold")
 
 
 # --- the route -------------------------------------------------------------------
@@ -574,6 +834,40 @@ def test_the_route_carries_a_turn_over_a_websocket(client, tmp_path):
 
     assert kinds == ["chat/turnStarted", "chat/responsePart", "chat/delta", "chat/turnComplete"]
     assert hub.connections == []
+
+
+def test_the_route_knows_a_client_by_the_address_it_is_attached_from(client, tmp_path):
+    """The test server's client is attached from a name that is no address
+    on this machine. Mutation: attach every socket as loopback -- red."""
+    hub = client.app.state.ahp_host
+    acts = hub.acts = _Acts(looks=[ASKING], consent=CONSENT)
+    hub.runtimes = lambda: RUNTIMES
+
+    with client.websocket_connect("/v1/ahp") as socket:
+        def send(number, method, **params):
+            socket.send_json({"jsonrpc": "2.0", "id": number, "method": method,
+                              "params": params})
+
+        send(1, "initialize", channel=ahp.ROOT, protocolVersions=["1.0.0"], clientId="page")
+        send(2, "createSession", channel=SESSION, provider="scripted",
+             workingDirectories=[tmp_path.as_uri()])
+        send(3, "createChat", channel=SESSION, chat=CHAT)
+        send(4, "subscribe", channel=CHAT)
+        socket.send_json({"jsonrpc": "2.0", "method": "dispatchAction", "params": {
+            "channel": CHAT, "clientSeq": 1, "action": _turn()}})
+        kinds = []
+        while "chat/inputRequested" not in kinds:
+            kinds.append((socket.receive_json().get("params") or {}).get(
+                "action", {}).get("type"))
+        socket.send_json({"jsonrpc": "2.0", "method": "dispatchAction", "params": {
+            "channel": CHAT, "clientSeq": 2, "action": _accept()}})
+        while True:
+            params = socket.receive_json()["params"]
+            if params["action"]["type"] == "chat/inputCompleted":
+                break
+
+    assert "another address" in params["rejectionReason"]
+    assert acts.answered == []
 
 
 def test_a_refused_handshake_closes_the_socket(client):
@@ -618,7 +912,7 @@ class _Loop:
 
     def __init__(self, hub):
         self.hub = hub
-        self.connection = hub.connect()
+        self.connection = hub.connect(True)
 
     def send(self, message):
         self.connection.handle(message)
@@ -650,6 +944,21 @@ def test_qmcps_client_role_runs_a_turn_on_qmcps_host_role(tmp_path):
     assert acts.started == [("i-1", "scripted", tmp_path.resolve())]
     assert outcome.detail["protocol_version"] == ahp.PROTOCOL_VERSIONS[0]
     assert hub.connections == []
+
+
+def test_qmcps_client_role_answers_no_consent_qmcps_host_role_asks(tmp_path):
+    """The client role confirms nothing, so a host that asks is walked away
+    from, and the consent stays on the queue for a person. Mutation: have the
+    client accept the input request with its first option -- red."""
+    acts = _Acts(looks=[ASKING], consent=CONSENT)
+    hub = _hub(acts)
+    runtime = ahp.Runtime(url="ws://qmcp.test/v1/ahp", connect=lambda url: _Loop(hub),
+                          provider="scripted")
+
+    outcome = runtime.run(Brief(instruction="What is qmcp?", cwd=tmp_path, project="qmcp"))
+
+    assert not outcome.succeeded and "asked for input" in outcome.text
+    assert acts.answered == [] and hub.turn is not None
 
 
 def test_qmcps_client_is_refused_a_session_when_it_names_no_runtime(tmp_path):
