@@ -44,7 +44,21 @@ jobs:
         # installing outside the lock rather than of the dependencies.
         run: uv sync --all-extras
 
+      - name: Install Node, for the protocol's published client
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the protocol's published client through its lock
+        # `--ignore-scripts`: the two packages are read, and nothing of
+        # theirs is run at install.
+        run: npm ci --ignore-scripts --prefix tests/published_client
+
       - name: Run the suite
+        # `required`: without it a missing Node or package skips the
+        # published-client tests, and a skip reports green.
+        env:
+          QMCP_PUBLISHED_CLIENT: required
         # Both paths named: `testpaths` is ignored once pytest is given
         # a path, so a walkthrough left to configuration alone would
         # be collected by nobody and stay green forever.
