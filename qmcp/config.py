@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     alfred_timeout: float = 10.0
     alfred_deliver_timeout: float = 300.0
 
+    # The apothecary the `apothecary_*` tools read (docs/integrations/apothecary.md):
+    # where its server answers. With no URL the tools answer that apothecary is
+    # not configured. Seconds apothecary has to answer one request.
+    apothecary_url: str | None = None
+    apothecary_timeout: float = 10.0
+
     # The Agent Host Protocol host `--runtime ahp` connects to, as a WebSocket
     # address such as ws://127.0.0.1:8123. With none set the runtime runs nothing
     # and says what to set.

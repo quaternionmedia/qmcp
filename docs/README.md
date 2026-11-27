@@ -40,6 +40,7 @@ one of them.
 
 - [`setup/flows.md`](setup/flows.md): run the cookbook's flows in Docker
 - [`integrations/alfred.md`](integrations/alfred.md): alfred's renders and captions, behind a person's approval
+- [`integrations/apothecary.md`](integrations/apothecary.md): apothecary's parts, sites and jobs, read
 - [`agentframework/runners.md`](agentframework/runners.md): how a flow's steps are built
 
 ## Agent library

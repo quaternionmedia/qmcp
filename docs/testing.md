@@ -68,6 +68,7 @@ as one.
 | a speech engine | vox's deterministic engine (`vendor/vox/vox/engine.py`), on port 0 | vox's engine contract; it proves the wire, not transcription |
 | an agent runtime | `qmcp.integrations.agents.scripted` | the runtime contract; spends nothing |
 | alfred | `tests/alfred_stub.py`, behind `httpx.MockTransport`, or on a socket | `tests/alfred_health.json`, `alfred_captions.json` and `alfred_refusals.json`, copied from alfred |
+| apothecary | a stand-in in `tests/test_apothecary_tools.py`, behind `httpx.MockTransport` | `tests/apothecary_answers.json`, an apothecary's own answers |
 | the local model service | `httpx.MockTransport` answering `/api/chat` (`tests/test_agents_local.py`), or the model itself with `-m local_model` | the shape the Ollama adapter reads |
 
 A stand-in written for `httpx.MockTransport` reaches only the client it is
