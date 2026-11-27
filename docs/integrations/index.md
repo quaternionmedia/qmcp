@@ -97,6 +97,20 @@ tool reads.
 **Status**: Tested against a stand-in holding an apothecary's own answers; a
 running apothecary is checked by hand.
 
+### [Agent Host Protocol](agent-host-protocol.md)
+
+Speaks the Agent Host Protocol on both sides. Provides:
+- `--runtime ahp`: a host that speaks the protocol, as one of qmcp's runtimes
+- `/v1/ahp`: a WebSocket the protocol's clients attach to, where a session
+  runs one of qmcp's runtimes and a turn is an instruction acted on
+
+Consent stays on the human queue in both roles, and a turn over the protocol
+runs under the act's default budget.
+
+**Status**: Each role is tested against a stand-in in the same process, and
+the two against each other. Neither has run against another program's host or
+client.
+
 ## Decision Matrix
 
 When to use what:

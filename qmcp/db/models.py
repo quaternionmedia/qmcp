@@ -109,11 +109,13 @@ class HumanResponse(SQLModel, table=True):
 
 
 class InstructionSource(str, Enum):
-    """How an instruction arrived: spoken, typed at a terminal, or sent by a page."""
+    """How an instruction arrived: spoken, typed at a terminal, sent by a page,
+    or started as a turn by a client of the Agent Host Protocol."""
 
     VOICE = "voice"
     TYPED = "typed"
     PAGE = "page"
+    PROTOCOL = "protocol"
 
 
 class InstructionStatus(str, Enum):
