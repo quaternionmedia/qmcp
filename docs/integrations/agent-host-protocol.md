@@ -40,6 +40,22 @@ runtime that fails ends the turn with the protocol's error.
 The instruction row is the record of the work. Sessions and chats are held in
 memory and a restart forgets them.
 
+A turn whose `startedAt` is not an ISO 8601 timestamp is echoed with a
+`rejectionReason`: the chat's `modifiedAt` is reckoned from it.
+
+### A chat's state
+
+A chat's snapshot is what the protocol's chat reducer makes of the actions
+sent on its channel: every turn that ended since the server started, the turn
+that runs with the parts said so far, and an input request with its answers.
+A client that subscribes during a turn is given the open consent, and one
+that subscribes after it is given the turn.
+
+A change to a chat's `status` or `modifiedAt` is told to its session as
+`session/chatUpdated`, so the session's catalog and the chat agree. An action
+the host starts carries no `origin`; one a client dispatched carries that
+client's.
+
 ### Consent and budget
 
 A turn's act is issued against one run. It asks consent for that run on
@@ -81,10 +97,11 @@ queued.
 
 | A client asks for | qmcp answers |
 |---|---|
-| Terminals, resources, change sets, search, automations, authentication, a list of sessions, earlier turns | `MethodNotFound`, naming the method |
+| Terminals, resources, change sets, search, automations, authentication, a list of sessions, a page of a chat's turns | `MethodNotFound`, naming the method |
 | Cancelling a turn | The action echoed with a `rejectionReason`: an act cannot be stopped once it has started |
 | Any other action, a tool-call confirmation among them | The action echoed with a `rejectionReason` |
 | A budget other than one run | Nothing carries one; the act is issued from the command line or a page instead |
+| A session's `inputNeeded` list, and the root's notifications of sessions | Nothing is sent. A pending consent is read from its chat, whose status says input is needed |
 | A turn carried in `createChat` | `InvalidParams`; a turn starts with `chat/turnStarted` |
 
 The handshake's optional capabilities are left out of its result. Nothing is
@@ -119,3 +136,15 @@ the test server. One test attaches qmcp's client role to qmcp's host role.
 That proves the two agree with each other. Both were read from the same type
 definitions, so it does not prove either against another program's client or
 host.
+
+The host role holds against the protocol's published TypeScript client,
+`@microsoft/agent-host-protocol` 1.1.0, in a run made by hand and repeated by
+no test here. In that run the client negotiates its version, creates a
+session and a chat, starts a turn, and answers the consent `approve` in one
+turn and `hold` in another. Its reducers, given every action the host sent,
+hold the same chat and session state as the host's own snapshots, during the
+turn and after it, and every envelope and state the host sent is valid under
+the protocol's JSON schemas. The run needs Node and the published package,
+which this repository does not install.
+
+The client role has run against no host another program provides.

@@ -12,10 +12,17 @@ Those last prove the two halves agree with each other; both were read
 from the same type definitions, so it does not prove either against another
 program's host or client.
 
+The tests of a chat's state hold the host to what the protocol's own chat
+reducer leaves after the same actions. Their expected values were written by
+hand from that reducer; `docs/integrations/agent-host-protocol.md` says how
+the host was run against the protocol's published client.
+
 Each test names the mutation it was seen to fail under.
 """
 
 from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -30,6 +37,7 @@ from qmcp.integrations.agents.host import (
     Refused,
     ServerActs,
     negotiate,
+    reduce,
 )
 
 SESSION, CHAT = "ahp-session:/s-1", "ahp-chat:/c-1"
@@ -84,6 +92,7 @@ class _Client:
         self.client_id = client_id
         self.ids = 0
         self.seq = 0
+        self.follows = None
 
     def request(self, method, **params):
         self.ids += 1
@@ -107,11 +116,16 @@ class _Client:
             "channel": channel, "clientSeq": self.seq, "action": action}})
         return self.seq
 
-    def actions(self):
-        """Every action waiting, oldest first, taken off the outbox."""
+    def actions(self, channel=None):
+        """The actions waiting, oldest first, and the outbox emptied.
+
+        Those on `channel`, or on the channel this client `follows`, or every
+        one when it follows none.
+        """
+        channel = channel or self.follows
         sent = [m["params"] for m in self.connection.outbox if m.get("method") == "action"]
         self.connection.outbox.clear()
-        return sent
+        return [a for a in sent if channel is None or a["channel"] == channel]
 
     def initialize(self, versions=ahp.PROTOCOL_VERSIONS, **extra):
         return self.result("initialize", channel=ahp.ROOT, protocolVersions=list(versions),
@@ -127,7 +141,7 @@ def _hub(acts=None, **options):
 
 
 def _attached(hub, tmp_path, client_id="client-a", provider="scripted", loopback=True):
-    """A client with a session and a chat, subscribed to both."""
+    """A client with a session and a chat, subscribed to both, following the chat."""
     client = _Client(hub, client_id, loopback)
     client.initialize()
     client.result("createSession", channel=SESSION, provider=provider,
@@ -136,6 +150,7 @@ def _attached(hub, tmp_path, client_id="client-a", provider="scripted", loopback
     client.result("createChat", channel=SESSION, chat=CHAT)
     client.result("subscribe", channel=CHAT)
     client.actions()
+    client.follows = CHAT
     return client
 
 
@@ -620,7 +635,7 @@ def test_an_answer_given_on_the_queue_completes_the_request_in_the_chat(
     told = [a for a in client.actions() if a["action"]["type"] == "chat/inputCompleted"]
     assert [a["action"] for a in told] == [
         {"type": "chat/inputCompleted", "requestId": CONSENT.id, **completed}]
-    assert told[0]["origin"] is None
+    assert "origin" not in told[0]
 
 
 def test_an_answer_relayed_through_the_host_is_not_told_a_second_time(tmp_path):
@@ -644,6 +659,193 @@ def test_an_answer_relayed_through_the_host_is_not_told_a_second_time(tmp_path):
 def test_an_address_on_this_machine_is_a_loopback_address(host, on_this_machine):
     """Mutation: count the unspecified address as this machine -- red."""
     assert ahp_host.loopback(host) is on_this_machine
+
+
+# --- a chat's state ----------------------------------------------------------------
+
+STARTED = _turn()["startedAt"]
+
+
+def _state(client, channel=CHAT):
+    return client.result("subscribe", channel=channel)["snapshot"]["state"]
+
+
+def test_a_chat_subscribed_to_after_a_turn_holds_the_turn(tmp_path):
+    """Mutation: leave `chat/turnComplete` out of `reduce` -- red, the turn
+    stays active."""
+    acts = _Acts(looks=[Look(status="done", running=False,
+                             outcome_text="qmcp is the local backend.", exit_code=0)])
+    hub = _hub(acts)
+    client = _attached(hub, tmp_path)
+    client.dispatch(CHAT, _turn())
+    hub.now[0] = 2.5
+    hub.tick()
+
+    sent = [a["action"] for a in client.actions()]
+    state = _state(client)
+
+    part = sent[1]["part"]
+    said = part["content"] + "".join(a["content"] for a in sent if a["type"] == "chat/delta")
+    assert "qmcp is the local backend." in said
+    assert state["turns"] == [{
+        "id": "t-1", "startedAt": STARTED, "duration": 2500, "message": _turn()["message"],
+        "responseParts": [{"kind": "markdown", "id": part["id"], "content": said}],
+        "state": "complete"}]
+    assert "activeTurn" not in state
+    assert (state["status"], state["modifiedAt"]) == (
+        ahp_host.IDLE, "2026-01-01T00:10:02.500Z")
+
+
+def test_a_chat_subscribed_to_during_a_turn_holds_the_open_consent(tmp_path):
+    """A client that attaches while a consent is asked is given it to answer.
+    Mutation: leave `chat/inputRequested` out of `reduce` -- red."""
+    _, _, client = _asking(tmp_path)
+
+    state = _state(client)
+
+    active = state["activeTurn"]
+    assert (active["id"], active["startedAt"], active["message"]) == (
+        "t-1", STARTED, _turn()["message"])
+    assert [part["kind"] for part in active["responseParts"]] == ["markdown", "inputRequest"]
+    assert active["responseParts"][-1] == {"kind": "inputRequest",
+                                           "request": CONSENT.request()}
+    assert (state["status"], state["modifiedAt"], state["turns"]) == (
+        ahp_host.INPUT_NEEDED, STARTED, [])
+
+
+def test_a_drafted_answer_is_held_in_the_open_request(tmp_path):
+    """Mutation: leave `chat/inputAnswerChanged` out of `reduce` -- red."""
+    _, _, client = _asking(tmp_path)
+    answer = {"state": "draft", "value": {"kind": "selected", "value": "hold"}}
+    draft = {"type": "chat/inputAnswerChanged", "requestId": CONSENT.id,
+             "questionId": "answer", "answer": answer}
+
+    client.dispatch(CHAT, draft)
+    drafted = _state(client)
+    client.dispatch(CHAT, {k: v for k, v in draft.items() if k != "answer"})
+    withdrawn = _state(client)
+
+    part = drafted["activeTurn"]["responseParts"][-1]
+    assert part["request"]["answers"] == {"answer": answer} and "response" not in part
+    assert drafted["status"] == ahp_host.INPUT_NEEDED
+    assert withdrawn["activeTurn"]["responseParts"][-1] == {
+        "kind": "inputRequest", "request": CONSENT.request()}
+
+
+def test_an_answered_consent_is_held_with_its_answer_and_the_turn_goes_on(tmp_path):
+    """Mutation: leave `chat/inputCompleted` out of `reduce` -- red, the
+    request stays open and the chat still needs input."""
+    _, _, client = _asking(tmp_path)
+
+    client.dispatch(CHAT, _accept("approve"))
+    state = _state(client)
+
+    part = state["activeTurn"]["responseParts"][-1]
+    assert part["response"] == "accept"
+    assert part["request"] == {**CONSENT.request(), "answers": _accept("approve")["answers"]}
+    assert state["status"] == ahp_host.IN_PROGRESS
+
+
+def test_a_failed_turn_is_held_with_its_error_part(tmp_path):
+    """Mutation: hold a failed turn as `complete` -- red."""
+    acts = _Acts(looks=[Look(status="failed", running=False, outcome_text="exit 3: no model",
+                             exit_code=3)])
+    hub = _hub(acts)
+    client = _attached(hub, tmp_path)
+    client.dispatch(CHAT, _turn())
+    hub.now[0] = 1.0
+    hub.tick()
+
+    state = _state(client)
+
+    (turn,) = state["turns"]
+    assert (turn["state"], turn["duration"]) == ("error", 1000)
+    assert [part["kind"] for part in turn["responseParts"]] == ["markdown", "error"]
+    assert turn["responseParts"][-1]["error"]["message"] == "exit 3: no model"
+    assert (state["status"], state["modifiedAt"]) == (
+        ahp_host.ERROR, "2026-01-01T00:10:01.000Z")
+
+
+def test_a_session_is_told_what_a_turn_changes_in_its_chats_summary(tmp_path):
+    """The session's catalog and the chat's own state agree after each action.
+    Mutation: reduce the chat and tell its session nothing -- red."""
+    _, _, client = _asking(tmp_path)
+
+    told = client.actions(SESSION)
+
+    assert [a["action"] for a in told] == [
+        {"type": "session/chatUpdated", "chat": CHAT,
+         "changes": {"status": ahp_host.IN_PROGRESS, "modifiedAt": STARTED}},
+        {"type": "session/chatUpdated", "chat": CHAT,
+         "changes": {"status": ahp_host.INPUT_NEEDED}}]
+    chat = _state(client)
+    assert _state(client, SESSION)["chats"] == [
+        {key: chat[key] for key in ("resource", "title", "status", "modifiedAt")}]
+
+
+def test_an_action_the_host_starts_carries_no_origin(tmp_path):
+    """`origin` is left out of the envelope; the protocol's schema takes an
+    object there or nothing. Mutation: send `origin` as null -- red."""
+    _, _, client = _asking(tmp_path)
+
+    sent = client.actions()
+
+    assert [(a["action"]["type"], "origin" in a) for a in sent] == [
+        ("chat/turnStarted", True), ("chat/responsePart", False),
+        ("chat/delta", False), ("chat/inputRequested", False)]
+
+
+def test_a_rejected_action_leaves_the_chats_state_as_it_was(tmp_path):
+    """Mutation: reduce every envelope made, the rejected ones too -- red."""
+    _, _, client = _asking(tmp_path, loopback=False)
+    before = _state(client)
+
+    client.dispatch(CHAT, _accept("approve"))
+
+    assert "another address" in client.actions()[-1]["rejectionReason"]
+    assert _state(client) == before
+
+
+@pytest.mark.parametrize("stamp", [None, "yesterday", ""])
+def test_a_turn_whose_start_names_no_moment_is_rejected(tmp_path, stamp):
+    """A chat's `modifiedAt` is reckoned from it. Mutation: start the turn
+    whatever `startedAt` holds -- red."""
+    hub = _hub()
+    client = _attached(hub, tmp_path)
+
+    client.dispatch(CHAT, {**_turn(), "startedAt": stamp})
+
+    (rejected,) = client.actions()
+    assert "startedAt" in rejected["rejectionReason"]
+    assert hub.acts.recorded == [] and hub.turn is None
+
+
+def test_an_action_for_another_turn_or_of_no_kind_it_sends_changes_nothing():
+    """Mutation: take a delta whatever turn it names -- red."""
+    held = reduce({"resource": CHAT, "title": "", "status": ahp_host.IDLE,
+                   "modifiedAt": STARTED, "turns": []}, _turn())
+    held = reduce(held, {"type": "chat/responsePart", "turnId": "t-1",
+                         "part": {"kind": "markdown", "id": "p-1", "content": "a"}})
+
+    for action in (
+            {"type": "chat/delta", "turnId": "t-9", "partId": "p-1", "content": "b"},
+            {"type": "chat/delta", "turnId": "t-1", "partId": "p-9", "content": "b"},
+            {"type": "chat/turnComplete", "turnId": "t-9", "duration": 5},
+            {"type": "chat/toolCallStart", "turnId": "t-1", "toolCallId": "c-1"}):
+        assert reduce(held, action) is held
+    assert reduce({"turns": [], "status": ahp_host.IDLE},
+                  {"type": "chat/delta", "turnId": "t-1", "partId": "p-1",
+                   "content": "b"}) == {"turns": [], "status": ahp_host.IDLE}
+
+
+def test_a_moment_is_written_in_utc_and_cut_to_the_millisecond():
+    """As the protocol's reducer writes one. Mutation: round to the nearest
+    millisecond -- red."""
+    east = timezone(timedelta(hours=1))
+    assert ahp_host._stamp(datetime(2026, 1, 1, 1, 0, 0, 999_999, tzinfo=east)) == (
+        "2026-01-01T00:00:00.999Z")
+    assert ahp_host._instant("2026-01-01T00:10:00Z") == datetime(
+        2026, 1, 1, 0, 10, tzinfo=UTC)
 
 
 # --- what is refused -------------------------------------------------------------
@@ -687,6 +889,7 @@ def test_any_other_action_from_a_client_is_rejected(tmp_path, action):
 def test_a_turn_without_text_or_on_no_chat_is_rejected(tmp_path):
     hub = _hub()
     client = _attached(hub, tmp_path)
+    client.follows = None
     client.dispatch(CHAT, _turn("   "))
     client.dispatch("ahp-chat:/nowhere", _turn())
     blank, nowhere = client.actions()
