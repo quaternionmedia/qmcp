@@ -25,6 +25,7 @@ route that starts a process does.
 | `createSession` | Holds a session on the runtime `provider` names, in at most one working directory. No provider is defaulted |
 | `createChat` | Adds a chat to the session and tells every client subscribed to the session |
 | `dispatchAction` with `chat/turnStarted` | Starts a turn, below |
+| `dispatchAction` with `chat/inputCompleted` or `chat/inputAnswerChanged` | Takes a person's answer to the turn's consent, below |
 | `subscribe`, `unsubscribe`, `disposeSession` | As named. A session with a turn running is not disposed |
 
 ### A turn is an instruction acted on
@@ -41,15 +42,34 @@ memory and a restart forgets them.
 
 ### Consent and budget
 
-The act asks its consent on qmcp's human queue, as every act does, and runs
-nothing until a person approves it there. Its budget is the act's default,
-which is zero: it declares what it would need, asks nothing and runs nothing.
-A client cannot state a budget, so a turn over the protocol ends with the
-declaration and no runtime runs. A person who wants the runtime to run issues
-the act on that instruction with a budget, from the command line or a page.
+A turn's act is issued against one run. It asks consent for that run on
+qmcp's human queue, as every act with a budget does, and runs nothing until a
+person approves. A turn cannot state another budget.
 
-A client cannot answer a consent request through this host. The request is
-named in the chat, and it is answered where every request is: the queue.
+The chat is shown the request as the queue holds it: `chat/inputRequested`
+with one single-select question, `answer`, whose options are the queue's.
+No option is marked recommended.
+
+A person answers in either place.
+
+- **On the queue**, as every request is answered. The host then tells the
+  chat with `chat/inputCompleted`, carrying the answer, or `cancel` when the
+  request expired with none.
+- **In a client attached from the machine qmcp runs on.** The client
+  dispatches `chat/inputCompleted` with `response: accept` and the selected
+  option, in `answers` or drafted before with `chat/inputAnswerChanged`. The
+  host writes that answer through the queue's own route, with
+  `agent-host-protocol` as `responded_by`, and echoes the action to the chat.
+
+| A client sends | qmcp answers |
+|---|---|
+| An answer from another address | A `rejectionReason`. The request is shown there and is not answerable there |
+| `decline` or `cancel` | A `rejectionReason`: the queue takes one of its options, and neither is one |
+| A value that is not one of the options, free text, or a skipped answer | A `rejectionReason` |
+| An answer the queue refuses: answered already, or expired | A `rejectionReason` carrying the queue's reason |
+
+`responded_by` names the surface the answer came through. qmcp does not know
+who the person at the client is.
 
 ### One act at a time
 
@@ -64,6 +84,7 @@ queued.
 | Terminals, resources, change sets, search, automations, authentication, a list of sessions, earlier turns | `MethodNotFound`, naming the method |
 | Cancelling a turn | The action echoed with a `rejectionReason`: an act cannot be stopped once it has started |
 | Any other action, a tool-call confirmation among them | The action echoed with a `rejectionReason` |
+| A budget other than one run | Nothing carries one; the act is issued from the command line or a page instead |
 | A turn carried in `createChat` | `InvalidParams`; a turn starts with `chat/turnStarted` |
 
 The handshake's optional capabilities are left out of its result. Nothing is
@@ -85,7 +106,10 @@ from qmcp.integrations.agents.adapters.ahp import Runtime
 print(Runtime(provider='scripted').run(Brief(instruction='Say what qmcp is.', cwd=Path.cwd(), project='qmcp')).text)"
 ```
 
-It prints the declaration, because the turn's budget is zero.
+It prints that the host asked for input and the turn was walked away from:
+qmcp's client role answers no question on a person's behalf. The consent
+stays on the queue, where `uv run qmcp human list` shows it, and the act runs
+if a person approves it there before it expires.
 
 ## Testing
 
