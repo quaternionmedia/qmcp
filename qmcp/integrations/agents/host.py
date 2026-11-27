@@ -38,6 +38,12 @@ terms: a request by `METHOD_NOT_FOUND`, an action by a `rejectionReason`. The
 handshake's optional capabilities are left out. Cancelling a turn is among the
 refusals: an act cannot be stopped once it has started.
 
+A chat's state is what the protocol's chat reducer makes of the actions sent
+on its channel, so a client that subscribes during a turn or after one is
+given what a client that followed every action holds. `reduce` is that
+reducer for the actions this host sends. A change to a chat's status or
+`modifiedAt` is told to its session as `session/chatUpdated`.
+
 `Hub` holds the sessions and is written against two seams, so it runs with no
 socket and no database: `Acts` records an instruction, starts an act and
 reads how far it got, and each `Connection` has an `outbox` of whole JSON
@@ -62,7 +68,7 @@ import uuid
 from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
@@ -87,8 +93,10 @@ UNSUPPORTED_PROTOCOL_VERSION = -32005
 NOT_FOUND = -32008
 ALREADY_EXISTS = -32010
 
-# The protocol's session and chat status bits.
-IDLE, ERROR, IN_PROGRESS = 1, 2, 8
+# The protocol's session and chat status bits. `ACTIVITY` covers the bits of
+# which one holds at a time; `IS_READ` is a flag beside them.
+IDLE, ERROR, IN_PROGRESS, INPUT_NEEDED = 1, 2, 8, 24
+ACTIVITY, IS_READ = 31, 32
 
 # Seconds between two looks at a running act.
 POLL_SECONDS = 1.0
@@ -255,21 +263,143 @@ class Turn:
     """The answer a client has drafted and not submitted."""
 
 
+def _instant(stamp: Any) -> datetime | None:
+    """The moment an ISO 8601 timestamp names, or None when it names none."""
+    try:
+        moment = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
+def _stamp(moment: datetime) -> str:
+    """A moment as the protocol's reducer writes one: UTC, to the millisecond."""
+    moment = moment.astimezone(UTC)
+    return f"{moment:%Y-%m-%dT%H:%M:%S}.{moment.microsecond // 1000:03d}Z"
+
+
+def _status(state: dict[str, Any], ended: int | None = None) -> int:
+    """A chat's status from its turn: the activity bits set, every flag kept."""
+    active = state.get("activeTurn")
+    if ended is not None:
+        activity = ended
+    elif active is None:
+        activity = IDLE
+    elif any(part.get("kind") == "inputRequest" and "response" not in part
+             for part in active["responseParts"]):
+        activity = INPUT_NEEDED
+    else:
+        activity = IN_PROGRESS
+    return state["status"] & ~ACTIVITY | activity
+
+
+def reduce(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
+    """A chat's state after one action, as the protocol's chat reducer leaves it.
+
+    The actions this host sends are covered: a turn started, a response part,
+    a delta, an input request asked, drafted and completed, a turn complete,
+    and an error. Any other action, and one that names another turn than the
+    active one, leaves the state as it was.
+    """
+    kind = action.get("type")
+    if kind == "chat/turnStarted":
+        started = {**state, "modifiedAt": action["startedAt"], "activeTurn": {
+            "id": action["turnId"], "startedAt": action["startedAt"],
+            "message": action["message"], "responseParts": []}}
+        return {**started, "status": _status(started) & ~IS_READ}
+    active = state.get("activeTurn")
+    if active is None:
+        return state
+    parts = list(active["responseParts"])
+
+    def held(parts: list[dict[str, Any]]) -> dict[str, Any]:
+        return {**state, "activeTurn": {**active, "responseParts": parts}}
+
+    if kind in ("chat/inputRequested", "chat/inputAnswerChanged", "chat/inputCompleted"):
+        asked = kind == "chat/inputRequested"
+        request_id = action["request"]["id"] if asked else action.get("requestId")
+        at = next((index for index, part in enumerate(parts)
+                   if part.get("kind") == "inputRequest" and "response" not in part
+                   and part["request"]["id"] == request_id), None)
+        if asked:
+            request = dict(action["request"])
+            if at is None:
+                parts.append({"kind": "inputRequest", "request": request})
+            else:
+                earlier = parts[at]["request"].get("answers")
+                if "answers" not in request and earlier:
+                    request["answers"] = earlier
+                parts[at] = {"kind": "inputRequest", "request": request}
+            shown = held(parts)
+            return {**shown, "status": _status(shown) & ~IS_READ}
+        if at is None:
+            return state
+        request = dict(parts[at]["request"])
+        answers = dict(request.pop("answers", None) or {})
+        if kind == "chat/inputCompleted":
+            answers.update(action.get("answers") or {})
+        elif action.get("answer") is None:
+            answers.pop(action.get("questionId"), None)
+        else:
+            answers[action["questionId"]] = action["answer"]
+        if answers:
+            request["answers"] = answers
+        parts[at] = {**parts[at], "request": request}
+        if kind == "chat/inputAnswerChanged":
+            return held(parts)
+        parts[at]["response"] = action["response"]
+        answered = held(parts)
+        return {**answered, "status": _status(answered)}
+
+    if action.get("turnId") != active["id"]:
+        return state
+    if kind == "chat/responsePart":
+        if action["part"].get("kind") == "error":
+            return state
+        return held([*parts, action["part"]])
+    if kind == "chat/delta":
+        for index, part in enumerate(parts):
+            if part.get("id") == action["partId"]:
+                if part.get("kind") != "markdown":
+                    return state
+                parts[index] = {**part, "content": part["content"] + action["content"]}
+                return held(parts)
+        return state
+    if kind in ("chat/turnComplete", "chat/error"):
+        failed = kind == "chat/error"
+        duration = max(0, action["duration"])
+        if failed:
+            parts.append(action["part"])
+        began = _instant(active["startedAt"]) or datetime.now(UTC)
+        ended = {key: value for key, value in state.items() if key != "activeTurn"}
+        ended["turns"] = [*state["turns"], {
+            "id": active["id"], "startedAt": active["startedAt"], "duration": duration,
+            "message": active["message"], "responseParts": parts,
+            "state": "error" if failed else "complete"}]
+        ended["modifiedAt"] = _stamp(began + timedelta(milliseconds=duration))
+        return {**ended, "status": _status(ended, ERROR if failed else None)}
+    return state
+
+
 @dataclass
 class Chat:
     resource: str
     session: str
-    modified_at: str
-    status: int = IDLE
+    held: dict[str, Any]
+    """The chat's state, as `reduce` leaves it after each action sent."""
     turn: Turn | None = None
 
+    @classmethod
+    def new(cls, resource: str, session: str) -> Chat:
+        return cls(resource=resource, session=session, held={
+            "resource": resource, "title": "", "status": IDLE,
+            "modifiedAt": _stamp(datetime.now(UTC)), "turns": []})
+
     def summary(self) -> dict[str, Any]:
-        return {"resource": self.resource, "title": "", "status": self.status,
-                "modifiedAt": self.modified_at}
+        return {key: self.held[key] for key in ("resource", "title", "status", "modifiedAt")}
 
     def state(self) -> dict[str, Any]:
-        # Completed turns are not kept: the instruction rows hold them.
-        return {**self.summary(), "turns": []}
+        return dict(self.held)
 
 
 @dataclass
@@ -290,10 +420,6 @@ class Session:
         if self.cwd is not None:
             state["workingDirectories"] = [self.cwd.as_uri()]
         return state
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class Connection:
@@ -365,18 +491,34 @@ class Hub:
                   origin: dict[str, Any] | None, rejection: str | None) -> dict[str, Any]:
         self.seq += 1
         params: dict[str, Any] = {"channel": channel, "action": action,
-                                  "serverSeq": self.seq, "origin": origin}
+                                  "serverSeq": self.seq}
+        if origin is not None:
+            params["origin"] = origin
         if rejection:
             params["rejectionReason"] = rejection
         return {"jsonrpc": "2.0", "method": "action", "params": params}
 
     def _emit(self, channel: str, action: dict[str, Any],
               origin: dict[str, Any] | None = None) -> None:
-        """One action, to every client subscribed to its channel."""
+        """One action, to every client subscribed to its channel.
+
+        An action on a chat is reduced into the chat's state, and what that
+        changed in the chat's summary is told to its session.
+        """
         envelope = self._envelope(channel, action, origin, None)
         for connection in self.connections:
             if channel in connection.subscribed:
                 connection.outbox.append(envelope)
+        chat = self._chat(channel)
+        if chat is None:
+            return
+        before = chat.summary()
+        chat.held = reduce(chat.held, action)
+        changes = {key: value for key, value in chat.summary().items()
+                   if before[key] != value}
+        if changes:
+            self._emit(chat.session, {"type": "session/chatUpdated",
+                                      "chat": chat.resource, "changes": changes})
 
     def _reject(self, connection: Connection, channel: str, action: dict[str, Any],
                 origin: dict[str, Any], why: str) -> None:
@@ -530,7 +672,7 @@ class Hub:
                               "qmcp's host starts no turn from createChat; dispatch"
                               " chat/turnStarted on the chat")
         else:
-            made = Chat(resource=chat, session=session.resource, modified_at=_now())
+            made = Chat.new(chat, session.resource)
             session.chats[chat] = made
             connection._result(message, None)
             self._emit(session.resource, {"type": "session/chatAdded",
@@ -587,6 +729,9 @@ class Hub:
         if not turn_id or not text:
             reject("a turn carries a turnId and a message with text")
             return
+        if _instant(action.get("startedAt")) is None:
+            reject("a turn carries startedAt, an ISO 8601 timestamp")
+            return
         running = self.acts.busy()
         if self.turn is not None or running is not None:
             reject("a conversation or an act is already running"
@@ -606,7 +751,6 @@ class Hub:
         turn = Turn(id=str(turn_id), chat=chat.resource, instruction_id=instruction_id,
                     started=self.clock(), part_id=f"part-{uuid.uuid4()}")
         self.turn = chat.turn = turn
-        chat.status, chat.modified_at = IN_PROGRESS, _now()
         self._emit(chat.resource, action, origin)
         self._emit(chat.resource, {
             "type": "chat/responsePart", "turnId": turn.id,
@@ -717,8 +861,7 @@ class Hub:
                                        "duration": duration})
             self.turn = None
             if chat is not None:
-                chat.turn, chat.modified_at = None, _now()
-                chat.status = ERROR if failed else IDLE
+                chat.turn = None
 
 
 # ---------------------------------------------------------------------------
@@ -878,6 +1021,7 @@ def register(app: Any, runs: Any, base_url: str, *, acts: Acts | None = None,
 
 
 __all__ = [
+    "reduce",
     "Acts",
     "Asked",
     "Busy",
